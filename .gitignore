@@ -31,8 +31,9 @@ web/next-env.d.ts
 .DS_Store
 Thumbs.db
 
-# claude code local state
-.claude/
+# claude code 개인 상태(규칙·hook·에이전트는 추적한다)
+.claude/settings.local.json
+.claude/hooks/tests/.sandbox-*/
 
 # 内嵌前端的单二进制产物
 /artex
