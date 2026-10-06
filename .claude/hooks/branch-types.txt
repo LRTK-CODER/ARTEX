@@ -1,0 +1,7 @@
+feat
+fix
+chore
+docs
+refactor
+test
+ci

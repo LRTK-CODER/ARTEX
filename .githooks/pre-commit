@@ -1,0 +1,63 @@
+#!/bin/sh
+# main 브랜치에 직접 커밋하지 못하게 막는다. 규칙: .claude/rules/branching.md
+branch=$(git symbolic-ref --short -q HEAD)
+if [ "$branch" = "main" ]; then
+    echo "차단: main 브랜치에 직접 커밋" >&2
+    echo "이유: main은 PR의 squash merge로만 바뀐다" >&2
+    echo "대신: git switch -c <type>/issue-<번호> (또는 <type>/<slug>) 로 작업 브랜치를 만든 뒤 커밋한다 (규칙: .claude/rules/branching.md)" >&2
+    exit 1
+fi
+
+# 스테이징된 *.go 가 있으면 gofmt 형식 검사를 한다(스테이징된 내용 기준).
+# 검사 대상은 인덱스의 내용이다. 일부만 스테이징(git add -p)해도 커밋될 내용을 본다.
+# go vet·테스트는 느려서 넣지 않는다. 커밋·PR 전에 스스로 돌린다(AGENTS.md "명령").
+go_staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.go')
+if [ -n "$go_staged" ]; then
+    gofmt=$(command -v gofmt 2>/dev/null)
+    if [ -z "$gofmt" ]; then
+        echo "차단: Go 파일을 검사할 gofmt가 없다" >&2
+        echo "대신: Go를 설치한다(https://go.dev/dl/). gofmt는 Go에 포함돼 있다" >&2
+        exit 1
+    fi
+    # $0은 gofmt 경로, $1은 파일 이름이다. 스테이징된 내용을 파이프로 바로 gofmt에 넣는다.
+    # 명령 치환($(...))으로 담으면 끝 개행이 지워져 gofmt가 늘 형식 위반으로 보므로 파이프로 넘긴다.
+    # gofmt -l은 형식이 다르면 파일 이름을, 구문 오류면 비정상 종료한다. ACMR이라 삭제 파일은 오지 않는다.
+    check_one='
+out=$(git cat-file blob ":$1" | "$0" -l 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    printf "gofmt 오류(스테이징된 내용): %s\n%s\n" "$1" "$out" >&2
+    exit 1
+fi
+if [ -n "$out" ]; then
+    printf "형식 위반(스테이징된 내용): %s\n" "$1" >&2
+    exit 1
+fi
+'
+    if ! git diff --cached --name-only -z --diff-filter=ACMR -- '*.go' \
+            | xargs -0 -r -n1 sh -c "$check_one" "$gofmt"; then
+        echo "차단: gofmt 검사 실패" >&2
+        echo "대신: gofmt -w . 로 고치고 다시 add 한다" >&2
+        exit 1
+    fi
+fi
+
+# 스테이징된 web 소스가 있으면 biome로 검사한다. web의 로컬 biome를 쓴다.
+# biome가 없으면(의존성 미설치) 경고만 하고 넘긴다. 백엔드만 고치는 커밋을 막지 않기 위해서다.
+web_staged=$(git diff --cached --name-only --diff-filter=ACMR -- 'web/' \
+    | grep -Ei '\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc|css)$' || true)
+if [ -n "$web_staged" ]; then
+    biome="web/node_modules/.bin/biome"
+    if [ ! -x "$biome" ]; then
+        echo "경고: web/node_modules/.bin/biome 가 없어 프런트 검사를 건너뛴다(web 에서 npm install)" >&2
+    else
+        # biome는 작업 디렉터리에서 web/biome.json을 찾으므로 web에서 돌리고 경로는 web/ 접두를 뗀다.
+        rel=$(printf '%s\n' "$web_staged" | sed 's#^web/##')
+        if ! printf '%s\n' "$rel" | (cd web && xargs ./node_modules/.bin/biome check --no-errors-on-unmatched); then
+            echo "차단: biome 검사 실패" >&2
+            echo "대신: (cd web && npm run check:fix) 로 고치고 다시 add 한다" >&2
+            exit 1
+        fi
+    fi
+fi
+exit 0

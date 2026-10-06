@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/../.claude/hooks\"; [ -f \"$d/guard.py\" ] || d=\"$CLAUDE_PROJECT_DIR/.claude/hooks\"; python3 \"$d/guard.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/../.claude/hooks\"; [ -f \"$d/guard.py\" ] || d=\"$CLAUDE_PROJECT_DIR/.claude/hooks\"; python3 \"$d/guard.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/../.claude/hooks\"; [ -f \"$d/format_code.py\" ] || d=\"$CLAUDE_PROJECT_DIR/.claude/hooks\"; python3 \"$d/format_code.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
