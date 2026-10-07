@@ -13,11 +13,11 @@ Go는 표준 `testing`만 쓴다. testify·gomock 같은 프레임워크를 들�
 - 단위 테스트는 한 프로세스에서 외부 도구·LLM·네트워크·실제 DB·sleep 없이 돈다.
 - 파일은 `t.TempDir()`에만 쓴다.
 - 동시성·공유 상태가 있는 코드는 `go test -race`로 확인한다.
-- 느린·네트워크·실도구·실 LLM·실 DB 테스트는 **빌드 태그가 아니라** `testing.Short()`와 `t.Skip`, 환경 변수로 거른다. ARTEX 관례다(제품 빌드 태그는 `embedui`뿐이다).
-  - 기본 빠른 실행: `go test -short ./...`. 느린 테스트는 맨 앞에서 `if testing.Short() { t.Skip("...") }`로 빠진다.
-  - DB가 필요한 테스트는 `ARTEX_PG_DSN`이 없으면 스스로 건너뛴다(`TestMain`에서). 실제 LLM·외부 설정이 필요한 테스트도 전용 환경 변수(예: `ARTEX_REVIEW_LIVE_CONFIG`)가 없으면 건너뛴다.
-  - 새로 거를 때도 같은 방식을 쓴다. 이유를 `t.Skip` 메시지에 적는다.
-- `db`·`agent`·`server`처럼 공유 개발 DB를 쓰는 패키지는 `TestMain`에서 같은 PG advisory lock을 잡아 `go test ./...`가 패키지 간에 겹치지 않게 한다. DB 테스트를 추가할 때 이 패턴을 따른다.
+- 느린·네트워크·실도구·실 LLM·실 DB 테스트는 **빌드 태그가 아니라** 실행 중 `t.Skip`으로 거른다(제품 빌드 태그는 `embedui`뿐이다).
+  - 현재는 환경 변수와 연결 실패로 거른다. 실제 DB가 필요한 테스트는 `ARTEX_PG_DSN`이 없거나 DB에 연결하지 못하면 각 테스트가 `t.Skip`·`t.Skipf("postgres unavailable: ...")`로 건너뛴다. 실제 LLM·외부 설정이 필요한 테스트는 전용 환경 변수(예: `ARTEX_REVIEW_LIVE_CONFIG`)가 없으면 건너뛴다.
+  - `testing.Short()`를 부르는 테스트는 아직 없다. 그래서 지금은 `go test -short ./...`와 `go test ./...`가 같은 테스트를 돈다.
+  - 느린 테스트를 새로 넣을 때는 맨 앞에서 `if testing.Short() { t.Skip("...") }`로 `go test -short`에서 빠지게 한다. 환경이 필요한 테스트는 위처럼 환경 변수나 연결 실패로 거른다. 이유를 `t.Skip` 메시지에 적는다.
+- `db`·`agent`·`server`·`evidence`처럼 공유 개발 DB를 쓰는 패키지는 `TestMain`에서 PG advisory lock만 잡아 `go test ./...`가 패키지 간에 겹치지 않게 한다. DB 테스트를 추가할 때 이 패턴을 따른다.
 - 끝에서 끝까지 테스트는 최소로 둔다. 비율 수치는 정하지 않는다.
 
 ## 무엇을
@@ -46,7 +46,9 @@ Go는 표준 `testing`만 쓴다. testify·gomock 같은 프레임워크를 들�
 
 ## skip
 
-- `t.Skip`에는 사유와 이슈 번호를 단다. 예: `t.Skip("#123 파서가 아직 주석을 읽지 못한다")`.
+- `t.Skip`에는 사유를 단다. 두 종류로 나눈다.
+  - 환경 거르기: 필요한 환경(DB 연결, 환경 변수, 외부 도구)이 없어 건너뛴다. 사유만 적는다. 예: `t.Skipf("postgres unavailable: %v", err)`.
+  - 알려진 실패: 아직 못 고친 결함 때문에 건너뛴다. 사유와 이슈 번호를 단다. 예: `t.Skip("#123 파서가 아직 주석을 읽지 못한다")`.
 - Go에는 xfail이 없다. 아직 못 고치는 실패는 테스트를 거짓 통과로 두지 말고, 이슈 번호를 단 `t.Skip`으로 빼거나, 현재 동작을 그대로 검증하고 `// TODO: #<번호>`로 바뀔 것을 적는다.
 
 ## 차단 로직과 주입 표본
