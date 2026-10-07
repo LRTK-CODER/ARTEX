@@ -157,11 +157,7 @@ Opus 5.5의 기본 effort는 medium이다. xhigh는 효과가 측정된 경우�
 
        gh pr comment <번호> --body-file <파일>
 4. 소유자에게 병합 승인을 요청한다. 검증을 거친 PR이면 요청에 검증 보고서 요약을 넣는다: 재채점 결과([1]·[2] 통과 여부와 실패한 검사), 표시된 항목([3]·[4])과 PR 본문의 이유.
-5. CI를 확인한다. 서버 쪽 강제가 없으므로 실패한 PR은 병합하지 않는다.
-
-       gh pr checks <번호>
-
-6. squash merge로 병합하고 main 체크아웃을 갱신한다.
+5. squash merge로 병합하고 main 체크아웃을 갱신한다.
 
        gh pr merge <번호> --squash
        git pull --ff-only

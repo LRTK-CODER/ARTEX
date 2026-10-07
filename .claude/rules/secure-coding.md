@@ -1,5 +1,5 @@
 ---
-paths: ["agent/**/*.go", "server/**/*.go", "guard/**/*.go", "intercept/**/*.go", "traffic/**/*.go", "enrich/**/*.go", "llmpool/**/*.go", "llmrec/**/*.go", "mcphttp/**/*.go", "notify/**/*.go", "config/**/*.go", "db/**/*.go"]
+paths: ["agent/**/*.go", "server/**/*.go", "guard/**/*.go", "intercept/**/*.go", "traffic/**/*.go", "enrich/**/*.go", "llmpool/**/*.go", "llmrec/**/*.go", "mcphttp/**/*.go", "notify/**/*.go", "config/**/*.go", "db/**/*.go", "selfupdate/**/*.go", "evidence/**/*.go", "sidequestion/**/*.go", "report/**/*.go"]
 ---
 
 # 안전한 코드 작성 규칙

@@ -23,13 +23,12 @@ ARTEX는 Go 백엔드와 Next.js 프런트엔드(`web/`)로 된 AI 자율 침투
 
 모듈은 `github.com/Autumn-27/artex`다. 패키지는 저장소 루트의 디렉터리 하나씩이다. 실제 의존 그래프(비테스트, 저장소 내부 import만):
 
-    config, llmpool, mcphttp, selfupdate, notify   잎 패키지(저장소 내부 의존 없음)
-    sidequestion  → llmpool
+    config, llmpool, mcphttp, selfupdate, notify, sidequestion   잎 패키지(저장소 내부 의존 없음)
     db            → config, notify, sidequestion          영속 계층의 중심(PostgreSQL)
     llmrec, enrich, intercept, report, traffic → db
     evidence      → db, traffic
     guard         → intercept
-    agent         → db, evidence, guard, intercept, llmrec, sidequestion
+    agent         → db, guard, intercept, llmrec, sidequestion   (테스트에서만 evidence도 import한다)
     server        → 위의 거의 모두 + mcphttp, llmpool, notify, report, selfupdate
     cmd           → agent, config, selfupdate, server
 
@@ -38,7 +37,7 @@ ARTEX는 Go 백엔드와 Next.js 프런트엔드(`web/`)로 된 AI 자율 침투
 - **순환 import를 만들지 않는다.** 두 패키지가 서로를 필요로 하면 공통 타입을 잎 쪽(예: `config`)이나 양쪽이 의존하는 아래 패키지로 내린다. Go 컴파일러가 순환을 막지만, 억지로 피하려고 타입을 엉뚱한 곳에 두지 않는다.
 - **`cmd/artex`는 얇게 둔다.** 조립·배선 코드는 `server`에 둔다(`server/manager.go`의 `NewManager`, `server/server.go`의 `New`, `server/assembly.go`). `cmd`에서 도메인 패키지(`db`, `agent` 등)를 직접 조립하지 않는다.
 - **도메인 패키지는 `server`를 import하지 않는다.** `server`가 HTTP/API 계층이자 조립 루트다. 아래 계층이 위를 알면 조립을 건너뛰게 된다.
-- **영속은 `db`에 모은다.** 다른 패키지는 `*db.DB`를 받아 쓴다. SQL은 `db` 안에만 둔다(traffic 프록시 저장소는 예외로 자기 SQLite를 가진다).
+- **영속은 `db`에 모은다.** 다른 패키지는 `*db.DB`를 받아 쓴다. 새 SQL은 `db`에 둔다. traffic 프록시 저장소는 예외로 자기 SQLite를 가진다. `db` 밖에서 PostgreSQL SQL을 쓰는 기존 예외(`evidence/store.go`, `server/finding_retests.go`, `server/finding_workflow.go`, `server/finding_traffic.go`)가 남아 있다. 이를 본떠 `db` 밖에 SQL을 새로 두지 않는다.
 - 새 기능 패키지는 자기가 쓰는 것만 import하고, 위 그래프의 방향을 지킨다.
 
 ## 저장소와 외부 엔진
