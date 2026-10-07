@@ -47,6 +47,9 @@ func TestPrepareKeyDirRejectsDataDir(t *testing.T) {
 			if !errors.Is(err, ErrKeyDirInsideDataDir) {
 				t.Fatalf("PrepareKeyDir(%q) err = %v, want ErrKeyDirInsideDataDir", tc.configured, err)
 			}
+			if _, err := os.Stat(filepath.Join(data, "keys")); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("rejected key dir was created inside the data dir (stat err = %v)", err)
+			}
 		})
 	}
 }

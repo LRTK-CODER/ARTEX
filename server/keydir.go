@@ -41,16 +41,25 @@ func PrepareKeyDir(configured, baseDir, dataDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve key dir: %w", err)
 	}
-	if err := os.MkdirAll(keyDir, keyDirPerm); err != nil {
-		return "", fmt.Errorf("create key dir: %w", err)
-	}
-	realKeyDir, err := filepath.EvalSymlinks(keyDir)
-	if err != nil {
-		return "", fmt.Errorf("resolve key dir: %w", err)
-	}
 	realDataDir, err := evalAbs(dataDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve data dir: %w", err)
+	}
+	// 거절할 디렉터리를 작업 공간 안에 만들어 두지 않도록, 만들기 전에 있는 조상까지 풀어 비교한다.
+	plannedKeyDir, err := evalExistingPrefix(keyDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve key dir: %w", err)
+	}
+	if isWithinDir(plannedKeyDir, realDataDir) {
+		return "", fmt.Errorf("%w: key dir %s, data dir %s", ErrKeyDirInsideDataDir, keyDir, dataDir)
+	}
+	if err := os.MkdirAll(keyDir, keyDirPerm); err != nil {
+		return "", fmt.Errorf("create key dir: %w", err)
+	}
+	// 확인과 생성 사이에 경로가 바뀌었을 수 있으니 만든 뒤 한 번 더 본다.
+	realKeyDir, err := filepath.EvalSymlinks(keyDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve key dir: %w", err)
 	}
 	if isWithinDir(realKeyDir, realDataDir) {
 		return "", fmt.Errorf("%w: key dir %s, data dir %s", ErrKeyDirInsideDataDir, keyDir, dataDir)
@@ -142,6 +151,22 @@ func evalAbs(dir string) (string, error) {
 		return "", err
 	}
 	return filepath.EvalSymlinks(abs)
+}
+
+// evalExistingPrefix 는 절대 경로 path 에서 실제로 있는 가장 깊은 조상의 심볼릭 링크를 풀고 나머지를 붙인다.
+// 아직 없는 디렉터리가 결국 어디에 만들어질지 알기 위해 쓴다.
+func evalExistingPrefix(path string) (string, error) {
+	var missing []string
+	for dir := path; ; dir = filepath.Dir(dir) {
+		real, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			return filepath.Join(append([]string{real}, missing...)...), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) || filepath.Dir(dir) == dir {
+			return "", err
+		}
+		missing = append([]string{filepath.Base(dir)}, missing...)
+	}
 }
 
 // isWithinDir 는 path 가 root 와 같거나 그 아래인지 본다. 두 경로 모두 심볼릭 링크를 푼 절대 경로여야 한다.
