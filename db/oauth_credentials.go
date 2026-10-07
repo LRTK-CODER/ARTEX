@@ -40,6 +40,8 @@ type OAuthCredentials struct {
 	RefreshToken string    `json:"-"`
 	ExpiresAt    time.Time `json:"-"`
 	AccountID    string    `json:"-"`
+	// PlanType 은 구독 플랜(예: "plus")이다. 비밀값이 아니라 암호화하지 않는다.
+	PlanType string `json:"-"`
 }
 
 // TokenCipher 는 토큰 열을 AES-256-GCM 으로 암호화·복호화한다.
@@ -178,11 +180,11 @@ func saveOAuthCredentials(ctx context.Context, ex execContexter, c *TokenCipher,
 	if err != nil {
 		return err
 	}
-	_, err = ex.ExecContext(ctx, `INSERT INTO llm_oauth_credentials(profile_id,access_token,refresh_token,expires_at,account_id,updated_at)
-VALUES ($1,$2,$3,$4,$5,now())
+	_, err = ex.ExecContext(ctx, `INSERT INTO llm_oauth_credentials(profile_id,access_token,refresh_token,expires_at,account_id,plan_type,updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,now())
 ON CONFLICT (profile_id) DO UPDATE SET access_token=EXCLUDED.access_token, refresh_token=EXCLUDED.refresh_token,
-    expires_at=EXCLUDED.expires_at, account_id=EXCLUDED.account_id, updated_at=now()`,
-		cred.ProfileID, access, refresh, cred.ExpiresAt, cred.AccountID)
+    expires_at=EXCLUDED.expires_at, account_id=EXCLUDED.account_id, plan_type=EXCLUDED.plan_type, updated_at=now()`,
+		cred.ProfileID, access, refresh, cred.ExpiresAt, cred.AccountID, cred.PlanType)
 	if err != nil {
 		return fmt.Errorf("save oauth credentials for profile %d: %w", cred.ProfileID, err)
 	}
@@ -196,8 +198,8 @@ type queryRowContexter interface {
 func loadOAuthCredentials(ctx context.Context, q queryRowContexter, c *TokenCipher, profileID int64, lockClause string) (OAuthCredentials, error) {
 	var access, refresh string
 	cred := OAuthCredentials{ProfileID: profileID}
-	err := q.QueryRowContext(ctx, `SELECT access_token,refresh_token,expires_at,account_id
-FROM llm_oauth_credentials WHERE profile_id=$1`+lockClause, profileID).Scan(&access, &refresh, &cred.ExpiresAt, &cred.AccountID)
+	err := q.QueryRowContext(ctx, `SELECT access_token,refresh_token,expires_at,account_id,plan_type
+FROM llm_oauth_credentials WHERE profile_id=$1`+lockClause, profileID).Scan(&access, &refresh, &cred.ExpiresAt, &cred.AccountID, &cred.PlanType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return OAuthCredentials{}, fmt.Errorf("%w: profile %d", ErrOAuthCredentialsNotFound, profileID)
 	}
@@ -217,6 +219,23 @@ FROM llm_oauth_credentials WHERE profile_id=$1`+lockClause, profileID).Scan(&acc
 // 없으면 ErrOAuthCredentialsNotFound, 풀지 못하면 ErrCredentialDecrypt 를 올린다.
 func (d *DB) OAuthCredentials(ctx context.Context, c *TokenCipher, profileID int64) (OAuthCredentials, error) {
 	return loadOAuthCredentials(ctx, d.DB, c, profileID, "")
+}
+
+// DeleteOAuthCredentials 는 프로필의 OAuth 자격 증명을 지운다. 연결을 끊을 때 부른다.
+// 지울 행이 없으면 ErrOAuthCredentialsNotFound 를 올린다.
+func (d *DB) DeleteOAuthCredentials(ctx context.Context, profileID int64) error {
+	res, err := d.ExecContext(ctx, `DELETE FROM llm_oauth_credentials WHERE profile_id=$1`, profileID)
+	if err != nil {
+		return fmt.Errorf("delete oauth credentials for profile %d: %w", profileID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete oauth credentials for profile %d: %w", profileID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: profile %d", ErrOAuthCredentialsNotFound, profileID)
+	}
+	return nil
 }
 
 // RefreshFunc 는 현재 자격 증명의 refresh 토큰으로 새 자격 증명을 받아 온다.

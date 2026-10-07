@@ -57,6 +57,9 @@ type fakeAuthServer struct {
 	now             time.Time
 	accountID       string
 	usercodeCode    int
+	// idTokenPlan·accessTokenPlan 이 비어 있지 않으면 각 토큰에 chatgpt_plan_type 클레임으로 싣는다.
+	idTokenPlan     string
+	accessTokenPlan string
 }
 
 func newFakeAuthServer(t *testing.T, now time.Time) *fakeAuthServer {
@@ -95,15 +98,24 @@ func (f *fakeAuthServer) issueLocked(w http.ResponseWriter) {
 	}
 	f.validRefresh = fmt.Sprintf("refresh-%d", f.issued)
 	writeJSON(w, http.StatusOK, map[string]string{
-		"id_token": fakeJWT(f.t, map[string]any{"https://api.openai.com/auth": map[string]any{"chatgpt_account_id": f.accountID}}),
+		"id_token": fakeJWT(f.t, map[string]any{"https://api.openai.com/auth": f.authClaim(f.idTokenPlan)}),
 		// 실제 서버처럼 발급마다 다른 access token 을 준다.
 		"access_token": fakeJWT(f.t, map[string]any{
 			"jti":                         f.issued,
 			"exp":                         f.now.Add(f.expiresIn).Unix(),
-			"https://api.openai.com/auth": map[string]any{"chatgpt_account_id": f.accountID},
+			"https://api.openai.com/auth": f.authClaim(f.accessTokenPlan),
 		}),
 		"refresh_token": f.validRefresh,
 	})
+}
+
+// authClaim 은 토큰의 계정 클레임 객체다. plan 이 비면 플랜 클레임을 뺀다.
+func (f *fakeAuthServer) authClaim(plan string) map[string]any {
+	claim := map[string]any{"chatgpt_account_id": f.accountID}
+	if plan != "" {
+		claim["chatgpt_plan_type"] = plan
+	}
+	return claim
 }
 
 func (f *fakeAuthServer) token(w http.ResponseWriter, r *http.Request) {

@@ -176,6 +176,10 @@ func (s *TokenSource) rotate(ctx context.Context, current Tokens) (Tokens, error
 	if next.IDToken == "" {
 		next.IDToken = current.IDToken
 	}
+	// 갱신 응답에 플랜 클레임이 없으면 플랜이 바뀌었다고 볼 근거가 없으니 아는 값을 지킨다.
+	if next.PlanType == "" {
+		next.PlanType = current.PlanType
+	}
 	// 서버는 이미 옛 refresh 토큰을 무효로 했다. 저장이 실패해도 잃지 않게 먼저 들고 있는다.
 	s.pending, s.hasPending = next, true
 	return next, nil

@@ -394,3 +394,157 @@ func TestSaveProfileKeepsAuthTypeWhenEmptyOnUpdate(t *testing.T) {
 		t.Fatalf("new profile auth_type = %q, want %q", kp.AuthType, AuthAPIKey)
 	}
 }
+
+// TestOAuthCredentialsPlanType 은 plan_type 열이 저장·갱신·목록에 쓰이고, 열이 생기기 전 방식으로
+// 넣은 행은 빈 플랜으로 읽히는지 본다.
+func TestOAuthCredentialsPlanType(t *testing.T) {
+	d := openTestDB(t)
+	c := testCipher(t)
+	var columnDefault string
+	if err := d.QueryRow(`SELECT column_default FROM information_schema.columns
+WHERE table_name='llm_oauth_credentials' AND column_name='plan_type'`).Scan(&columnDefault); err != nil {
+		t.Fatalf("plan_type column: %v", err)
+	}
+	if !strings.HasPrefix(columnDefault, "''") {
+		t.Fatalf("plan_type default = %q, want empty string", columnDefault)
+	}
+	id := oauthTestProfile(t, d, "t-oauth-plan")
+	if err := d.SaveOAuthCredentials(t.Context(), c, OAuthCredentials{ProfileID: id, AccessToken: "a", RefreshToken: "r", ExpiresAt: time.Now(), PlanType: "plus"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.OAuthCredentials(t.Context(), c, id); err != nil || got.PlanType != "plus" {
+		t.Fatalf("saved plan = %q, err %v; want plus", got.PlanType, err)
+	}
+	_, err := d.RefreshOAuthCredentials(t.Context(), c, id, "a", func(context.Context, OAuthCredentials) (OAuthCredentials, error) {
+		return OAuthCredentials{AccessToken: "a2", RefreshToken: "r2", ExpiresAt: time.Now().Add(time.Hour), PlanType: "pro"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.OAuthCredentials(t.Context(), c, id); err != nil || got.PlanType != "pro" {
+		t.Fatalf("refreshed plan = %q, err %v; want pro", got.PlanType, err)
+	}
+
+	// plan_type 열을 모르는 예전 코드처럼 넣은 행
+	legacy := oauthTestProfile(t, d, "t-oauth-plan-legacy")
+	access, err := c.seal(legacy, "access_token", "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresh, err := c.seal(legacy, "refresh_token", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO llm_oauth_credentials(profile_id,access_token,refresh_token,expires_at) VALUES ($1,$2,$3,now())`, legacy, access, refresh); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := d.OAuthCredentials(t.Context(), c, legacy); err != nil || got.PlanType != "" {
+		t.Fatalf("legacy plan = %q, err %v; want empty", got.PlanType, err)
+	}
+
+	profiles, err := d.ListProfiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := map[string]string{}
+	for _, p := range profiles {
+		if p.OAuth != nil {
+			plans[p.Name] = p.OAuth.PlanType
+		}
+	}
+	if plans["t-oauth-plan"] != "pro" || plans["t-oauth-plan-legacy"] != "" {
+		t.Fatalf("listed plans = %v", plans)
+	}
+}
+
+func TestDeleteOAuthCredentials(t *testing.T) {
+	d := openTestDB(t)
+	c := testCipher(t)
+	id := oauthTestProfile(t, d, "t-oauth-delete")
+	kept := oauthTestProfile(t, d, "t-oauth-delete-kept")
+	for _, pid := range []int64{id, kept} {
+		if err := d.SaveOAuthCredentials(t.Context(), c, OAuthCredentials{ProfileID: pid, AccessToken: "a", RefreshToken: "r", ExpiresAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.DeleteOAuthCredentials(t.Context(), id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.OAuthCredentials(t.Context(), c, id); !errors.Is(err, ErrOAuthCredentialsNotFound) {
+		t.Fatalf("after delete: err = %v, want ErrOAuthCredentialsNotFound", err)
+	}
+	if err := d.DeleteOAuthCredentials(t.Context(), id); !errors.Is(err, ErrOAuthCredentialsNotFound) {
+		t.Fatalf("second delete: err = %v, want ErrOAuthCredentialsNotFound", err)
+	}
+	if _, err := d.OAuthCredentials(t.Context(), c, kept); err != nil {
+		t.Fatalf("other profile lost its credentials: %v", err)
+	}
+	if p, err := d.ProfileByID(id); err != nil || p == nil {
+		t.Fatalf("profile row gone after credential delete: %v", err)
+	}
+}
+
+// TestSaveProfileOAuthDropsAPIKey 는 저장 뒤 인증 방식이 chatgpt_oauth 면 어느 저장 경로든 API 키와
+// 힌트가 남지 않고, API 키 프로필의 키는 그대로인지 본다.
+func TestSaveProfileOAuthDropsAPIKey(t *testing.T) {
+	d := openTestDB(t)
+	const key = "sk-issue48-relay-key"
+	newKeyed := func(t *testing.T, name string) int64 {
+		t.Helper()
+		id, err := d.SaveProfile(&LLMProfile{Name: name, Format: "openai", Model: "m", APIKey: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { d.Exec(`DELETE FROM llm_profiles WHERE id=$1`, id) })
+		return id
+	}
+	tests := []struct {
+		name    string
+		save    func(t *testing.T) int64
+		wantKey bool
+	}{
+		{"새 OAuth 프로필에 키", func(t *testing.T) int64 {
+			id, err := d.SaveProfile(&LLMProfile{Name: "t-oauth-key-insert", Format: "openai-responses", Model: "m", APIKey: key, AuthType: AuthChatGPTOAuth})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { d.Exec(`DELETE FROM llm_profiles WHERE id=$1`, id) })
+			return id
+		}, false},
+		{"키 없이 OAuth 로 전환", func(t *testing.T) int64 {
+			id := newKeyed(t, "t-oauth-key-switch")
+			if _, err := d.SaveProfile(&LLMProfile{ID: id, Name: "t-oauth-key-switch", Format: "openai-responses", Model: "m", AuthType: AuthChatGPTOAuth}); err != nil {
+				t.Fatal(err)
+			}
+			return id
+		}, false},
+		{"키를 주며 OAuth 로 전환", func(t *testing.T) int64 {
+			id := newKeyed(t, "t-oauth-key-switch-with-key")
+			if _, err := d.SaveProfile(&LLMProfile{ID: id, Name: "t-oauth-key-switch-with-key", Format: "openai-responses", Model: "m", APIKey: key, AuthType: AuthChatGPTOAuth}); err != nil {
+				t.Fatal(err)
+			}
+			return id
+		}, false},
+		{"API 키 프로필 수정은 키 유지", func(t *testing.T) int64 {
+			id := newKeyed(t, "t-oauth-key-apikey")
+			if _, err := d.SaveProfile(&LLMProfile{ID: id, Name: "t-oauth-key-apikey", Format: "openai", Model: "m2"}); err != nil {
+				t.Fatal(err)
+			}
+			return id
+		}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id := tc.save(t)
+			var apiKey, hint string
+			if err := d.QueryRow(`SELECT COALESCE(api_key,''),COALESCE(api_key_hint,'') FROM llm_profiles WHERE id=$1`, id).Scan(&apiKey, &hint); err != nil {
+				t.Fatal(err)
+			}
+			isKept := apiKey == key && hint != ""
+			isCleared := apiKey == "" && hint == ""
+			if (tc.wantKey && !isKept) || (!tc.wantKey && !isCleared) {
+				t.Fatalf("key left=%v hint=%q, want key %v", apiKey != "", hint, tc.wantKey)
+			}
+		})
+	}
+}

@@ -1851,13 +1851,6 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if isOAuth {
-		// SaveProfile 은 빈 키를 "유지"로 다루므로 API 키 프로필에서 바꿀 때 남은 키를 따로 지운다.
-		if err := pg.ClearProfileAPIKey(r.Context(), id); err != nil {
-			writeErr(w, 500, err.Error())
-			return
-		}
-	}
 	// Editing a profile rebuilds any task pinned to it on its next round. Reapply
 	// the active profile too: the global fallback and explicit task chains must
 	// repopulate the same provider-cache entry and therefore share one limiter.

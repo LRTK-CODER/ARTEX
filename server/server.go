@@ -343,7 +343,15 @@ func (s *Server) loadLLMConfig() (agent.Config, bool) {
 	return cfg, true
 }
 
+// errLegacyOAuthProfile 은 레거시 설정 저장이 chatgpt_oauth 인 "default" 프로필을 덮으려 했다는 뜻이다.
+var errLegacyOAuthProfile = errors.New(`legacy LLM config cannot overwrite the chatgpt_oauth "default" profile`)
+
+// legacyOAuthProfileMessage 는 errLegacyOAuthProfile 을 받은 사용자에게 보일 문구다.
+const legacyOAuthProfileMessage = "default 프로필이 ChatGPT 구독 프로필이라 이 설정으로 바꿀 수 없다. LLM 프로필 화면에서 바꿔야 한다"
+
 // saveLLMConfig persists the LLM config as the active "default" profile in PG.
+// "default" 가 chatgpt_oauth 프로필이면 errLegacyOAuthProfile 을 올린다. 이 경로는 API 키 설정만
+// 다뤄서, 덮으면 OAuth 행에 API 키·중계 주소가 남는다.
 func (s *Server) saveLLMConfig(cfg agent.Config) error {
 	// cfg.Provider() already returns one of the three valid format strings
 	// (anthropic / openai / openai-responses), matching the DB CHECK constraint.
@@ -362,6 +370,9 @@ func (s *Server) saveLLMConfig(cfg agent.Config) error {
 	if profs, _ := s.m.pg.ListProfiles(); profs != nil {
 		for _, p := range profs {
 			if p.Name == "default" {
+				if p.AuthType == db.AuthChatGPTOAuth {
+					return errLegacyOAuthProfile
+				}
 				id, priority, poolExclude, streaming = p.ID, p.Priority, p.PoolExclude, p.Streaming
 				maxTokens, maxTokensField = p.MaxTokens, p.MaxTokensField
 				sessionHeaderKey = p.SessionHeaderKey
@@ -1404,6 +1415,10 @@ func (s *Server) setLLM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.saveLLMConfig(cfg); err != nil {
+		if errors.Is(err, errLegacyOAuthProfile) {
+			writeErr(w, 400, legacyOAuthProfileMessage)
+			return
+		}
 		writeErr(w, 500, "persist provider failed: "+err.Error())
 		return
 	}

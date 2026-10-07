@@ -422,3 +422,33 @@ func TestTokenSourceWaitHonorsContext(t *testing.T) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
+
+// TestTokenSourceRefreshPlanType 은 갱신 응답에 플랜이 없으면 저장된 플랜을 지키고,
+// 있으면 새 플랜으로 바꿔 저장하는지 본다.
+func TestTokenSourceRefreshPlanType(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	tests := []struct {
+		name         string
+		responsePlan string
+		wantPlan     string
+	}{
+		{name: "응답에 플랜 없음", responsePlan: "", wantPlan: "plus"},
+		{name: "응답의 새 플랜", responsePlan: "pro", wantPlan: "pro"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeAuthServer(t, now)
+			f.idTokenPlan = tc.responsePlan
+			store := storedTokens(t, "refresh-0", now.Add(time.Minute))
+			store.tokens.PlanType = "plus"
+			src := NewTokenSource(f.client(), store, func() time.Time { return now })
+			if _, _, err := src.Token(context.Background()); err != nil {
+				t.Fatalf("Token: %v", err)
+			}
+			saved, saves := store.snapshot()
+			if saves != 1 || saved.PlanType != tc.wantPlan {
+				t.Fatalf("saves=%d plan=%q, want 1 save with plan %q", saves, saved.PlanType, tc.wantPlan)
+			}
+		})
+	}
+}
