@@ -16,6 +16,10 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
+// codexUsageLimitBody 는 Codex 백엔드가 구독 한도를 다 썼을 때 429와 함께 돌려주는 본문 형태다
+// (openai/codex codex-rs/codex-api/src/api_bridge.rs).
+const codexUsageLimitBody = `{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"plus","resets_at":1760000000,"resets_in_seconds":3600}}`
+
 func TestIsQuotaExhaustedMessage(t *testing.T) {
 	t.Parallel()
 	positive := []string{
@@ -25,6 +29,11 @@ func TestIsQuotaExhaustedMessage(t *testing.T) {
 		`billing_not_active`,
 		`credit balance is too low`,
 		`账户余额不足，请充值`,
+		// Codex 구독 한도: 주간·5시간 한도 소진(usage_limit_reached)과 요금제 미포함(usage_not_included).
+		codexUsageLimitBody,
+		`{"error":{"type":"usage_not_included","message":"Your plan does not include Codex"}}`,
+		`openai: status 402: ` + codexUsageLimitBody,
+		`openai: status 429: ` + codexUsageLimitBody,
 	}
 	for _, message := range positive {
 		if !IsQuotaExhaustedMessage(message) {
@@ -46,6 +55,9 @@ func TestIsQuotaExhaustedMessage(t *testing.T) {
 		`status 500: internal server error`,
 		`status=503: insufficient_quota`,
 		`context length exceeded`,
+		`openai: status 429: {"error":{"type":"rate_limit_exceeded","message":"Rate limit reached"}}`,
+		`status 401: usage_limit_reached`,
+		`status 503: usage_not_included`,
 	}
 	for _, message := range negative {
 		if IsQuotaExhaustedMessage(message) {
@@ -63,6 +75,7 @@ func TestQuotaAwareTransportOnlyNormalizesExplicitQuota429(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "quota", status: http.StatusTooManyRequests, body: `{"code":"insufficient_quota"}`, wantStatus: http.StatusPaymentRequired},
+		{name: "codex usage limit", status: http.StatusTooManyRequests, body: codexUsageLimitBody, wantStatus: http.StatusPaymentRequired},
 		{name: "ordinary rate limit", status: http.StatusTooManyRequests, body: `{"message":"rate limit exceeded"}`, wantStatus: http.StatusTooManyRequests},
 		{name: "server error", status: http.StatusInternalServerError, body: `insufficient_quota`, wantStatus: http.StatusInternalServerError},
 	}
@@ -127,5 +140,39 @@ func TestProviderDoesNotRetryExplicitQuota429(t *testing.T) {
 	}
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("explicit quota request retried %d times, want exactly one request", got)
+	}
+}
+
+// Codex 구독 한도 429는 같은 프로필로 재시도하지 않고 한 번에 쿼터 소진 오류로 올라와야
+// 작업 체인이 다음 프로필로 넘어갈 수 있다.
+func TestProviderDoesNotRetryCodexUsageLimit429(t *testing.T) {
+	t.Parallel()
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.Header().Set("content-type", "application/json")
+		w.Header().Set("x-codex-primary-used-percent", "100")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, codexUsageLimitBody)
+	}))
+	defer upstream.Close()
+
+	provider, err := ConfigFrom("openai", "test-model", upstream.URL, "test-key", "").NewProvider()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streamErr error
+	for _, err := range provider.Stream(context.Background(), llm.CompletionRequest{
+		Messages: []llm.Message{llm.UserText("ping")},
+	}) {
+		if err != nil {
+			streamErr = err
+		}
+	}
+	if streamErr == nil || !IsQuotaExhaustedMessage(streamErr.Error()) {
+		t.Fatalf("expected codex usage limit to be quota exhaustion, got %v", streamErr)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("codex usage limit request sent %d times, want exactly one", got)
 	}
 }
