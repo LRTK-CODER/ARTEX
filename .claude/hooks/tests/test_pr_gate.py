@@ -21,6 +21,8 @@ GO_MOD = "module example.com/calc\n\ngo 1.21\n"
 CALC = "package calc\n\nfunc Add(a, b int) int {\n\treturn a + b\n}\n"
 CALC_TEST = ('package calc\n\nimport "testing"\n\n'
              'func TestAdd(t *testing.T) {\n\tif Add(2, 3) != 5 {\n\t\tt.Fatal("wrong")\n\t}\n}\n')
+# gofmt가 고칠 파일(들여쓰기가 탭이 아니다).
+UNFORMATTED = "package calc\n\nfunc Sub(a, b int) int {\n    return a - b\n}\n"
 BASE_FILES = {"go.mod": GO_MOD, "calc.go": CALC, "calc_test.go": CALC_TEST}
 
 # 검사는 go test만 돌려 빠르게 둔다. 전체 기본 프로파일(gofmt·vet·build·test)의 모양은 따로 본다.
@@ -145,6 +147,34 @@ class GateTest(unittest.TestCase):
     def test_unknown_pr_raises(self):
         with self.assertRaises(pr_gate.GateError):
             self.gate(999)
+
+    def gofmt_gate(self, number):
+        gofmt_only = pr_gate.Profile(
+            setup=[], checks=[c for c in pr_gate.DEFAULT_PROFILE.checks if c[0] == "gofmt"])
+        return pr_gate.gate(self.repo.repo, number, profile=gofmt_only, workdir_base=self.base)
+
+    def test_gofmt_ignores_unchanged_files(self):
+        # main에 이미 형식이 어긋난 파일이 있어도 PR이 건드리지 않았으면 통과다
+        git(self.repo.repo, "switch", "-q", "main")
+        self.repo._write({"messy.go": UNFORMATTED})
+        git(self.repo.repo, "add", "messy.go")
+        git(self.repo.repo, "commit", "-q", "-m", "messy")
+        self.repo.open_pr(9, {"calc.go": CALC.replace("a + b", "b + a")})
+        code, text = self.gofmt_gate(9)
+        self.assertEqual(code, 0, text)
+        self.assertIn("[2] PR 트리 그대로: 통과", text)
+
+    def test_gofmt_passes_without_changed_go_files(self):
+        self.repo.open_pr(10, {"README.md": "문서만 바꾼다\n"})
+        code, text = self.gofmt_gate(10)
+        self.assertEqual(code, 0, text)
+
+    def test_gofmt_fails_on_changed_unformatted_file(self):
+        self.repo.open_pr(11, {"messy.go": UNFORMATTED})
+        code, text = self.gofmt_gate(11)
+        self.assertEqual(code, 1, text)
+        self.assertIn("main 기준 재채점 실패(gofmt)", text)
+        self.assertIn("messy.go", text)
 
     def test_main_based_tree_uses_main_files(self):
         # main의 calc_test.go가 PR 것을 덮는지 직접 본다
