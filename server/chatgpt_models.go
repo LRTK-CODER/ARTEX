@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
@@ -88,16 +87,6 @@ func fetchCodexModels(ctx context.Context, client *http.Client, baseURL string, 
 		}
 	}
 	return models, nil
-}
-
-// codexModelsBaseURL 은 모델 목록을 물을 Codex 백엔드 주소다. 비어 있으면 Codex 기본 주소이고,
-// 응답 엔드포인트까지 적은 주소("/responses")도 받아 준다.
-func codexModelsBaseURL(baseURL string) string {
-	b := strings.TrimRight(strings.TrimSuffix(strings.TrimRight(strings.TrimSpace(baseURL), "/"), "/responses"), "/")
-	if b == "" {
-		return agent.CodexBaseURL
-	}
-	return b
 }
 
 // codexModelsErrorMessage 는 모델 목록 실패를 사용자에게 보일 고정 문구로 바꾼다.

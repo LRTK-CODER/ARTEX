@@ -348,10 +348,7 @@ func TestProfileConfigChatGPTOAuth(t *testing.T) {
 	backend := &codexBackend{}
 	ts := httptest.NewServer(backend)
 	defer ts.Close()
-	f.profile.BaseURL = ts.URL
-	if _, err := f.pg.SaveProfile(f.profile); err != nil {
-		t.Fatal(err)
-	}
+	f.s.codexBaseURL = ts.URL
 	logs := captureLogs(t)
 
 	if _, ok := f.s.loadProfileConfig(f.profile.ID); ok {
@@ -422,6 +419,7 @@ func TestTestLLMChatGPTOAuth(t *testing.T) {
 	backend := &codexBackend{}
 	ts := httptest.NewServer(backend)
 	defer ts.Close()
+	f.s.codexBaseURL = ts.URL
 	logs := captureLogs(t)
 	id := f.profile.ID
 
@@ -433,9 +431,9 @@ func TestTestLLMChatGPTOAuth(t *testing.T) {
 		wantError string
 	}{
 		{"unsaved oauth profile", false, map[string]any{"auth_type": "chatgpt_oauth", "model": "gpt-5.5"}, false, chatGPTSaveFirstMessage},
-		{"not logged in", false, map[string]any{"profile_id": id, "model": "gpt-5.5", "base_url": ts.URL}, false, chatGPTLoginRequiredMessage},
+		{"not logged in", false, map[string]any{"profile_id": id, "model": "gpt-5.5"}, false, chatGPTLoginRequiredMessage},
 		// 화면이 형식을 anthropic·비스트리밍으로 보내도 OAuth 규칙으로 바꿔 Codex 백엔드를 부른다.
-		{"connected", true, map[string]any{"profile_id": id, "provider": "anthropic", "streaming": false, "model": "gpt-5.5", "base_url": ts.URL}, true, ""},
+		{"connected", true, map[string]any{"profile_id": id, "provider": "anthropic", "streaming": false, "model": "gpt-5.5"}, true, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -467,6 +465,7 @@ func TestListModelsChatGPTOAuth(t *testing.T) {
 	backend := &codexBackend{}
 	ts := httptest.NewServer(backend)
 	defer ts.Close()
+	f.s.codexBaseURL = ts.URL
 	logs := captureLogs(t)
 	id := f.profile.ID
 	type result struct {
@@ -485,12 +484,12 @@ func TestListModelsChatGPTOAuth(t *testing.T) {
 		return got
 	}
 
-	if got := list(t, map[string]any{"profile_id": id, "base_url": ts.URL}); got.OK || got.Error != chatGPTLoginRequiredMessage || got.Models == nil {
+	if got := list(t, map[string]any{"profile_id": id}); got.OK || got.Error != chatGPTLoginRequiredMessage || got.Models == nil {
 		t.Fatalf("not logged in: %+v", got)
 	}
 	f.connect(t, time.Now().Add(time.Hour))
 
-	got := list(t, map[string]any{"profile_id": id, "base_url": ts.URL + "/responses"})
+	got := list(t, map[string]any{"profile_id": id})
 	if !got.OK || strings.Join(got.Models, ",") != "gpt-5.5,gpt-5.5-mini" {
 		t.Fatalf("models = %+v, want the two listed models", got)
 	}
@@ -513,7 +512,7 @@ func TestListModelsChatGPTOAuth(t *testing.T) {
 			backend.mu.Lock()
 			backend.status = tc.status
 			backend.mu.Unlock()
-			got := list(t, map[string]any{"profile_id": id, "base_url": ts.URL})
+			got := list(t, map[string]any{"profile_id": id})
 			if got.OK || got.Error != tc.want || got.Models == nil || len(got.Models) != 0 {
 				t.Fatalf("got %+v, want empty list and %q", got, tc.want)
 			}
@@ -542,7 +541,7 @@ func TestSaveProfileValidatesAuthType(t *testing.T) {
 				t.Fatalf("status %d, want %d: %s", code, tc.wantStatus, raw)
 			}
 			if code != http.StatusOK {
-				if strings.Contains(raw, "bogus_auth") || !strings.Contains(raw, "auth_type must be api_key or chatgpt_oauth") {
+				if strings.Contains(raw, "bogus_auth") || !strings.Contains(raw, "auth_type은 api_key 또는 chatgpt_oauth여야 한다") {
 					t.Fatalf("rejection body = %s", raw)
 				}
 				return

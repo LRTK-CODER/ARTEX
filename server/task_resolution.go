@@ -25,12 +25,18 @@ func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMR
 	result := taskLLMResolution{
 		ProfileID: &id,
 		Name:      p.Name,
-		Format:    p.Format,
+		Format:    profileFormat(p.AuthType, p.Format),
 		Model:     p.Model,
 		Source:    source,
 	}
-	if p.APIKey == "" {
-		result.Reason = "LLM 配置未设置 API Key"
+	// 실제 실행 경로(loadProfileConfig)와 같은 판단을 쓴다. chatgpt_oauth 는 API 키 대신
+	// 저장된 자격 증명이 있어야 쓸 수 있다.
+	if _, ok := s.profileConfig(p); !ok {
+		if p.AuthType == db.AuthChatGPTOAuth {
+			result.Reason = chatGPTLoginRequiredMessage
+		} else {
+			result.Reason = "LLM 配置未设置 API Key"
+		}
 		return result
 	}
 	if _, _, ok := s.providerForProfile(p.ID); !ok {

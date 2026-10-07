@@ -1784,7 +1784,7 @@ func (s *Server) pgListProfiles(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"profiles": llmProfileDTOs(ps, s.oauth.loginRequired)})
+	writeJSON(w, 200, map[string]any{"profiles": llmProfileDTOs(ps, s.oauth)})
 }
 
 func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
@@ -1810,16 +1810,32 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	p.APIKey = body.APIKey
 	p.Streaming = body.Streaming == nil || *body.Streaming
 	switch p.AuthType {
-	case "", db.AuthAPIKey:
-	case db.AuthChatGPTOAuth:
-		// Codex 백엔드가 받는 형식만 저장해 화면과 실제 동작이 어긋나지 않게 한다(applyChatGPTOAuthRules).
-		p.Format = string(llm.FormatOpenAIResponses)
-		p.Streaming = true
-		p.APIKey = ""
+	case "", db.AuthAPIKey, db.AuthChatGPTOAuth:
 	default:
 		// DB CHECK 위반 원문이 500 으로 나가지 않게 여기서 거절한다. 입력값은 문구에 싣지 않는다.
-		writeErr(w, 400, "auth_type must be api_key or chatgpt_oauth")
+		writeErr(w, 400, "auth_type은 api_key 또는 chatgpt_oauth여야 한다")
 		return
+	}
+	// 수정할 때 auth_type 을 빼면 기존 값을 지키므로(db.SaveProfile) 고정 규칙도 기존 값으로 정한다.
+	effectiveAuth := p.AuthType
+	if effectiveAuth == "" && p.ID != 0 {
+		existing, err := pg.ProfileByID(p.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		if existing != nil {
+			effectiveAuth = existing.AuthType
+		}
+	}
+	isOAuth := effectiveAuth == db.AuthChatGPTOAuth
+	if isOAuth {
+		// Codex 백엔드가 받는 형식만 저장해 화면과 실제 동작이 어긋나지 않게 한다(applyChatGPTOAuthRules).
+		// BaseURL 은 쓰지 않으므로 비운다. API 키 프로필에서 바꿀 때 남은 중계 주소가 보이지 않게 한다.
+		p.Format = string(llm.FormatOpenAIResponses)
+		p.Streaming = true
+		p.BaseURL = ""
+		p.APIKey, p.APIKeyHint = "", ""
 	}
 	// 输出上限:负数无意义,归零(= 不发送该字段)。字段名开关只有 Chat Completions
 	// 用得上——anthropic 与 openai-responses 各自定死了字段名,存下来只会误导后续读者,
@@ -1834,6 +1850,13 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
+	}
+	if isOAuth {
+		// SaveProfile 은 빈 키를 "유지"로 다루므로 API 키 프로필에서 바꿀 때 남은 키를 따로 지운다.
+		if err := pg.ClearProfileAPIKey(r.Context(), id); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
 	}
 	// Editing a profile rebuilds any task pinned to it on its next round. Reapply
 	// the active profile too: the global fallback and explicit task chains must
@@ -1997,8 +2020,9 @@ func modelsHTTPClient(proxy string) *http.Client {
 }
 
 // listChatGPTModels 는 저장된 chatgpt_oauth 프로필의 토큰으로 Codex 계정별 모델 목록을 돌려준다.
+// 주소는 codexURL 만 쓰고 요청·프로필의 base_url 은 무시한다(applyChatGPTOAuthRules 와 같은 이유).
 // 실패하면 빈 목록과 고정 문구를 돌려주고, 원인은 토큰 없이 로그에만 남긴다.
-func (s *Server) listChatGPTModels(w http.ResponseWriter, r *http.Request, stored *db.LLMProfile, baseURL, proxy string) {
+func (s *Server) listChatGPTModels(w http.ResponseWriter, r *http.Request, stored *db.LLMProfile, proxy string) {
 	fail := func(msg string) {
 		writeJSON(w, 200, map[string]any{"ok": false, "models": []string{}, "error": msg})
 	}
@@ -2016,7 +2040,7 @@ func (s *Server) listChatGPTModels(w http.ResponseWriter, r *http.Request, store
 		fail(chatGPTCredentialsUnavailableMessage)
 		return
 	}
-	models, err := fetchCodexModels(r.Context(), modelsHTTPClient(proxy), codexModelsBaseURL(baseURL), src)
+	models, err := fetchCodexModels(r.Context(), modelsHTTPClient(proxy), s.codexURL(), src)
 	if err != nil {
 		log.Printf("[llm] LLM profile %d ChatGPT model list failed: %v", stored.ID, err)
 		fail(codexModelsErrorMessage(err))
@@ -2052,7 +2076,7 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 		authType = stored.AuthType
 	}
 	if authType == db.AuthChatGPTOAuth {
-		s.listChatGPTModels(w, r, stored, req.BaseURL, req.Proxy)
+		s.listChatGPTModels(w, r, stored, req.Proxy)
 		return
 	}
 	// Resolve API key: form input > profile stored key.

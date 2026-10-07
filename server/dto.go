@@ -632,12 +632,14 @@ type LLMProfileOAuthDTO struct {
 	NeedsLogin bool `json:"needs_login"`
 }
 
-// llmProfileDTO 는 프로필을 화면용으로 바꾼다. loginRequired 는 프로필 ID 로 재로그인 필요 여부를 알려 준다.
-func llmProfileDTO(p *db.LLMProfile, loginRequired func(profileID int64) bool) LLMProfileDTO {
-	var oauth *LLMProfileOAuthDTO
+// llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth 가 nil 이면(oauth.key 를 쓰지 못함) 저장된
+// 자격 증명을 풀 수 없으므로 연결되지 않은 것으로 보인다.
+func llmProfileDTO(p *db.LLMProfile, oauth *oauthTokenRegistry) LLMProfileDTO {
+	var state *LLMProfileOAuthDTO
 	if p.OAuth != nil {
-		oauth = &LLMProfileOAuthDTO{Connected: p.OAuth.Connected, ExpiresAt: p.OAuth.ExpiresAt,
-			NeedsLogin: p.OAuth.Connected && loginRequired(p.ID)}
+		isConnected := p.OAuth.Connected && oauth != nil
+		state = &LLMProfileOAuthDTO{Connected: isConnected, ExpiresAt: p.OAuth.ExpiresAt,
+			NeedsLogin: isConnected && oauth.loginRequired(p.ID)}
 	}
 	return LLMProfileDTO{
 		ID:               i64s(p.ID),
@@ -661,14 +663,14 @@ func llmProfileDTO(p *db.LLMProfile, loginRequired func(profileID int64) bool) L
 		SessionHeaderKey: p.SessionHeaderKey,
 		Retry:            p.Retry,
 		AuthType:         p.AuthType,
-		OAuth:            oauth,
+		OAuth:            state,
 	}
 }
 
-func llmProfileDTOs(in []*db.LLMProfile, loginRequired func(profileID int64) bool) []LLMProfileDTO {
+func llmProfileDTOs(in []*db.LLMProfile, oauth *oauthTokenRegistry) []LLMProfileDTO {
 	out := make([]LLMProfileDTO, 0, len(in))
 	for _, p := range in {
-		out = append(out, llmProfileDTO(p, loginRequired))
+		out = append(out, llmProfileDTO(p, oauth))
 	}
 	return out
 }

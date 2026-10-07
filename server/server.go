@@ -48,6 +48,9 @@ type Server struct {
 	// oauth 는 chatgpt_oauth 프로필의 TokenSource 를 프로필마다 하나씩 들고 있다.
 	// oauth.key 를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry
+	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL 이다.
+	// 테스트만 httptest 주소로 바꾼다. 설정·환경 변수로 바꾸는 길은 두지 않는다(codexURL).
+	codexBaseURL string
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -515,7 +518,7 @@ func (s *Server) profileConfig(p *db.LLMProfile) (agent.Config, bool) {
 	if p.AuthType != db.AuthChatGPTOAuth {
 		return cfg, cfg.APIKey != ""
 	}
-	applyChatGPTOAuthRules(&cfg)
+	applyChatGPTOAuthRules(&cfg, s.codexURL())
 	ctx, cancel := context.WithTimeout(s.ctxOrBackground(), oauthCheckTimeout)
 	defer cancel()
 	src, err := s.oauth.connectedSource(ctx, p.ID)
@@ -540,12 +543,22 @@ func profileFormat(authType db.AuthType, format string) string {
 
 // applyChatGPTOAuthRules 는 Codex 백엔드가 받는 형식으로 설정을 고정한다. Codex 백엔드는
 // Responses 형식의 stream:true 요청만 받으므로 프로필에 저장된 형식·수신 방식과 무관하게 맞춘다.
-// API 키는 쓰지 않으므로 비운다.
-func applyChatGPTOAuthRules(cfg *agent.Config) {
+// 주소는 codexBaseURL 만 쓴다. 저장되거나 요청에 온 base_url 을 따르면 구독 토큰이 그 호스트
+// (API 키용 중계 등)로 나간다. API 키는 쓰지 않으므로 비운다.
+func applyChatGPTOAuthRules(cfg *agent.Config, codexBaseURL string) {
 	cfg.AuthType = db.AuthChatGPTOAuth
 	cfg.Format = llm.FormatOpenAIResponses
 	cfg.Stream = true
 	cfg.APIKey = ""
+	cfg.BaseURL = codexBaseURL
+}
+
+// codexURL 은 chatgpt_oauth 프로필이 부를 Codex 백엔드 주소다.
+func (s *Server) codexURL() string {
+	if s.codexBaseURL != "" {
+		return s.codexBaseURL
+	}
+	return agent.CodexBaseURL
 }
 
 // ctxOrBackground 는 서버 수명 ctx 를 돌려준다. 테스트처럼 ctx 없이 만든 Server 는 Background 를 쓴다.
@@ -1494,7 +1507,7 @@ func (s *Server) prepareOAuthTest(ctx context.Context, cfg *agent.Config, stored
 	if stored == nil {
 		return chatGPTSaveFirstMessage
 	}
-	applyChatGPTOAuthRules(cfg)
+	applyChatGPTOAuthRules(cfg, s.codexURL())
 	src, err := s.oauth.connectedSource(ctx, stored.ID)
 	if errors.Is(err, errOAuthNotConnected) {
 		return chatGPTLoginRequiredMessage
