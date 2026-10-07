@@ -617,9 +617,30 @@ type LLMProfileDTO struct {
 	// 0=继承全局策略 | -1=关闭该层重试 | >0=次数；interval_ms: 0=用默认指数退避 |
 	// >0=改用该固定毫秒间隔。全 0 = 完全跟随全局，即历史行为。
 	Retry db.RetryOverride `json:"retry"`
+	// AuthType 은 api_key 또는 chatgpt_oauth 다.
+	AuthType db.AuthType `json:"auth_type"`
+	// OAuth 는 chatgpt_oauth 프로필의 연결 상태다. 다른 방식이면 빠진다. 토큰은 싣지 않는다.
+	OAuth *LLMProfileOAuthDTO `json:"oauth,omitempty"`
 }
 
-func llmProfileDTO(p *db.LLMProfile) LLMProfileDTO {
+// LLMProfileOAuthDTO 는 화면에 보일 ChatGPT 구독 연결 상태다.
+type LLMProfileOAuthDTO struct {
+	Connected bool      `json:"connected"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
+	// NeedsLogin 은 마지막 토큰 갱신이 다시 로그인해야 한다는 이유로 거절됐다는 뜻이다.
+	// 서버 메모리에만 있어 재시작하면 다음 갱신 실패 때까지 false 다.
+	NeedsLogin bool `json:"needs_login"`
+}
+
+// llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth 가 nil 이면(oauth.key 를 쓰지 못함) 저장된
+// 자격 증명을 풀 수 없으므로 연결되지 않은 것으로 보인다.
+func llmProfileDTO(p *db.LLMProfile, oauth *oauthTokenRegistry) LLMProfileDTO {
+	var state *LLMProfileOAuthDTO
+	if p.OAuth != nil {
+		isConnected := p.OAuth.Connected && oauth != nil
+		state = &LLMProfileOAuthDTO{Connected: isConnected, ExpiresAt: p.OAuth.ExpiresAt,
+			NeedsLogin: isConnected && oauth.loginRequired(p.ID)}
+	}
 	return LLMProfileDTO{
 		ID:               i64s(p.ID),
 		Name:             p.Name,
@@ -641,13 +662,15 @@ func llmProfileDTO(p *db.LLMProfile) LLMProfileDTO {
 		MaxTokensField:   p.MaxTokensField,
 		SessionHeaderKey: p.SessionHeaderKey,
 		Retry:            p.Retry,
+		AuthType:         p.AuthType,
+		OAuth:            state,
 	}
 }
 
-func llmProfileDTOs(in []*db.LLMProfile) []LLMProfileDTO {
+func llmProfileDTOs(in []*db.LLMProfile, oauth *oauthTokenRegistry) []LLMProfileDTO {
 	out := make([]LLMProfileDTO, 0, len(in))
 	for _, p := range in {
-		out = append(out, llmProfileDTO(p))
+		out = append(out, llmProfileDTO(p, oauth))
 	}
 	return out
 }

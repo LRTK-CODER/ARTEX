@@ -281,7 +281,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 		// 비우면 Norma 가 OPENAI_API_KEY 로 채운다. 실제 헤더는 oauthTransport 가 덮어쓴다.
 		apiKey = oauthAPIKeyPlaceholder
 		if baseURL == "" {
-			baseURL = codexBaseURL
+			baseURL = CodexBaseURL
 		}
 	default:
 		return nil, fmt.Errorf("llm: unknown auth type %q", c.AuthType)

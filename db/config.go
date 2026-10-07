@@ -222,6 +222,15 @@ VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$
 	return p.ID, err
 }
 
+// ClearProfileAPIKey 는 프로필의 API 키와 힌트를 지운다. API 키를 쓰지 않는 인증 방식으로 바꿀 때
+// 쓰지 않을 비밀값을 남기지 않으려고 부른다. SaveProfile 은 빈 키를 "유지"로 다뤄 지우지 못한다.
+func (d *DB) ClearProfileAPIKey(ctx context.Context, id int64) error {
+	if _, err := d.ExecContext(ctx, `UPDATE llm_profiles SET api_key=NULL, api_key_hint=NULL WHERE id=$1`, id); err != nil {
+		return fmt.Errorf("clear api key for profile %d: %w", id, err)
+	}
+	return nil
+}
+
 var (
 	ErrActiveLLMProfileDelete      = errors.New("cannot delete the active LLM profile; activate another profile first")
 	ErrLLMProfileReferencesChanged = errors.New("LLM profile references changed while deleting; retry the request")

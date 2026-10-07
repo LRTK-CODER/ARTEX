@@ -45,6 +45,12 @@ type Server struct {
 
 	skillDir string // root directory for skill subdirectories
 	jwtKey   []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	// oauth 는 chatgpt_oauth 프로필의 TokenSource 를 프로필마다 하나씩 들고 있다.
+	// oauth.key 를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
+	oauth *oauthTokenRegistry
+	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL 이다.
+	// 테스트만 httptest 주소로 바꾼다. 설정·환경 변수로 바꾸는 길은 두지 않는다(codexURL).
+	codexBaseURL string
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -151,6 +157,8 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		profChatAgents: map[int64]*agent.ChatAgent{},
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
 		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
+	// OAuth 토큰 키는 jwt.key 와 같은 키 디렉터리에 둔다(파일 관리자로 열람할 수 없는 곳).
+	s.oauth = loadOAuthTokenRegistry(m.pg, keyDir)
 	s.initSideQuestions()
 	// 熔断阈值/冷却是失败路径上的热参数，启动时把全局重试策略推给 Registry 一次；
 	// 之后每次保存策略再推一次（saveLLMRetryPolicy）。
@@ -325,16 +333,8 @@ func (s *Server) loadLLMConfig() (agent.Config, bool) {
 	if err != nil || p == nil {
 		return agent.Config{}, false
 	}
-	cfg := agent.ConfigFrom(p.Format, p.Model, p.BaseURL, p.APIKey, p.Proxy)
-	cfg.RatePerSecond, cfg.RatePerMinute = p.RatePerSecond, p.RatePerMinute
-	cfg.ContextWindowK = p.ContextWindowK
-	cfg.ThinkingType = p.ThinkingType
-	cfg.ReasoningEffort = p.ReasoningEffort
-	cfg.Stream = p.Streaming
-	cfg.MaxTokens, cfg.MaxTokensField = p.MaxTokens, p.MaxTokensField
-	cfg.SessionHeaderKey = p.SessionHeaderKey
-	s.applyProfileRetry(&cfg, p)
-	if cfg.APIKey == "" {
+	cfg, ok := s.profileConfig(p)
+	if !ok {
 		return cfg, false
 	}
 	s.cfgMu.Lock()
@@ -491,12 +491,22 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 
 // loadProfileConfig builds an agent.Config from a specific profile id (with its key).
 // ok=false when the profile is missing or has no api key.
+// chatgpt_oauth 프로필은 API 키 대신 저장된 OAuth 자격 증명이 없으면 ok=false 다.
 func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 	p, err := s.m.pg.ProfileByID(id)
 	if err != nil || p == nil {
 		return agent.Config{}, false
 	}
-	cfg := agent.ConfigFrom(p.Format, p.Model, p.BaseURL, p.APIKey, p.Proxy)
+	return s.profileConfig(p)
+}
+
+// oauthCheckTimeout 은 프로필 설정을 만들 때 자격 증명이 있는지 DB 에서 확인하는 상한이다.
+const oauthCheckTimeout = 5 * time.Second
+
+// profileConfig 는 저장된 프로필(키 포함)로 agent.Config 를 만든다. 요청을 보낼 수 없는
+// 프로필(API 키 없음, OAuth 자격 증명 없음)이면 ok=false 다.
+func (s *Server) profileConfig(p *db.LLMProfile) (agent.Config, bool) {
+	cfg := agent.ConfigFrom(profileFormat(p.AuthType, p.Format), p.Model, p.BaseURL, p.APIKey, p.Proxy)
 	cfg.RatePerSecond, cfg.RatePerMinute = p.RatePerSecond, p.RatePerMinute
 	cfg.ContextWindowK = p.ContextWindowK
 	cfg.ThinkingType = p.ThinkingType
@@ -505,10 +515,58 @@ func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 	cfg.MaxTokens, cfg.MaxTokensField = p.MaxTokens, p.MaxTokensField
 	cfg.SessionHeaderKey = p.SessionHeaderKey
 	s.applyProfileRetry(&cfg, p)
-	if cfg.APIKey == "" {
+	if p.AuthType != db.AuthChatGPTOAuth {
+		return cfg, cfg.APIKey != ""
+	}
+	applyChatGPTOAuthRules(&cfg, s.codexURL())
+	ctx, cancel := context.WithTimeout(s.ctxOrBackground(), oauthCheckTimeout)
+	defer cancel()
+	src, err := s.oauth.connectedSource(ctx, p.ID)
+	if err != nil {
+		if !errors.Is(err, errOAuthNotConnected) {
+			log.Printf("[engine] LLM profile %d OAuth credentials unavailable: %v", p.ID, err)
+		}
 		return cfg, false
 	}
+	cfg.OAuthTokens = src
 	return cfg, true
+}
+
+// profileFormat 은 프로필이 실제로 쓸 형식이다. chatgpt_oauth 는 저장된 형식과 무관하게
+// openai-responses 다. ConfigFrom 이 형식에 맞춰 BaseURL·기본 모델을 고르므로 그 전에 정한다.
+func profileFormat(authType db.AuthType, format string) string {
+	if authType == db.AuthChatGPTOAuth {
+		return string(llm.FormatOpenAIResponses)
+	}
+	return format
+}
+
+// applyChatGPTOAuthRules 는 Codex 백엔드가 받는 형식으로 설정을 고정한다. Codex 백엔드는
+// Responses 형식의 stream:true 요청만 받으므로 프로필에 저장된 형식·수신 방식과 무관하게 맞춘다.
+// 주소는 codexBaseURL 만 쓴다. 저장되거나 요청에 온 base_url 을 따르면 구독 토큰이 그 호스트
+// (API 키용 중계 등)로 나간다. API 키는 쓰지 않으므로 비운다.
+func applyChatGPTOAuthRules(cfg *agent.Config, codexBaseURL string) {
+	cfg.AuthType = db.AuthChatGPTOAuth
+	cfg.Format = llm.FormatOpenAIResponses
+	cfg.Stream = true
+	cfg.APIKey = ""
+	cfg.BaseURL = codexBaseURL
+}
+
+// codexURL 은 chatgpt_oauth 프로필이 부를 Codex 백엔드 주소다.
+func (s *Server) codexURL() string {
+	if s.codexBaseURL != "" {
+		return s.codexBaseURL
+	}
+	return agent.CodexBaseURL
+}
+
+// ctxOrBackground 는 서버 수명 ctx 를 돌려준다. 테스트처럼 ctx 없이 만든 Server 는 Background 를 쓴다.
+func (s *Server) ctxOrBackground() context.Context {
+	if s.ctx != nil {
+		return s.ctx
+	}
+	return context.Background()
 }
 
 // effectiveProfileForAgent resolves the LLM profile id an agent should run on, by
@@ -1375,12 +1433,22 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 		ProfileID        *int64 `json:"profile_id"`         // 测已存 profile 时传入：api_key 为空则用它存的 key
 		Streaming        *bool  `json:"streaming"`          // 省略=流式，与保存 profile 时同一套默认
 		SessionHeaderKey string `json:"session_header_key"` // 非空=测试时也带该自定义会话头，值为一次性随机 session id
+		// AuthType 이 비면 profile_id 프로필의 인증 방식을 따른다.
+		AuthType db.AuthType `json:"auth_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	cfg := agent.ConfigFrom(req.Provider, req.Model, req.BaseURL, req.APIKey, req.Proxy)
+	var stored *db.LLMProfile
+	if req.ProfileID != nil {
+		stored, _ = s.m.pg.ProfileByID(*req.ProfileID) // 못 읽으면 아래에서 키 없음으로 끝난다
+	}
+	authType := req.AuthType
+	if authType == "" && stored != nil {
+		authType = stored.AuthType
+	}
+	cfg := agent.ConfigFrom(profileFormat(authType, req.Provider), req.Model, req.BaseURL, req.APIKey, req.Proxy)
 	// mirror production: send the SAME thinking params so a provider that rejects the
 	// reasoning_effort/thinking field fails the test too (no false "test ok, run 400").
 	cfg.ThinkingType = req.ThinkingType
@@ -1397,24 +1465,27 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 	// API Key 解析优先级：表单输入 > 指定 profile 存的 key > 全局配置的 key。
 	// 已存 profile 的 key 不回传浏览器，所以测试已存配置时表单为空，需从 DB 取。
 	// 会话头名同理：表单未带时用已存 profile 的值兜底。
-	if req.ProfileID != nil && (cfg.APIKey == "" || cfg.SessionHeaderKey == "") {
-		if p, err := s.m.pg.ProfileByID(*req.ProfileID); err == nil && p != nil {
-			if cfg.APIKey == "" {
-				cfg.APIKey = p.APIKey
-			}
-			if cfg.SessionHeaderKey == "" {
-				cfg.SessionHeaderKey = p.SessionHeaderKey
-			}
+	if stored != nil && cfg.SessionHeaderKey == "" {
+		cfg.SessionHeaderKey = stored.SessionHeaderKey
+	}
+	if authType == db.AuthChatGPTOAuth {
+		if msg := s.prepareOAuthTest(r.Context(), &cfg, stored); msg != "" {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": msg})
+			return
 		}
+	} else if stored != nil && cfg.APIKey == "" {
+		cfg.APIKey = stored.APIKey
 	}
-	if cfg.APIKey == "" {
-		s.cfgMu.Lock()
-		cfg.APIKey = s.llmCfg.APIKey
-		s.cfgMu.Unlock()
-	}
-	if cfg.APIKey == "" {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": "未提供 API Key"})
-		return
+	if cfg.AuthType != db.AuthChatGPTOAuth {
+		if cfg.APIKey == "" {
+			s.cfgMu.Lock()
+			cfg.APIKey = s.llmCfg.APIKey
+			s.cfgMu.Unlock()
+		}
+		if cfg.APIKey == "" {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": "未提供 API Key"})
+			return
+		}
 	}
 	// 重试参数【不】带进连接测试:测试有 30s 硬超时,把配置的重试次数/长间隔叠上去
 	// 只会让一个本来能用的端点测成"超时失败"。测试看的是"这个端点通不通",重试节奏
@@ -1428,6 +1499,25 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"ok": true, "latency_ms": lat.Milliseconds(), "model": cfg.Model, "reply": truncateReply(reply),
 	})
+}
+
+// prepareOAuthTest 는 연결 테스트 설정을 저장된 chatgpt_oauth 프로필의 토큰으로 바꾼다.
+// 테스트할 수 없으면 사용자에게 보일 고정 문구를 돌려준다. 문구에 오류 원문을 싣지 않는다.
+func (s *Server) prepareOAuthTest(ctx context.Context, cfg *agent.Config, stored *db.LLMProfile) string {
+	if stored == nil {
+		return chatGPTSaveFirstMessage
+	}
+	applyChatGPTOAuthRules(cfg, s.codexURL())
+	src, err := s.oauth.connectedSource(ctx, stored.ID)
+	if errors.Is(err, errOAuthNotConnected) {
+		return chatGPTLoginRequiredMessage
+	}
+	if err != nil {
+		log.Printf("[llm-test] LLM profile %d OAuth credentials unavailable: %v", stored.ID, err)
+		return chatGPTCredentialsUnavailableMessage
+	}
+	cfg.OAuthTokens = src
+	return ""
 }
 
 // truncateReply clips a connection-test reply for display. A model told to answer
