@@ -23,9 +23,9 @@ type OAuthTokenSource interface {
 	Invalidate(staleAccessToken string)
 }
 
-// codexBaseURL 은 BaseURL 이 빈 OAuth 프로필의 기본 주소다. 비워 두면 Norma 가 OPENAI_BASE_URL
+// CodexBaseURL 은 BaseURL 이 빈 OAuth 프로필의 기본 주소다. 비워 두면 Norma 가 OPENAI_BASE_URL
 // 환경 변수(API 키 프로필용 중계일 수 있다)로 채워 구독 토큰이 그쪽으로 나간다.
-const codexBaseURL = "https://chatgpt.com/backend-api/codex"
+const CodexBaseURL = "https://chatgpt.com/backend-api/codex"
 
 // oauthAPIKeyPlaceholder 는 OAuth 프로필의 llm.Config.APIKey 자리에 넣는 값이다.
 // Norma 는 APIKey 가 비면 OPENAI_API_KEY 환경 변수로 채우므로 비워 둘 수 없다.

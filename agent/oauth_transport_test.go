@@ -480,3 +480,37 @@ func TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv(t *testing.T) {
 		t.Fatalf("proxy saw %v, want one CONNECT to the Codex backend", seen)
 	}
 }
+
+// TestAPIKeyEmptyBaseURLFollowsOpenAIBaseURLEnv 는 빈 BaseURL 을 Codex 주소로 채우는 규칙이 OAuth
+// 프로필에만 적용되는지 확인한다. API 키 프로필까지 채우면 API 키가 chatgpt.com 으로 나간다.
+// 평문 HTTP 중계 주소를 써서 테스트 프록시가 대상과 헤더를 그대로 보게 하고, 실제 서버에는 닿지 않는다.
+func TestAPIKeyEmptyBaseURLFollowsOpenAIBaseURLEnv(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "http://relay.example.test/v1")
+	const apiKey = "sk-test-apikey"
+	var mu sync.Mutex
+	var seen []string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.String()+" "+r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer proxy.Close()
+
+	c := ConfigFrom("openai-responses", "gpt-5", "", apiKey, proxy.URL)
+	c.Retry.ConnectAttempts = -1
+	prov, err := c.NewProvider()
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	if _, err := streamAll(context.Background(), prov, llm.CompletionRequest{Messages: []llm.Message{llm.UserText("hi")}}); err == nil {
+		t.Fatal("stream succeeded through a proxy that rejects everything")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := "POST http://relay.example.test/v1/responses Bearer " + apiKey
+	if len(seen) != 1 || seen[0] != want {
+		t.Fatalf("proxy saw %q, want [%q]", seen, want)
+	}
+}

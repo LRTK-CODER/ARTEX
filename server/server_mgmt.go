@@ -1784,7 +1784,7 @@ func (s *Server) pgListProfiles(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"profiles": llmProfileDTOs(ps)})
+	writeJSON(w, 200, map[string]any{"profiles": llmProfileDTOs(ps, s.oauth.loginRequired)})
 }
 
 func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
@@ -1809,6 +1809,18 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	p := body.LLMProfile
 	p.APIKey = body.APIKey
 	p.Streaming = body.Streaming == nil || *body.Streaming
+	switch p.AuthType {
+	case "", db.AuthAPIKey:
+	case db.AuthChatGPTOAuth:
+		// Codex 백엔드가 받는 형식만 저장해 화면과 실제 동작이 어긋나지 않게 한다(applyChatGPTOAuthRules).
+		p.Format = string(llm.FormatOpenAIResponses)
+		p.Streaming = true
+		p.APIKey = ""
+	default:
+		// DB CHECK 위반 원문이 500 으로 나가지 않게 여기서 거절한다. 입력값은 문구에 싣지 않는다.
+		writeErr(w, 400, "auth_type must be api_key or chatgpt_oauth")
+		return
+	}
 	// 输出上限:负数无意义,归零(= 不发送该字段)。字段名开关只有 Chat Completions
 	// 用得上——anthropic 与 openai-responses 各自定死了字段名,存下来只会误导后续读者,
 	// 故非 openai 格式一律清空。未知取值同样清空,避免把 DB CHECK 的报错甩给用户。
@@ -1890,6 +1902,7 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	s.invalidateProfileAgents() // drop cached agents for the removed profile
 	s.llmHealth.Reset(id)       // its breaker state is meaningless now (row is FK-cascaded away)
+	s.oauth.forget(id)          // 자격 증명도 CASCADE 로 지워졌으니 메모리의 토큰도 버린다
 	s.restoreTasksAfterProfileDelete(pg)
 	// Cache invalidation also removed the active profile's shared provider entry.
 	// Reapply after task-state sync so the wake-up observes the post-delete chain.
@@ -1972,6 +1985,46 @@ func (s *Server) pgLLMPoolReset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.llmPoolStatus())
 }
 
+// modelsHTTPClient 는 모델 목록 조회용 HTTP 클라이언트다. proxy 가 있으면 그것을 거친다.
+func modelsHTTPClient(proxy string) *http.Client {
+	transport := &http.Transport{}
+	if p := strings.TrimSpace(proxy); p != "" {
+		if pu, err := url.Parse(p); err == nil {
+			transport.Proxy = http.ProxyURL(pu)
+		}
+	}
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}
+}
+
+// listChatGPTModels 는 저장된 chatgpt_oauth 프로필의 토큰으로 Codex 계정별 모델 목록을 돌려준다.
+// 실패하면 빈 목록과 고정 문구를 돌려주고, 원인은 토큰 없이 로그에만 남긴다.
+func (s *Server) listChatGPTModels(w http.ResponseWriter, r *http.Request, stored *db.LLMProfile, baseURL, proxy string) {
+	fail := func(msg string) {
+		writeJSON(w, 200, map[string]any{"ok": false, "models": []string{}, "error": msg})
+	}
+	if stored == nil {
+		fail(chatGPTSaveFirstMessage)
+		return
+	}
+	src, err := s.oauth.connectedSource(r.Context(), stored.ID)
+	if errors.Is(err, errOAuthNotConnected) {
+		fail(chatGPTLoginRequiredMessage)
+		return
+	}
+	if err != nil {
+		log.Printf("[llm] LLM profile %d OAuth credentials unavailable: %v", stored.ID, err)
+		fail(chatGPTCredentialsUnavailableMessage)
+		return
+	}
+	models, err := fetchCodexModels(r.Context(), modelsHTTPClient(proxy), codexModelsBaseURL(baseURL), src)
+	if err != nil {
+		log.Printf("[llm] LLM profile %d ChatGPT model list failed: %v", stored.ID, err)
+		fail(codexModelsErrorMessage(err))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "models": models})
+}
+
 // pgListModels fetches available models from the provider's API endpoint.
 // Supports OpenAI-format (GET /models) and Anthropic-format (GET /v1/models); for
 // Anthropic-compatible third parties (e.g. DeepSeek) whose model list lives only on
@@ -1983,17 +2036,29 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 		APIKey    string `json:"api_key"`
 		Proxy     string `json:"proxy"`
 		ProfileID *int64 `json:"profile_id"` // fallback: use stored key from this profile
+		// AuthType 이 비면 profile_id 프로필의 인증 방식을 따른다.
+		AuthType db.AuthType `json:"auth_type"`
 	}
 	if err := decode(r, &req); err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	var stored *db.LLMProfile
+	if req.ProfileID != nil {
+		stored, _ = s.m.pg.ProfileByID(*req.ProfileID) // 못 읽으면 아래에서 키 없음으로 끝난다
+	}
+	authType := req.AuthType
+	if authType == "" && stored != nil {
+		authType = stored.AuthType
+	}
+	if authType == db.AuthChatGPTOAuth {
+		s.listChatGPTModels(w, r, stored, req.BaseURL, req.Proxy)
+		return
+	}
 	// Resolve API key: form input > profile stored key.
 	apiKey := strings.TrimSpace(req.APIKey)
-	if apiKey == "" && req.ProfileID != nil {
-		if p, err := s.m.pg.ProfileByID(*req.ProfileID); err == nil && p != nil {
-			apiKey = p.APIKey
-		}
+	if apiKey == "" && stored != nil {
+		apiKey = stored.APIKey
 	}
 	if apiKey == "" {
 		writeJSON(w, 200, map[string]any{"ok": false, "error": "未提供 API Key"})
@@ -2049,14 +2114,7 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build HTTP client with optional proxy.
-	transport := &http.Transport{}
-	if p := strings.TrimSpace(req.Proxy); p != "" {
-		if pu, err := url.Parse(p); err == nil {
-			transport.Proxy = http.ProxyURL(pu)
-		}
-	}
-	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+	client := modelsHTTPClient(req.Proxy)
 
 	// Try each candidate; return the first that yields a non-empty model list.
 	var lastErr string
