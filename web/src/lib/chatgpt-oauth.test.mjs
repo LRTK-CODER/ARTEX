@@ -1,10 +1,11 @@
 import {
   deviceFailureMessage,
   errorCode,
-  isPastDeadline,
   LOGIN_ERROR_MESSAGES,
   loginErrorMessage,
+  MAX_POLL_RETRIES,
   oauthConnection,
+  shouldRetryPoll,
   UNKNOWN_LOGIN_ERROR,
 } from "./chatgpt-oauth.ts";
 import assert from "node:assert/strict";
@@ -78,10 +79,12 @@ test("connection state distinguishes connected, disconnected and needs login", (
   }
 });
 
-test("deadline check stops polling only for a readable past time", () => {
-  const deadline = "2026-10-08T10:00:00Z";
-  const deadlineMs = Date.parse(deadline);
-  assert.equal(isPastDeadline(deadline, deadlineMs - 1), false);
-  assert.equal(isPastDeadline(deadline, deadlineMs), true);
-  assert.equal(isPastDeadline("not a time", deadlineMs), false);
+test("poll errors without a code are retried a few times, coded errors stop at once", () => {
+  const transient = new Error("POST /llm/oauth/chatgpt/device/x: 503");
+  for (let attempt = 1; attempt <= MAX_POLL_RETRIES; attempt++) {
+    assert.equal(shouldRetryPoll(transient, attempt), true, `attempt ${attempt}`);
+  }
+  assert.equal(shouldRetryPoll(transient, MAX_POLL_RETRIES + 1), false);
+  const gone = Object.assign(new Error("서버 문구"), { code: "flow_not_found" });
+  assert.equal(shouldRetryPoll(gone, 1), false);
 });

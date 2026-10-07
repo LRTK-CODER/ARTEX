@@ -21,7 +21,8 @@ export const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   login_canceled: "로그인이 취소됐습니다. 다시 시작하세요.",
   save_failed: "자격 증명을 저장하지 못했습니다. 잠시 뒤 다시 시도하세요.",
   internal_error: "서버 내부 오류로 로그인을 시작하지 못했습니다. 다시 시도하세요.",
-  device_login_disabled: "이 서버에서는 디바이스 코드 로그인을 쓸 수 없습니다. 콜백 주소 붙여넣기를 쓰세요.",
+  device_login_disabled:
+    "이 ChatGPT 계정은 디바이스 코드 로그인이 꺼져 있습니다. ChatGPT 보안 설정에서 켜거나 콜백 주소 붙여넣기를 쓰세요.",
   device_start_failed: "디바이스 코드를 받지 못했습니다. 프록시와 네트워크를 확인하세요.",
   not_connected: "이미 연결이 해제돼 있습니다.",
   disconnect_failed: "연결을 해제하지 못했습니다. 잠시 뒤 다시 시도하세요.",
@@ -32,6 +33,10 @@ export const UNKNOWN_LOGIN_ERROR = "요청에 실패했습니다. 서버 상태�
 
 // 디바이스 상태 폴링 간격. 서버 쪽 대기와 맞출 필요는 없고 화면 반응만 보면 된다.
 export const DEVICE_POLL_INTERVAL_MS = 3000;
+
+// code 없는 폴링 오류(백엔드 재시작, 네트워크 끊김, DB 미연결 503)를 다시 시도하는 횟수.
+// 서버의 흐름은 살아 있으므로 잠깐의 끊김으로 사용자가 코드를 다시 받게 하지 않는다.
+export const MAX_POLL_RETRIES = 3;
 
 // errorCode 는 api.ts의 ApiError처럼 code를 실은 오류에서 code를 꺼낸다.
 export function errorCode(error: unknown): string | undefined {
@@ -50,16 +55,15 @@ export function deviceFailureMessage(status: ChatGPTDeviceStatus, code: string |
   return loginErrorMessage(code);
 }
 
+// shouldRetryPoll 은 폴링 오류 뒤 같은 흐름을 계속 기다릴지 정한다. failedAttempts는 이 오류를 포함한
+// 연속 실패 수다. code가 있는 오류(flow_not_found 등)는 서버가 흐름을 끝낸 것이라 다시 시도하지 않는다.
+export function shouldRetryPoll(error: unknown, failedAttempts: number): boolean {
+  return errorCode(error) === undefined && failedAttempts <= MAX_POLL_RETRIES;
+}
+
 export type OAuthConnection = "connected" | "disconnected" | "needs_login";
 
 export function oauthConnection(oauth: LLMProfileOAuth | undefined): OAuthConnection {
   if (!oauth?.connected) return "disconnected";
   return oauth.needs_login ? "needs_login" : "connected";
-}
-
-// isPastDeadline 은 서버가 준 expires_at이 지났는지 본다. 읽을 수 없는 시각은 지난 것으로 보지 않는다.
-// 그런 경우에도 서버가 expired 상태를 돌려주므로 폴링은 결국 멈춘다.
-export function isPastDeadline(expiresAt: string, nowMs: number): boolean {
-  const deadlineMs = Date.parse(expiresAt);
-  return !Number.isNaN(deadlineMs) && nowMs >= deadlineMs;
 }

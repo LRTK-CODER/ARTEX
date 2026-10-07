@@ -26,10 +26,10 @@ import {
   DEVICE_POLL_INTERVAL_MS,
   deviceFailureMessage,
   errorCode,
-  isPastDeadline,
   loginErrorMessage,
   type OAuthConnection,
   oauthConnection,
+  shouldRetryPoll,
 } from "@/lib/chatgpt-oauth";
 import type { ChatGPTDeviceStart, ChatGPTLoginStart, LLMProfile, LLMProfileOAuth } from "@/lib/types";
 
@@ -52,7 +52,8 @@ function ErrorText({ message }: { message: string }) {
 }
 
 // DeviceLogin 은 디바이스 코드를 받아 보여 주고, 끝날 때까지 상태를 폴링한다.
-// 대화 상자가 닫히면 언마운트되며 폴링도 멈춘다.
+// 탭을 바꿔도 마운트된 채 폴링을 이어 간다. 대화 상자가 닫히면 언마운트되며 폴링도 멈춘다.
+// 만료는 브라우저 시계로 판정하지 않고 서버의 expired 상태를 따른다.
 function DeviceLogin({ profileId, onConnected }: { profileId: number; onConnected: () => void }) {
   const [device, setDevice] = React.useState<ChatGPTDeviceStart | null>(null);
   const [isStarting, setIsStarting] = React.useState(false);
@@ -62,18 +63,16 @@ function DeviceLogin({ profileId, onConnected }: { profileId: number; onConnecte
     if (!device) return;
     let isStopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let failedAttempts = 0;
     const stopWith = (message: string) => {
       setError(message);
       setDevice(null);
     };
     const poll = async () => {
-      if (isPastDeadline(device.expires_at, Date.now())) {
-        stopWith(deviceFailureMessage("expired", undefined));
-        return;
-      }
       try {
         const r = await api.chatGPTDeviceStatus(device.flow_id);
         if (isStopped) return;
+        failedAttempts = 0;
         if (r.status === "succeeded") {
           onConnected();
           return;
@@ -83,8 +82,12 @@ function DeviceLogin({ profileId, onConnected }: { profileId: number; onConnecte
           return;
         }
       } catch (e) {
-        if (!isStopped) stopWith(loginErrorMessage(errorCode(e)));
-        return;
+        if (isStopped) return;
+        failedAttempts++;
+        if (!shouldRetryPoll(e, failedAttempts)) {
+          stopWith(loginErrorMessage(errorCode(e)));
+          return;
+        }
       }
       timer = setTimeout(() => void poll(), DEVICE_POLL_INTERVAL_MS);
     };
@@ -323,10 +326,11 @@ export function ChatGPTAccount({ profile, onChanged }: { profile: LLMProfile | n
               <TabsTrigger value="device">디바이스 코드</TabsTrigger>
               <TabsTrigger value="paste">콜백 주소 붙여넣기</TabsTrigger>
             </TabsList>
-            <TabsContent value="device" className="mt-3">
+            {/* forceMount: 탭을 오가도 받은 디바이스 코드·폴링과 붙여넣기 흐름을 잃지 않게 숨기기만 한다. */}
+            <TabsContent value="device" forceMount className="mt-3 data-[state=inactive]:hidden">
               <DeviceLogin profileId={profileId} onConnected={handleConnected} />
             </TabsContent>
-            <TabsContent value="paste" className="mt-3">
+            <TabsContent value="paste" forceMount className="mt-3 data-[state=inactive]:hidden">
               <PasteLogin profileId={profileId} onConnected={handleConnected} />
             </TabsContent>
           </Tabs>
