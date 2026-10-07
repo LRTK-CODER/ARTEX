@@ -7,6 +7,7 @@ package cliprov
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -251,5 +252,31 @@ func TestRunnerStdoutReadEndsDespiteEscapedGrandchild(t *testing.T) {
 				t.Fatalf("err = %v, 기대 %v", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestRunnerSlowReaderGetsAllOutputAfterNormalExit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeGrace 보다 늦게 읽기 시작하려고 실제로 기다려 수 초 걸린다")
+	}
+	// 파이프 버퍼(최소 4KiB)를 넘지 않게 써야 자식이 읽기를 기다리지 않고 바로 끝난다.
+	const outputBytes = 4096
+	r := newRunner(t, Config{Program: fakeCLI(t, fmt.Sprintf("printf '%%0%dd' 0", outputBytes))})
+	p, err := r.Start(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// 자식은 이미 끝났다. provider 가 늦게 읽어도 파이프에 남은 출력이 닫히지 않아야 한다.
+	time.Sleep(pipeGrace + time.Second)
+	out, readErr, _ := readWithin(t, p, waitBound)
+	if readErr != nil {
+		t.Fatalf("늦게 시작한 Stdout 읽기 오류: %v (읽은 %d 바이트)", readErr, len(out))
+	}
+	if want := strings.Repeat("0", outputBytes); out != want {
+		t.Fatalf("읽은 출력 %d 바이트, 기대 %d 바이트", len(out), outputBytes)
+	}
+	exit, err, _ := waitWithin(t, p)
+	if err != nil || exit.Code != 0 {
+		t.Fatalf("Wait = (%d, %v), 기대 (0, nil)", exit.Code, err)
 	}
 }
