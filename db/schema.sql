@@ -470,6 +470,8 @@ CREATE TABLE IF NOT EXISTS llm_oauth_credentials (
     account_id    TEXT NOT NULL DEFAULT '',
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 구독 플랜(토큰 JWT 의 chatgpt_plan_type, 예: plus). 표시용이라 암호화하지 않는다. 구 DB에도 채운다.
+ALTER TABLE llm_oauth_credentials ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT '';
 
 -- 思考开关字段 thinking_type，从旧的单一 reasoning_effort 语义一次性拆分而来。
 -- schema.sql 每次启动都执行，故迁移必须只跑一次：仅当该列尚不存在时才回填，

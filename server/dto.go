@@ -630,6 +630,8 @@ type LLMProfileOAuthDTO struct {
 	// NeedsLogin 은 마지막 토큰 갱신이 다시 로그인해야 한다는 이유로 거절됐다는 뜻이다.
 	// 서버 메모리에만 있어 재시작하면 다음 갱신 실패 때까지 false 다.
 	NeedsLogin bool `json:"needs_login"`
+	// Plan 은 구독 플랜(예: "plus")이다. 연결되지 않았거나 모르면 빠진다.
+	Plan string `json:"plan,omitempty"`
 }
 
 // llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth 가 nil 이면(oauth.key 를 쓰지 못함) 저장된
@@ -640,6 +642,9 @@ func llmProfileDTO(p *db.LLMProfile, oauth *oauthTokenRegistry) LLMProfileDTO {
 		isConnected := p.OAuth.Connected && oauth != nil
 		state = &LLMProfileOAuthDTO{Connected: isConnected, ExpiresAt: p.OAuth.ExpiresAt,
 			NeedsLogin: isConnected && oauth.loginRequired(p.ID)}
+		if isConnected {
+			state.Plan = p.OAuth.PlanType
+		}
 	}
 	return LLMProfileDTO{
 		ID:               i64s(p.ID),

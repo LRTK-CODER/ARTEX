@@ -42,6 +42,7 @@ func (s oauthStore) Refresh(ctx context.Context, staleAccessToken string, refres
 				RefreshToken: next.RefreshToken,
 				ExpiresAt:    next.ExpiresAt,
 				AccountID:    next.AccountID,
+				PlanType:     next.PlanType,
 			}, nil
 		})
 	if s.onRefresh != nil {
@@ -69,6 +70,7 @@ func tokensFromCredentials(c db.OAuthCredentials) llmauth.Tokens {
 		RefreshToken: c.RefreshToken,
 		AccountID:    c.AccountID,
 		ExpiresAt:    c.ExpiresAt,
+		PlanType:     c.PlanType,
 	}
 }
 

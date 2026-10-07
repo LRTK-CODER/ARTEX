@@ -61,6 +61,8 @@ type Tokens struct {
 	AccountID string
 	// ExpiresAt 은 access token 의 exp 클레임이다.
 	ExpiresAt time.Time
+	// PlanType 은 chatgpt_plan_type 클레임이다(예: "plus"). 없으면 비어 있다.
+	PlanType string
 }
 
 // String 은 토큰 원문 없이 계정과 만료 시각만 보여 준다. 로그·오류에 토큰이 새지 않게 한다.
@@ -208,7 +210,7 @@ func (r tokenResponse) tokens() (Tokens, error) {
 	if access.ExpiresAt.IsZero() {
 		return Tokens{}, errors.New("llmauth: access token: no exp claim")
 	}
-	accountID := access.AccountID
+	accountID, planType := access.AccountID, access.PlanType
 	if r.IDToken != "" {
 		id, err := ParseClaims(r.IDToken)
 		if err != nil {
@@ -217,6 +219,10 @@ func (r tokenResponse) tokens() (Tokens, error) {
 		// Codex CLI 는 id token 의 계정을 쓴다. access token 에 같은 클레임이 있어도 id token 을 앞세운다.
 		if id.AccountID != "" {
 			accountID = id.AccountID
+		}
+		// Codex CLI 는 플랜도 id token 에서 읽는다(token_data.rs IdTokenInfo).
+		if id.PlanType != "" {
+			planType = id.PlanType
 		}
 	}
 	if accountID == "" {
@@ -228,6 +234,7 @@ func (r tokenResponse) tokens() (Tokens, error) {
 		RefreshToken: r.RefreshToken,
 		AccountID:    accountID,
 		ExpiresAt:    access.ExpiresAt,
+		PlanType:     planType,
 	}, nil
 }
 

@@ -63,7 +63,8 @@ func (s *Server) poolMember(p *db.LLMProfile, rank int) *llmpool.Member {
 		return nil
 	}
 	return &llmpool.Member{
-		ID: p.ID, Name: p.Name, Model: p.Model, Format: p.Format,
+		// 표시 형식도 실제로 쓰는 형식이다. chatgpt_oauth 행의 저장값은 예전 값일 수 있다.
+		ID: p.ID, Name: p.Name, Model: p.Model, Format: profileFormat(p.AuthType, p.Format),
 		Priority: p.Priority, Active: p.IsDefault, Rank: rank,
 		WindowTokens: cfg.CompactionWindow(), Prov: prov,
 	}
