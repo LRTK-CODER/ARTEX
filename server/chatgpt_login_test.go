@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,6 +29,8 @@ type fakeAuthServer struct {
 	deviceStatus int
 	// isDevicePending 이면 디바이스 토큰 폴링에 403(아직 입력 전)을 계속 준다.
 	isDevicePending bool
+	// isDeviceTokenHanging 이면 디바이스 토큰 폴링이 클라이언트가 끊을 때까지 답하지 않는다.
+	isDeviceTokenHanging bool
 
 	mu        sync.Mutex
 	verifiers []string
@@ -63,6 +66,12 @@ func (a *fakeAuthServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(`{"device_auth_id":"dev-1","user_code":"ABCD-1234","interval":"1"}`))
 	case "/api/accounts/deviceauth/token":
+		if a.isDeviceTokenHanging {
+			// 본문을 다 읽어야 서버가 클라이언트의 연결 끊김을 알아채 r.Context 를 끝낸다.
+			_, _ = io.Copy(io.Discard, r.Body)
+			<-r.Context().Done()
+			return
+		}
 		if a.isDevicePending {
 			w.WriteHeader(http.StatusForbidden)
 			return
@@ -202,6 +211,22 @@ func TestChatGPTPasteLoginRejects(t *testing.T) {
 			wantCode: loginErrFlowNotFound,
 		},
 		{
+			name: "callback on another host",
+			request: func(f *oauthFixture, flowID, state string, _ int64) map[string]any {
+				return map[string]any{"profile_id": f.profile.ID, "flow_id": flowID,
+					"callback_url": "https://evil.example/auth/callback?code=" + fakeLoginCode + "&state=" + url.QueryEscape(state)}
+			},
+			wantCode: loginErrCallbackURLMismatch,
+		},
+		{
+			name: "request body too large",
+			request: func(f *oauthFixture, flowID, state string, _ int64) map[string]any {
+				return map[string]any{"profile_id": f.profile.ID, "flow_id": flowID,
+					"code": strings.Repeat("c", maxLoginRequestBytes), "state": state}
+			},
+			wantCode: loginErrRequestTooLarge,
+		},
+		{
 			name: "authorization denied",
 			request: func(f *oauthFixture, flowID, state string, _ int64) map[string]any {
 				return map[string]any{"profile_id": f.profile.ID, "flow_id": flowID,
@@ -244,8 +269,9 @@ func TestChatGPTPasteLoginRejects(t *testing.T) {
 func TestChatGPTLoginWithoutCredentialKey(t *testing.T) {
 	f := newLoginFixture(t, newFakeAuthServer(t))
 	f.s.oauth = nil
-	for _, path := range []string{"/api/llm/oauth/chatgpt/start", "/api/llm/oauth/chatgpt/device"} {
-		code, out, _ := serveLogin(t, f.s, http.MethodPost, path, map[string]any{"profile_id": f.profile.ID})
+	for _, path := range []string{"/api/llm/oauth/chatgpt/start", "/api/llm/oauth/chatgpt/complete", "/api/llm/oauth/chatgpt/device"} {
+		code, out, _ := serveLogin(t, f.s, http.MethodPost, path,
+			map[string]any{"profile_id": f.profile.ID, "flow_id": "flow", "code": fakeLoginCode, "state": "state"})
 		if code != http.StatusServiceUnavailable || out["code"] != string(loginErrKeyUnavailable) {
 			t.Fatalf("%s status %d code %v, want 503 credential_key_unavailable", path, code, out["code"])
 		}
@@ -371,5 +397,75 @@ func TestChatGPTDisconnect(t *testing.T) {
 	code, out, _ = serveLogin(t, f.s, http.MethodPost, "/api/llm/oauth/chatgpt/disconnect", map[string]any{"profile_id": f.profile.ID})
 	if code != http.StatusNotFound || out["code"] != string(loginErrNotConnected) {
 		t.Fatalf("second disconnect status %d code %v, want not_connected", code, out["code"])
+	}
+}
+
+func TestChatGPTLoginRejectsAPIKeyProfile(t *testing.T) {
+	f := newLoginFixture(t, newFakeAuthServer(t))
+	p := &db.LLMProfile{Name: f.profile.Name + "-apikey", Format: "openai", Model: "gpt-5", APIKey: "sk-fake-issue46"}
+	id, err := f.pg.SaveProfile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = f.pg.Exec(`DELETE FROM llm_profiles WHERE id=$1`, id) })
+	for _, path := range []string{"/api/llm/oauth/chatgpt/start", "/api/llm/oauth/chatgpt/device"} {
+		code, out, _ := serveLogin(t, f.s, http.MethodPost, path, map[string]any{"profile_id": id})
+		if code != http.StatusBadRequest || out["code"] != string(loginErrNotOAuthProfile) {
+			t.Fatalf("%s status %d code %v, want not_oauth_profile", path, code, out["code"])
+		}
+	}
+}
+
+func TestChatGPTDeviceLoginExpiresAfterTTL(t *testing.T) {
+	auth := newFakeAuthServer(t)
+	auth.isDevicePending = true
+	f := newLoginFixture(t, auth)
+	now := time.Now()
+	var mu sync.Mutex
+	f.s.loginFlows.now = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	flowID := startDevice(t, f)
+	mu.Lock()
+	now = now.Add(loginFlowTTL + time.Second)
+	mu.Unlock()
+	if out := deviceStatus(t, f.s, flowID); out["status"] != string(deviceLoginExpired) || out["code"] != string(loginErrFlowExpired) {
+		t.Fatalf("device status = %v, want expired", out)
+	}
+	f.s.loginFlows.dropProfile(f.profile.ID) // 폴링 goroutine 을 끝낸다
+}
+
+// TestChatGPTDeviceLoginHTTPTimeoutIsNetworkError 는 폴링 요청 하나의 타임아웃을 흐름 만료로 보지 않는지 본다.
+func TestChatGPTDeviceLoginHTTPTimeoutIsNetworkError(t *testing.T) {
+	auth := newFakeAuthServer(t)
+	auth.isDeviceTokenHanging = true
+	f := newLoginFixture(t, auth)
+	f.reg.client.HTTPClient = &http.Client{Timeout: 100 * time.Millisecond}
+	flowID := startDevice(t, f)
+	waitDone(t, deviceFlow(t, f.s, flowID))
+	if out := deviceStatus(t, f.s, flowID); out["status"] != string(deviceLoginFailed) || out["code"] != string(loginErrNetwork) {
+		t.Fatalf("device status = %v, want failed network_error", out)
+	}
+}
+
+// TestChatGPTDisconnectDuringDeviceSave 는 디바이스 흐름이 토큰을 받은 뒤 저장하기 전에 연결을 해제하면
+// 해제 뒤에 자격 증명이 되살아나지 않는지 본다. 훅으로 순서를 고정한다.
+func TestChatGPTDisconnectDuringDeviceSave(t *testing.T) {
+	f := newLoginFixture(t, newFakeAuthServer(t))
+	f.connect(t, time.Now().Add(time.Hour))
+	reached, release := make(chan struct{}), make(chan struct{})
+	f.s.loginFlows.beforeDeviceSave = func() {
+		close(reached)
+		<-release
+	}
+	flowID := startDevice(t, f)
+	flow := deviceFlow(t, f.s, flowID)
+	<-reached
+	code, _, body := serveLogin(t, f.s, http.MethodPost, "/api/llm/oauth/chatgpt/disconnect", map[string]any{"profile_id": f.profile.ID})
+	if code != http.StatusOK {
+		t.Fatalf("disconnect status %d: %s", code, body)
+	}
+	close(release)
+	waitDone(t, flow)
+	if _, err := storedCredentials(t, f); err == nil {
+		t.Fatal("device save after disconnect restored credentials")
 	}
 }

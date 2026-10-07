@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -27,6 +29,11 @@ const (
 	// loginSaveTimeout 은 교환한 토큰을 저장하는 상한이다.
 	loginSaveTimeout = 10 * time.Second
 	loginRandomBytes = 32
+	// maxLoginRequestBytes 는 로그인 요청 본문 상한이다. code·state·콜백 URL 은 수 KB 를 넘지 않는다.
+	maxLoginRequestBytes = 32 << 10
+	// callbackPort·callbackPath 는 붙여넣은 콜백 URL 이 가리켜야 할 포트다(llmauth.RedirectURI).
+	callbackPort = "1455"
+	callbackPath = "/auth/callback"
 )
 
 // loginErrorCode 는 화면이 문구를 고르는 짧은 오류 코드다.
@@ -49,6 +56,10 @@ const (
 	loginErrNotConnected         loginErrorCode = "not_connected"
 	loginErrDisconnectFailed     loginErrorCode = "disconnect_failed"
 	loginErrProfileLookupFailure loginErrorCode = "profile_lookup_failed"
+	loginErrCallbackURLMismatch  loginErrorCode = "callback_url_mismatch"
+	loginErrRequestTooLarge      loginErrorCode = "request_too_large"
+	loginErrNetwork              loginErrorCode = "network_error"
+	loginErrInternal             loginErrorCode = "internal_error"
 )
 
 // loginErrorMessages 는 오류 코드별 고정 문구다. 토큰·code·인증 서버 응답 원문을 싣지 않으려고
@@ -70,6 +81,10 @@ var loginErrorMessages = map[loginErrorCode]string{
 	loginErrNotConnected:         "연결된 ChatGPT 구독 계정이 없다",
 	loginErrDisconnectFailed:     "ChatGPT 구독 연결을 해제하지 못했다",
 	loginErrProfileLookupFailure: "LLM 프로필을 읽지 못했다",
+	loginErrCallbackURLMismatch:  "붙여넣은 주소가 로그인 콜백 주소(http://localhost:1455/auth/callback)가 아니다",
+	loginErrRequestTooLarge:      "요청 본문이 너무 크다",
+	loginErrNetwork:              "ChatGPT 인증 서버와 통신하지 못했다. 잠시 뒤 다시 시도한다",
+	loginErrInternal:             "서버 내부 오류로 로그인을 진행하지 못했다",
 }
 
 func writeLoginErr(w http.ResponseWriter, status int, code loginErrorCode) {
@@ -88,6 +103,7 @@ const (
 
 // loginFlow 는 진행 중인 로그인 하나다. 붙여넣기 흐름은 pkce·state 를, 디바이스 흐름은 status 를 쓴다.
 type loginFlow struct {
+	id        string
 	profileID int64
 	isDevice  bool
 	expiresAt time.Time
@@ -107,6 +123,34 @@ type loginFlows struct {
 	flows map[string]*loginFlow
 	// now 가 nil 이면 실제 시계를 쓴다. 테스트가 만료를 확인할 때 바꾼다.
 	now func() time.Time
+	// profileLocks 는 프로필별로 자격 증명 저장과 연결 해제를 직렬화한다. 해제 뒤에 진행 중이던
+	// 디바이스 저장이 자격 증명을 되살리지 않게 한다. 프로필 수만큼만 생긴다.
+	profileLocks map[int64]*sync.Mutex
+	// beforeDeviceSave 는 디바이스 흐름이 토큰을 받고 저장 잠금을 잡기 직전에 불린다.
+	// nil 이면 아무것도 하지 않는다. 테스트가 해제와의 순서를 고정할 때 쓴다.
+	beforeDeviceSave func()
+}
+
+// profileLock 은 프로필의 저장·해제 잠금을 돌려준다.
+func (l *loginFlows) profileLock(profileID int64) *sync.Mutex {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.profileLocks == nil {
+		l.profileLocks = map[int64]*sync.Mutex{}
+	}
+	lock := l.profileLocks[profileID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		l.profileLocks[profileID] = lock
+	}
+	return lock
+}
+
+// isRegistered 는 흐름이 아직 버려지지 않았는지 알려 준다. 새 흐름이나 연결 해제가 지운 흐름은 저장하지 않는다.
+func (l *loginFlows) isRegistered(f *loginFlow) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.flows[f.id] == f
 }
 
 func (l *loginFlows) clock() time.Time {
@@ -125,6 +169,7 @@ func (l *loginFlows) add(id string, flow *loginFlow) {
 	if l.flows == nil {
 		l.flows = map[string]*loginFlow{}
 	}
+	flow.id = id
 	l.flows[id] = flow
 }
 
@@ -161,7 +206,7 @@ func (l *loginFlows) takeBrowser(id string, profileID int64, state string) (*log
 		delete(l.flows, id)
 		return nil, loginErrFlowExpired
 	}
-	if f.state != state {
+	if subtle.ConstantTimeCompare([]byte(f.state), []byte(state)) != 1 {
 		return nil, loginErrStateMismatch
 	}
 	delete(l.flows, id)
@@ -227,6 +272,30 @@ func (s *Server) loginProfile(w http.ResponseWriter, profileID int64) bool {
 	return true
 }
 
+// decodeLoginRequest 는 상한을 둔 본문을 읽는다. 실패하면 응답을 쓰고 false 를 돌려준다.
+func decodeLoginRequest(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginRequestBytes)
+	err := decode(r, v)
+	var tooLarge *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooLarge):
+		writeLoginErr(w, http.StatusRequestEntityTooLarge, loginErrRequestTooLarge)
+	case err != nil:
+		writeLoginErr(w, http.StatusBadRequest, loginErrInvalidRequest)
+	default:
+		return true
+	}
+	return false
+}
+
+// isCallbackURL 은 붙여넣은 주소가 로그인 콜백 주소인지 본다. 다른 주소를 붙여넣은 실수를 알려 주려는 것이다.
+// 교환은 늘 고정 redirect_uri 로 하므로 보안 경계는 아니다.
+func isCallbackURL(u *url.URL) bool {
+	host := u.Hostname()
+	return u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1") &&
+		u.Port() == callbackPort && u.Path == callbackPath
+}
+
 type loginProfileRequest struct {
 	ProfileID int64 `json:"profile_id"`
 }
@@ -234,8 +303,7 @@ type loginProfileRequest struct {
 // startChatGPTLogin 은 붙여넣기 로그인을 시작한다. authorize URL 과 흐름 ID 를 돌려준다.
 func (s *Server) startChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginProfileRequest
-	if err := decode(r, &req); err != nil {
-		writeLoginErr(w, http.StatusBadRequest, loginErrInvalidRequest)
+	if !decodeLoginRequest(w, r, &req) {
 		return
 	}
 	if !s.loginProfile(w, req.ProfileID) {
@@ -243,13 +311,13 @@ func (s *Server) startChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	pkce, err := llmauth.NewPKCE(nil)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "난수를 만들지 못했다")
+		writeLoginErr(w, http.StatusInternalServerError, loginErrInternal)
 		return
 	}
 	flowID, errID := randomToken()
 	state, errState := randomToken()
 	if errID != nil || errState != nil {
-		writeErr(w, http.StatusInternalServerError, "난수를 만들지 못했다")
+		writeLoginErr(w, http.StatusInternalServerError, loginErrInternal)
 		return
 	}
 	expiresAt := s.loginFlows.clock().Add(loginFlowTTL)
@@ -270,15 +338,14 @@ func (s *Server) completeChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 		Code        string `json:"code"`
 		State       string `json:"state"`
 	}
-	if err := decode(r, &req); err != nil {
-		writeLoginErr(w, http.StatusBadRequest, loginErrInvalidRequest)
+	if !decodeLoginRequest(w, r, &req) {
 		return
 	}
 	code, state := req.Code, req.State
 	if req.CallbackURL != "" {
 		u, err := url.Parse(req.CallbackURL)
-		if err != nil {
-			writeLoginErr(w, http.StatusBadRequest, loginErrInvalidRequest)
+		if err != nil || !isCallbackURL(u) {
+			writeLoginErr(w, http.StatusBadRequest, loginErrCallbackURLMismatch)
 			return
 		}
 		q := u.Query()
@@ -306,7 +373,11 @@ func (s *Server) completeChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 		writeLoginErr(w, http.StatusBadGateway, loginErrExchangeFailed)
 		return
 	}
-	if err := s.saveChatGPTLogin(req.ProfileID, tokens); err != nil {
+	lock := s.loginFlows.profileLock(req.ProfileID)
+	lock.Lock()
+	err = s.saveChatGPTLogin(req.ProfileID, tokens)
+	lock.Unlock()
+	if err != nil {
 		log.Printf("[auth] ChatGPT login for LLM profile %d: %v", req.ProfileID, err)
 		writeLoginErr(w, http.StatusInternalServerError, loginErrSaveFailed)
 		return
@@ -318,8 +389,7 @@ func (s *Server) completeChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 // goroutine 은 흐름 TTL, 서버 종료, 같은 프로필의 새 흐름·연결 해제 중 먼저 오는 것에 끝난다.
 func (s *Server) startChatGPTDeviceLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginProfileRequest
-	if err := decode(r, &req); err != nil {
-		writeLoginErr(w, http.StatusBadRequest, loginErrInvalidRequest)
+	if !decodeLoginRequest(w, r, &req) {
 		return
 	}
 	if !s.loginProfile(w, req.ProfileID) {
@@ -338,7 +408,7 @@ func (s *Server) startChatGPTDeviceLogin(w http.ResponseWriter, r *http.Request)
 	}
 	flowID, err := randomToken()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "난수를 만들지 못했다")
+		writeLoginErr(w, http.StatusInternalServerError, loginErrInternal)
 		return
 	}
 	expiresAt := s.loginFlows.clock().Add(loginFlowTTL)
@@ -359,17 +429,35 @@ func (s *Server) waitChatGPTDeviceLogin(ctx context.Context, cancel context.Canc
 	defer close(flow.done)
 	defer cancel()
 	tokens, err := client.WaitDeviceCode(ctx, dc)
+	var netErr net.Error
 	switch {
-	case errors.Is(err, llmauth.ErrDeviceCodeTimeout), errors.Is(err, context.DeadlineExceeded):
+	// 만료는 흐름 TTL 이나 llmauth 의 대기 상한만 뜻한다. HTTP 요청 하나의 타임아웃도
+	// context.DeadlineExceeded 로 보이므로 err 가 아니라 흐름 ctx 를 본다.
+	case errors.Is(err, llmauth.ErrDeviceCodeTimeout), errors.Is(ctx.Err(), context.DeadlineExceeded):
 		s.loginFlows.finishDevice(flow, deviceLoginExpired, loginErrFlowExpired)
 		return
 	case ctx.Err() != nil:
 		// 서버 종료나 새 흐름·연결 해제로 멈췄다. 결과를 저장하지 않는다.
 		s.loginFlows.finishDevice(flow, deviceLoginFailed, loginErrLoginCanceled)
 		return
+	case errors.As(err, &netErr):
+		log.Printf("[auth] ChatGPT device login for LLM profile %d: %v", flow.profileID, err)
+		s.loginFlows.finishDevice(flow, deviceLoginFailed, loginErrNetwork)
+		return
 	case err != nil:
 		log.Printf("[auth] ChatGPT device login for LLM profile %d: %v", flow.profileID, err)
 		s.loginFlows.finishDevice(flow, deviceLoginFailed, loginErrExchangeFailed)
+		return
+	}
+	if s.loginFlows.beforeDeviceSave != nil {
+		s.loginFlows.beforeDeviceSave()
+	}
+	// 연결 해제와 같은 잠금 안에서, 해제가 흐름을 지우지 않았을 때만 저장한다.
+	lock := s.loginFlows.profileLock(flow.profileID)
+	lock.Lock()
+	defer lock.Unlock()
+	if !s.loginFlows.isRegistered(flow) {
+		s.loginFlows.finishDevice(flow, deviceLoginFailed, loginErrLoginCanceled)
 		return
 	}
 	if err := s.saveChatGPTLogin(flow.profileID, tokens); err != nil {
@@ -402,10 +490,14 @@ func (s *Server) disconnectChatGPT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req loginProfileRequest
-	if err := decode(r, &req); err != nil {
-		writeLoginErr(w, http.StatusBadRequest, loginErrInvalidRequest)
+	if !decodeLoginRequest(w, r, &req) {
 		return
 	}
+	// 저장 중인 디바이스 흐름이 있으면 그 저장이 끝난 뒤에 지운다. 잠금을 잡은 뒤 흐름을 버리므로
+	// 아직 저장하지 않은 흐름은 isRegistered 에서 걸러진다.
+	lock := s.loginFlows.profileLock(req.ProfileID)
+	lock.Lock()
+	defer lock.Unlock()
 	s.loginFlows.dropProfile(req.ProfileID)
 	err := pg.DeleteOAuthCredentials(r.Context(), req.ProfileID)
 	if errors.Is(err, db.ErrOAuthCredentialsNotFound) {
