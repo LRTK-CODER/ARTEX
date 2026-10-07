@@ -112,7 +112,13 @@ func run() int {
 		skillDir = abs
 	}
 	log.Printf("[config] skill 目录: %s", skillDir)
-	srv := server.New(ctx, mgr, skillDir, *dataDir, config.BaseDir())
+	keyDir, err := server.PrepareKeyDir(os.Getenv(server.KeyDirEnv), config.BaseDir(), *dataDir)
+	if err != nil {
+		log.Printf("[config] 키 디렉터리: %v", err)
+		return 1
+	}
+	log.Printf("[config] 키 디렉터리: %s", keyDir)
+	srv := server.New(ctx, mgr, skillDir, *dataDir, keyDir)
 	httpSrv := &http.Server{
 		Addr:              *addr,
 		Handler:           srv.Handler(),

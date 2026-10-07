@@ -44,7 +44,7 @@ type Server struct {
 	ctx    context.Context
 
 	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	jwtKey   []byte // keyDir/jwt.key 에서 읽거나 새로 만든 HS256 서명 키
 	// oauth 는 chatgpt_oauth 프로필의 TokenSource 를 프로필마다 하나씩 들고 있다.
 	// oauth.key 를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry

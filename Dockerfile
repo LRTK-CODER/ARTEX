@@ -38,8 +38,11 @@ COPY dist/${TARGETARCH}/artex /app/artex
 COPY start.sh /app/start.sh
 RUN chmod +x /app/artex /app/start.sh
 COPY skills/ /app/skills/
-# data/（SQLite + jwt.key）持久化点
-VOLUME ["/app/data"]
+# 서버 키(jwt.key, oauth.key)는 작업 공간(/app/data) 밖의 /app/keys 에 둔다.
+# 볼륨이어야 컨테이너를 다시 만들어도 키가 남아 웹 세션과 ChatGPT 구독 로그인이 유지된다.
+ENV ARTEX_KEY_DIR=/app/keys
+# data/（SQLite 等）与 keys/（服务器密钥）持久化点
+VOLUME ["/app/data", "/app/keys"]
 EXPOSE 8787 8788
 ENTRYPOINT ["/app/start.sh"]
 CMD ["-addr", ":8787", "-proxy", ":8788"]

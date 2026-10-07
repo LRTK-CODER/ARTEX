@@ -22,13 +22,10 @@ const (
 	keyChars       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-// loadOrCreateJWTKey reads the 32-byte signing key from keyDir/jwt.key. keyDir is
-// the project base dir (next to the executable), NOT the browsable workspace root
-// (dataDir) — the signing key must never be listable/downloadable via the file
-// manager. Legacy installs kept it at dataDir/jwt.key; if present there and not yet
-// at the new location, it is migrated (key preserved, so sessions stay valid) and
-// the old file removed so it disappears from the workspace. On first run a random
-// key is generated and persisted.
+// loadOrCreateJWTKey 는 keyDir/jwt.key 의 32바이트 서명 키를 읽는다. keyDir 는 PrepareKeyDir 가 정한
+// 키 디렉터리이고, 파일 관리자로 열람할 수 있는 작업 공간(dataDir) 밖이어야 한다.
+// 예전 설치는 dataDir/jwt.key 에 키를 두었다. 거기 있고 새 위치에 없으면 옮기고(세션이 유지되도록 키는
+// 그대로) 원래 파일을 지운다. 처음 실행하면 무작위 키를 만들어 저장한다.
 func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	path := filepath.Join(keyDir, jwtKeyFilename)
 	// one-time migration out of the old in-workspace location.

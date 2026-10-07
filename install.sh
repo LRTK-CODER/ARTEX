@@ -45,6 +45,8 @@ install_docker(){
   else
     info "沿用已存在的 .env"
   fi
+  # 서버 키 볼륨(./keys)을 미리 소유자 전용으로 만든다. docker 가 대신 만들면 0755 가 된다.
+  mkdir -p keys && chmod 700 keys
   info "拉取镜像并启动…"
   docker compose pull || true
   docker compose up -d
