@@ -24,11 +24,11 @@ const DefaultMaxConcurrent = 3
 // DefaultTimeout 은 Config.Timeout 이 0 일 때 호출 하나의 상한이다.
 const DefaultTimeout = 10 * time.Minute
 
-// stderrGrace 는 자식이 끝난 뒤 stderr 의 EOF 를 기다리는 최대 시간이다
-// (exec.Cmd.WaitDelay 와 같은 생각). 그룹을 벗어난 손자(setsid)는 그룹 SIGKILL 이
-// 닿지 않아 stderr 를 계속 쥘 수 있다. 무기한 기다리면 Timeout 을 넘겨 슬롯과
-// 임시 디렉터리가 묶이므로, 넘으면 읽는 쪽을 닫는다.
-const stderrGrace = 2 * time.Second
+// pipeGrace 는 자식이 끝난 뒤 stderr 의 EOF 를, 시간 상한·취소 뒤 stdout 의 EOF 를
+// 기다리는 최대 시간이다(exec.Cmd.WaitDelay 와 같은 생각). 그룹을 벗어난 손자(setsid)는
+// 그룹 SIGKILL 이 닿지 않아 파이프를 계속 쥘 수 있다. 무기한 기다리면 Timeout 을 넘겨
+// 슬롯과 임시 디렉터리가 묶이므로, 넘으면 읽는 쪽을 닫는다.
+const pipeGrace = 2 * time.Second
 
 // stderrLimitBytes 는 오류 메시지 분류에 쓸 stderr 꼬리의 최대 크기다.
 const stderrLimitBytes = 64 << 10
@@ -151,20 +151,29 @@ type Exit struct {
 	Stderr string
 }
 
-// Process 는 실행 중인 CLI 하나다. Stdout 을 EOF 까지 읽은 뒤 Wait 를 부른다.
+// Process 는 실행 중인 CLI 하나다. Stdout 을 끝까지 읽은 뒤 Wait 를 부른다.
 // 중간에 그만 읽을 때도 Wait 를 불러야 슬롯과 임시 디렉터리가 풀린다.
+//
+// Stdout 읽기는 EOF 가 아닌 오류(os.ErrClosed)로 끝날 수 있다. 그룹을 벗어난 손자가
+// stdout 을 쥐면 EOF 가 오지 않으므로, 시간 상한이나 ctx 취소에서 pipeGrace 가 지나면
+// 읽는 쪽을 닫기 때문이다. 이때 호출의 성패는 읽기 오류가 아니라 Wait 결과로 판정한다.
+// 상한·취소로 자식을 끊었으면 Wait 가 오류를 올리고, 자식이 그 전에 스스로 끝났으면
+// 그 종료 결과를 돌려준다.
 type Process struct {
 	// Stdin 은 자식의 표준 입력이다. 다 쓰면 닫는다.
 	Stdin io.WriteCloser
 	// Stdout 은 자식의 표준 출력이다. 자식과 그 자손이 모두 끝나면 EOF 가 된다.
+	// 늦어도 시간 상한(또는 ctx 취소) + pipeGrace 뒤에는 읽기가 끝난다.
 	Stdout io.Reader
 	// Dir 은 이 호출 전용 빈 작업 디렉터리다. Wait 가 지운다.
 	Dir string
 
 	stdout *os.File
-	done   chan struct{}
-	exit   Exit
-	err    error
+	// release 는 Wait 가 부른다. stdout 감시를 멈추고 runCtx 를 푼다.
+	release func()
+	done    chan struct{}
+	exit    Exit
+	err     error
 }
 
 // Start 는 동시 실행 슬롯을 얻고 args 로 CLI 를 띄운다. 슬롯을 기다리는 동안
@@ -189,9 +198,12 @@ func (r *Runner) start(ctx context.Context, args []string) (*Process, error) {
 		return nil, fmt.Errorf("cliprov: 작업 디렉터리: %w", err)
 	}
 	runCtx, cancel := context.WithTimeout(ctx, r.timeout)
+	removeDir := func() {
+		_ = os.RemoveAll(dir) // 실패해도 임시 디렉터리라 OS 가 정리한다
+	}
 	cleanup := func() {
 		cancel()
-		_ = os.RemoveAll(dir) // 실패해도 임시 디렉터리라 OS 가 정리한다
+		removeDir()
 	}
 
 	cmd := exec.CommandContext(runCtx, r.program, args...)
@@ -230,7 +242,26 @@ func (r *Runner) start(ctx context.Context, args []string) (*Process, error) {
 	// 자식 쪽 끝은 자식이 가졌으니 부모 사본을 닫는다. 그래야 EOF 가 온다.
 	closeAll(stdinR, stdoutW, stderrW)
 
-	p := &Process{Stdin: stdinW, Stdout: stdoutR, Dir: dir, stdout: stdoutR, done: make(chan struct{})}
+	// 시간 상한이나 취소로 runCtx 가 끝나고 pipeGrace 가 지나면 stdout 을 닫아 막힌 읽기를
+	// 깨운다. 그룹을 벗어난 손자가 stdout 을 쥐면 EOF 가 오지 않기 때문이다. 자식이 스스로
+	// 끝난 뒤에도 감시를 이어 가야 하므로 runCtx 는 대기 goroutine 이 아니라 Wait 가 푼다.
+	// 자식이 일찍 끝났을 때 바로 닫지 않는 것은 provider 가 파이프에 남은 출력을 다 읽게 하려는 것이다.
+	stopStdoutGuard := context.AfterFunc(runCtx, func() {
+		time.AfterFunc(pipeGrace, func() {
+			_ = stdoutR.Close() // Wait 가 먼저 닫았으면 실패해도 된다
+		})
+	})
+	p := &Process{
+		Stdin:  stdinW,
+		Stdout: stdoutR,
+		Dir:    dir,
+		stdout: stdoutR,
+		release: func() {
+			stopStdoutGuard()
+			cancel()
+		},
+		done: make(chan struct{}),
+	}
 	stderr := &tailBuffer{limit: stderrLimitBytes}
 	stderrDone := make(chan struct{})
 	go func() {
@@ -240,7 +271,7 @@ func (r *Runner) start(ctx context.Context, args []string) (*Process, error) {
 	}()
 
 	// 자식이 끝나면 그룹에 남은 손자를 정리한다. 자식은 runCtx 의 시간 초과로 반드시
-	// 끝나고, stderr 는 stderrGrace 안에 닫히므로 이 goroutine 은 Timeout+stderrGrace 안에 끝난다.
+	// 끝나고, stderr 는 pipeGrace 안에 닫히므로 이 goroutine 은 Timeout+pipeGrace 안에 끝난다.
 	go func() {
 		waitErr := cmd.Wait()
 		_ = killProcessGroup(cmd) // 이미 모두 끝났으면 실패하는 것이 정상이다
@@ -248,17 +279,17 @@ func (r *Runner) start(ctx context.Context, args []string) (*Process, error) {
 		p.exit = Exit{Code: cmd.ProcessState.ExitCode(), Stderr: stderr.String()}
 		p.err = waitError(ctx, runCtx, cmd.ProcessState, waitErr)
 		_ = stdinW.Close() // provider 가 이미 닫았으면 오류가 나는 것이 정상이다
-		cleanup()
+		removeDir()
 		<-r.slots
 		close(p.done)
 	}()
 	return p, nil
 }
 
-// awaitStderr 는 stderr 복사가 끝나기를 stderrGrace 만큼 기다리고, 넘으면 읽는 쪽을
+// awaitStderr 는 stderr 복사가 끝나기를 pipeGrace 만큼 기다리고, 넘으면 읽는 쪽을
 // 닫아 복사를 끝낸다. 그때까지 받은 stderr 는 버퍼에 남는다.
 func awaitStderr(stderrR *os.File, copied <-chan struct{}) {
-	grace := time.NewTimer(stderrGrace)
+	grace := time.NewTimer(pipeGrace)
 	defer grace.Stop()
 	select {
 	case <-copied:
@@ -294,6 +325,7 @@ func waitError(parent, run context.Context, state *os.ProcessState, err error) e
 func (p *Process) Wait() (Exit, error) {
 	_ = p.stdout.Close() // 두 번째 Wait 의 닫기 실패는 무시해도 된다
 	<-p.done
+	p.release()
 	return p.exit, p.err
 }
 
