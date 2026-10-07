@@ -119,6 +119,8 @@ func TestIsQuotaExhaustedError(t *testing.T) {
 		`HTTP status 402 Payment Required`,
 		`账户余额不足，请充值`,
 		`credit balance is too low`,
+		`openai: status 429: {"error":{"type":"usage_limit_reached","plan_type":"plus","resets_at":1760000000}}`,
+		`openai: status 402: {"error":{"type":"usage_not_included"}}`,
 	}
 	for _, message := range positive {
 		if !isQuotaExhaustedError(errors.New(message)) {
@@ -275,6 +277,75 @@ func TestTaskLLMStreamRetriesPreStreamQuotaOnNextProfile(t *testing.T) {
 	}
 }
 
+// Codex 구독 한도 응답은 같은 프로필에서 재시도하지 않고 hooks.exhaust 로 다음 프로필에 넘어가야 한다.
+// 분류가 빠지면 같은 프로필 재시도로 빠지므로 재시도 대기를 0으로 두고 병렬로 돌리지 않는다.
+func TestTaskLLMFailsOverOnCodexUsageLimit(t *testing.T) {
+	defer withZeroRetryBackoff()()
+	codexErrors := []string{
+		`openai: status 402: {"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"plus","resets_at":1760000000}}`,
+		`openai: status 429: {"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1760000000}}`,
+		`openai: status 429: {"error":{"type":"usage_not_included","message":"Your plan does not include Codex"}}`,
+	}
+	modes := []struct {
+		name string
+		run  func(taskLLMStreamHooks) (string, error)
+	}{
+		{name: "stream", run: func(hooks taskLLMStreamHooks) (string, error) {
+			events, err := collectTaskLLMStream(streamTaskLLM(context.Background(), "7", llm.CompletionRequest{}, hooks))
+			text := ""
+			for _, event := range events {
+				text += event.Text
+			}
+			return text, err
+		}},
+		{name: "complete", run: func(hooks taskLLMStreamHooks) (string, error) {
+			msg, _, _, err := completeTaskLLM(context.Background(), "7", llm.CompletionRequest{}, hooks)
+			text := ""
+			for _, block := range msg.Content {
+				text += block.Text
+			}
+			return text, err
+		}},
+	}
+	for _, mode := range modes {
+		for _, message := range codexErrors {
+			t.Run(mode.name+"/"+message, func(t *testing.T) {
+				first := &scriptedLLMProvider{err: errors.New(message)}
+				second := &scriptedLLMProvider{events: []llm.StreamEvent{{Type: llm.SETextDelta, Text: "fallback"}}}
+				active := int64(11)
+				var exhaustedProfiles []int64
+				hooks := taskLLMStreamHooks{
+					current: func() (taskLLMSelection, error) {
+						if active == 11 {
+							return taskLLMSelection{profileID: 11, provider: first}, nil
+						}
+						return taskLLMSelection{profileID: 22, provider: second}, nil
+					},
+					exhaust: func(selection taskLLMSelection, _ error) (db.TaskLLMTransition, error) {
+						exhaustedProfiles = append(exhaustedProfiles, selection.profileID)
+						active = 22
+						next := active
+						return db.TaskLLMTransition{PreviousProfileID: 11, NextProfileID: &next, Advanced: true}, nil
+					},
+				}
+				text, err := mode.run(hooks)
+				if err != nil {
+					t.Fatalf("expected failover to next profile, got %v", err)
+				}
+				if text != "fallback" {
+					t.Fatalf("text=%q, want fallback from next profile", text)
+				}
+				if len(exhaustedProfiles) != 1 || exhaustedProfiles[0] != 11 {
+					t.Fatalf("exhausted profiles=%v, want [11]", exhaustedProfiles)
+				}
+				if first.calls != 1 || second.calls != 1 {
+					t.Fatalf("calls first=%d second=%d, want 1 each", first.calls, second.calls)
+				}
+			})
+		}
+	}
+}
+
 func TestTaskLLMStreamRetriesAfterNonContentStartEvent(t *testing.T) {
 	t.Parallel()
 	quota := errors.New("anthropic: status 402: insufficient credit balance")
@@ -344,6 +415,7 @@ func TestTaskLLMStreamDoesNotSwitchForOrdinaryErrors(t *testing.T) {
 	defer withZeroRetryBackoff()()
 	tests := []string{
 		"openai: status 429: rate limit exceeded",
+		`openai: status 429: {"error":{"type":"rate_limit_exceeded","message":"Rate limit reached"}}`,
 		"openai: status 401: invalid api key",
 		"openai: status 500: internal server error",
 		"dial tcp: network is unreachable",

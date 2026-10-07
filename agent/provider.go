@@ -283,9 +283,8 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	return llm.NewProvider(lc)
 }
 
-// IsQuotaExhaustedMessage deliberately recognizes only explicit balance,
-// billing, credit, or quota-exhaustion signals. Generic 429/rate-limit text,
-// authentication failures, network errors, and server failures are excluded.
+// IsQuotaExhaustedMessage 는 잔액·결제·크레딧·쿼터·구독 한도가 소진됐다고 명시한 신호만
+// 쿼터 소진으로 본다. 일반 429·rate limit 문구, 인증 실패, 네트워크 오류, 서버 오류는 뺀다.
 var nonFailoverHTTPStatus = regexp.MustCompile(`(?:status(?:\s+code)?|http(?:\s+status)?)\s*[=:]?\s*(?:401|403|5\d\d)\b`)
 var transientQuotaLimit = regexp.MustCompile(`(?i)(?:\b(?:rpm|tpm|rpd|qps)\b|quota[_\s-]*metric|rate[_\s-]*limit|too many requests|(?:requests?|tokens?)\s+(?:per|/)\s*(?:second|minute)|(?:per|/)\s*(?:second|minute)\s+(?:requests?|tokens?)|generate[_\s-]*requests[_\s-]*per[_\s-]*(?:minute|second)|tokens?[_\s-]*per[_\s-]*(?:minute|second))`)
 
@@ -308,6 +307,9 @@ func IsQuotaExhaustedMessage(message string) bool {
 		"billing hard limit", "billing_not_active", "credit balance", "insufficient credit",
 		"insufficient balance", "balance is too low", "payment required", "status 402",
 		"余额不足", "额度不足", "额度已用尽", "欠费",
+		// Codex(ChatGPT 구독) 백엔드가 429 본문의 error.type 으로 주는 값이다. 주간·5시간
+		// 한도는 같은 프로필로 재시도해도 풀리지 않으므로 다음 프로필로 넘겨야 한다.
+		"usage_limit_reached", "usage_not_included",
 	}
 	for _, marker := range markers {
 		if strings.Contains(message, marker) {
