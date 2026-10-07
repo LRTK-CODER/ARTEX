@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/compaction"
@@ -77,6 +78,11 @@ type Config struct {
 	// Retry 是该配置解析后的重试参数(profile 覆盖 → 全局策略 → 内置默认,由
 	// server 侧解析)。三层的含义见 RetryConfig;零值 = 完全沿用内置默认。
 	Retry RetryConfig
+	// AuthType 이 db.AuthChatGPTOAuth 면 APIKey 대신 OAuthTokens 의 토큰으로 Codex 백엔드를 부른다.
+	// 빈 값은 db.AuthAPIKey 다.
+	AuthType db.AuthType
+	// OAuthTokens 는 db.AuthChatGPTOAuth 일 때 필요하다. 다른 방식에서는 쓰지 않는다.
+	OAuthTokens OAuthTokenSource
 }
 
 // RetryConfig 是随一个 LLM 配置走的重试参数。每层的「次数」统一语义:
@@ -253,15 +259,41 @@ func (c Config) Provider() string {
 // NewProvider builds an llm.Provider from the config. When a rate is set, the
 // limiter lives on the single provider instance — so planner + all workers +
 // main agent (which share this provider) are bounded by one shared rate limit.
+//
+// db.AuthChatGPTOAuth 는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true 만
+// 받으므로 비스트리밍 경로(Provider.Complete)는 SSE 응답을 JSON 으로 읽다가 실패하기 때문이다.
 func (c Config) NewProvider() (llm.Provider, error) {
-	client, err := quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey)
+	apiKey, baseURL := c.APIKey, c.BaseURL
+	var tokens OAuthTokenSource
+	switch c.AuthType {
+	case "", db.AuthAPIKey:
+	case db.AuthChatGPTOAuth:
+		if c.OAuthTokens == nil {
+			return nil, fmt.Errorf("llm: auth type %s requires a token source", c.AuthType)
+		}
+		if c.Format != llm.FormatOpenAIResponses {
+			return nil, fmt.Errorf("llm: auth type %s requires format openai-responses", c.AuthType)
+		}
+		if !c.Stream {
+			return nil, fmt.Errorf("llm: auth type %s requires streaming", c.AuthType)
+		}
+		tokens = c.OAuthTokens
+		// 비우면 Norma 가 OPENAI_API_KEY 로 채운다. 실제 헤더는 oauthTransport 가 덮어쓴다.
+		apiKey = oauthAPIKeyPlaceholder
+		if baseURL == "" {
+			baseURL = codexBaseURL
+		}
+	default:
+		return nil, fmt.Errorf("llm: unknown auth type %q", c.AuthType)
+	}
+	client, err := quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey, tokens)
 	if err != nil {
 		return nil, err
 	}
 	lc := llm.Config{
 		Format:     c.Format,
-		BaseURL:    c.BaseURL,
-		APIKey:     c.APIKey,
+		BaseURL:    baseURL,
+		APIKey:     apiKey,
 		Model:      c.Model,
 		HTTPClient: client,
 	}
@@ -399,7 +431,10 @@ func requestBodySnapshot(req *http.Request) string {
 	return string(b)
 }
 
-func quotaAwareHTTPClient(proxy, sessionHeaderKey string) (*http.Client, error) {
+// quotaAwareHTTPClient 는 Norma 가 모든 요청을 보낼 클라이언트를 만든다. tokens 가 nil 이 아니면
+// base transport 와 quotaAwareTransport 사이에 oauthTransport 를 끼운다. quotaAwareTransport 가
+// 바깥이라 llmrec 캡처는 토큰을 싣기 전의 Norma 원본 본문을 보고, 헤더는 기록하지 않는다.
+func quotaAwareHTTPClient(proxy, sessionHeaderKey string, tokens OAuthTokenSource) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	proxy = strings.TrimSpace(proxy)
 	if proxy == "" {
@@ -418,7 +453,11 @@ func quotaAwareHTTPClient(proxy, sessionHeaderKey string) (*http.Client, error) 
 		}
 		transport.Proxy = http.ProxyURL(proxyURL)
 	}
-	return &http.Client{Transport: quotaAwareTransport{base: transport, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey)}}, nil
+	var base http.RoundTripper = transport
+	if tokens != nil {
+		base = oauthTransport{base: transport, tokens: tokens}
+	}
+	return &http.Client{Transport: quotaAwareTransport{base: base, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey)}}, nil
 }
 
 // logTestConnection prints the raw HTTP status code(s) and response body of a
