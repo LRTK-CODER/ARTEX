@@ -453,6 +453,24 @@ ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_retry_check CHECK (
     retry_connect_attempts >= -1 AND retry_empty_attempts >= -1 AND retry_stream_attempts >= -1
     AND retry_connect_interval_ms >= 0 AND retry_empty_interval_ms >= 0 AND retry_stream_interval_ms >= 0);
 
+-- 인증 방식: api_key(기본, 기존 동작) 또는 chatgpt_oauth(ChatGPT 구독 OAuth). 구 DB에도 채운다.
+-- format CHECK와 같이 매번 지우고 다시 만들어 멱등을 지킨다.
+ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS auth_type TEXT NOT NULL DEFAULT 'api_key';
+ALTER TABLE llm_profiles DROP CONSTRAINT IF EXISTS llm_profiles_auth_type_check;
+ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_auth_type_check
+    CHECK (auth_type IN ('api_key','chatgpt_oauth'));
+
+-- chatgpt_oauth 프로필의 토큰. access_token·refresh_token은 데이터 디렉터리 키 파일로
+-- 암호화한 암호문만 담는다(db/oauth_credentials.go). 프로필을 지우면 함께 지운다.
+CREATE TABLE IF NOT EXISTS llm_oauth_credentials (
+    profile_id    BIGINT PRIMARY KEY REFERENCES llm_profiles(id) ON DELETE CASCADE,
+    access_token  TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    expires_at    TIMESTAMPTZ NOT NULL,
+    account_id    TEXT NOT NULL DEFAULT '',
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 思考开关字段 thinking_type，从旧的单一 reasoning_effort 语义一次性拆分而来。
 -- schema.sql 每次启动都执行，故迁移必须只跑一次：仅当该列尚不存在时才回填，
 -- 否则每次启动都会把用户后来手动设的组合覆盖回去。旧 reasoning_effort 语义：
