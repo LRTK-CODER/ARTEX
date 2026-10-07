@@ -18,7 +18,9 @@ main 체크아웃의 사본으로 실행한다. PR이 이 스크립트를 고쳤
 5. 요약을 출력한다. 막지 않는다. 종료 코드는 [1](main 기준)의 검사가 실패하면 1, 그 밖에는 0이다.
    스크립트 자체를 실행하지 못했으면(main 체크아웃이 아님, fetch 실패) 2다.
 
-검사는 Go만 돌린다(gofmt·go vet·go build·go test). 프런트는 커밋된 node_modules가 없어 돌리지 않고,
+검사는 Go만 돌린다(gofmt·go vet·go build·go test). gofmt는 pre-commit hook과 같은 기준으로
+`git diff --name-only --diff-filter=ACMR origin/main...<head> -- '*.go'`에 든 파일만 보고, 바꾼 .go가
+없으면 통과다. 나머지는 트리 전체를 본다. 프런트는 커밋된 node_modules가 없어 돌리지 않고,
 web 테스트 파일 변경은 [3]·[4]에 표시만 한다.
 
 PR head는 `refs/pull/<번호>/head`에서 가져와 로컬 ref `refs/pr-gate/<번호>`에 둔다.
@@ -73,6 +75,11 @@ class GateError(Exception):
     """재채점을 시작하지 못했다(fetch 실패, 잘못된 위치 등)."""
 
 
+# 검사 명령에서 이 인자 자리에 PR이 바꾼 .go 파일 목록(트리에 있는 것만)이 들어간다.
+# 목록이 비면 그 검사는 돌리지 않고 통과로 둔다.
+CHANGED_GO_FILES = "<changed-go-files>"
+
+
 class Profile(NamedTuple):
     """트리에서 돌릴 명령."""
 
@@ -83,7 +90,9 @@ class Profile(NamedTuple):
 DEFAULT_PROFILE = Profile(
     setup=[],
     checks=[
-        ("gofmt", ["sh", "-c", 'out=$(gofmt -l .); if [ -n "$out" ]; then echo "$out"; exit 1; fi']),
+        # pre-commit hook처럼 PR이 바꾼 .go만 본다. main에 남은 형식 위반이 모든 PR을 실패시키지 않게 한다.
+        ("gofmt", ["sh", "-c", 'out=$(gofmt -l "$@"); if [ -n "$out" ]; then echo "$out"; exit 1; fi',
+                   "sh", CHANGED_GO_FILES]),
         ("go vet", ["go", "vet", "./..."]),
         ("go build", ["go", "build", "./..."]),
         ("go test", ["go", "test", "./..."]),
@@ -276,7 +285,17 @@ def run_command(cmd: List[str], *, cwd: str, timeout_seconds: int) -> Tuple[bool
     return done.returncode == 0, done.stdout
 
 
-def run_tree(label: str, tree: str, profile: Profile) -> TreeReport:
+def expand_changed(cmd: List[str], files: List[str]) -> List[str]:
+    """CHANGED_GO_FILES 자리를 파일 목록으로 바꾼다."""
+    out: List[str] = []
+    for arg in cmd:
+        out.extend(files if arg == CHANGED_GO_FILES else [arg])
+    return out
+
+
+def run_tree(label: str, tree: str, profile: Profile, changed_go_files: List[str]) -> TreeReport:
+    # main 기준 트리에는 PR이 추가한 테스트 파일이 없을 수 있으니 트리에 있는 것만 넘긴다
+    present = [p for p in changed_go_files if os.path.isfile(os.path.join(tree, p))]
     for cmd in profile.setup:
         ok, output = run_command(cmd, cwd=tree, timeout_seconds=SETUP_TIMEOUT_SECONDS)
         if not ok:
@@ -284,7 +303,11 @@ def run_tree(label: str, tree: str, profile: Profile) -> TreeReport:
             return TreeReport(label, [failed], count_tests(tree))
     checks = []
     for name, cmd in profile.checks:
-        ok, output = run_command(cmd, cwd=tree, timeout_seconds=CHECK_TIMEOUT_SECONDS)
+        if CHANGED_GO_FILES in cmd and not present:
+            checks.append(CheckResult(name, True, "바꾼 .go 파일이 없다"))
+            continue
+        ok, output = run_command(expand_changed(cmd, present), cwd=tree,
+                                 timeout_seconds=CHECK_TIMEOUT_SECONDS)
         checks.append(CheckResult(name, ok, output))
     return TreeReport(label, checks, count_tests(tree))
 
@@ -383,8 +406,11 @@ def gate(repo: str, pr: int, *, profile: Profile = DEFAULT_PROFILE,
         pr_tree_dir = os.path.join(workdir, "pr")
         build_main_based_tree(repo, head=head, main=main, dest=main_tree)
         extract(repo, head, pr_tree_dir)
-        main_based = run_tree("main 기준", main_tree, profile)
-        pr_tree = run_tree("PR 트리", pr_tree_dir, profile)
+        # -z: 한글 등 비ASCII 경로가 따옴표로 감싸여 나오지 않게 한다
+        changed_go = [p for p in git(repo, "diff", "--name-only", "-z", "--diff-filter=ACMR",
+                                     "{}...{}".format(main, head), "--", "*.go").split("\0") if p]
+        main_based = run_tree("main 기준", main_tree, profile, changed_go)
+        pr_tree = run_tree("PR 트리", pr_tree_dir, profile, changed_go)
         changes = classify(git(repo, "diff", "--name-status", "-M",
                                "{}...{}".format(main, head)))
         text = format_report(pr=pr, head=head, main=main, merge_base=merge_base, behind=behind,
