@@ -8,8 +8,10 @@
 - Bash 도구의 `run_in_background`로 띄운다.
 - 셸 백그라운드(`&`), `disown`, `nohup`, `setsid`를 쓰지 않는다.
 - 단독 명령이다. 앞에 `cd <경로> &&` 하나만 붙일 수 있다.
-- 같은 사용자의 `orca ... orchestration check --wait` 프로세스가 이미 돌고 있지 않다.
-  확인하지 못하면(pgrep 없음, 오류) 막지 않는다.
+- 같은 Orca 창(pane)의 `orca ... orchestration check --wait` 프로세스가 이미 돌고 있지 않다.
+  창은 환경 변수 `ORCA_PANE_KEY`로 가린다. 다른 창(다른 저장소의 PM, 워커)의 대기는 다른 run에
+  걸리므로 세지 않는다. 이 세션에 `ORCA_PANE_KEY`가 없으면 같은 사용자의 대기를 모두 센다.
+  확인하지 못하면(pgrep 없음, 오류) 막지 않고, 창을 알아내지 못한 프로세스는 세지 않는다.
 """
 from __future__ import annotations
 
@@ -26,6 +28,8 @@ RULES_DOC = '.claude/skills/pm/SKILL.md "기다리기"'
 WAIT_SCRIPT = "wait_workers.py"
 DETACHERS = ("disown", "nohup", "setsid")
 PGREP_TIMEOUT_SECONDS = 5
+PANE_ENV = "ORCA_PANE_KEY"
+PROC_DIR = "/proc"  # Linux. 없으면(macOS) `ps -E`로 환경 변수를 읽는다
 # wait_workers.py는 `orca orchestration check --wait ...`를 부른다. 옵션 순서가 달라도 잡는다.
 RUNNING_WAIT_PATTERN = r"orchestration check .*--wait"
 
@@ -147,8 +151,13 @@ def _shape_problem(command: str, cwd: str) -> Optional[Tuple[str, str]]:
 
 # ---------------------------------------------------------------- 도는 대기
 
-def running_waits() -> Optional[List[str]]:
-    """같은 사용자의 `orca ... orchestration check --wait` 프로세스 PID 목록. 확인하지 못하면 None."""
+def running_waits(pane_key: Optional[str] = None) -> Optional[List[str]]:
+    """같은 사용자의 `orca ... orchestration check --wait` 프로세스 PID 목록. 확인하지 못하면 None.
+
+    pane_key를 주면 그 창에서 띄운 프로세스만 남긴다. Orca 대기는 run마다 하나라서 다른 창의
+    대기는 이 창의 대기를 막지 않는다. 사용자 전체로 세면 다른 저장소 PM의 대기 때문에 이 창의
+    대기를 띄우지 못하고, 대기가 없는 동안 heartbeat가 모두 채팅 알림으로 뜬다(#10).
+    """
     try:
         p = subprocess.run(["pgrep", "-u", str(os.getuid()), "-f", RUNNING_WAIT_PATTERN],
                            capture_output=True, text=True, timeout=PGREP_TIMEOUT_SECONDS)
@@ -158,7 +167,35 @@ def running_waits() -> Optional[List[str]]:
         return []
     if p.returncode != 0:
         return None
-    return p.stdout.split()
+    pids = p.stdout.split()
+    if not pane_key:
+        return pids
+    return [pid for pid in pids if process_pane_key(pid) == pane_key]
+
+
+def process_pane_key(pid: str) -> Optional[str]:
+    """프로세스가 시작될 때 받은 `ORCA_PANE_KEY`. 읽지 못하거나 없으면 None."""
+    environ_path = os.path.join(PROC_DIR, pid, "environ")
+    if os.path.isdir(PROC_DIR):
+        try:
+            with open(environ_path, "rb") as f:
+                entries = f.read().decode("utf-8", "replace").split("\0")
+        except OSError:
+            return None
+        prefix = PANE_ENV + "="
+        values = [e[len(prefix):] for e in entries if e.startswith(prefix)]
+        return values[-1] if values else None
+    try:
+        # BSD·macOS ps의 -E는 명령 인자 뒤에 시작 때의 환경 변수를 공백으로 이어 붙인다.
+        p = subprocess.run(["ps", "-E", "-ww", "-o", "command=", "-p", pid],
+                           capture_output=True, text=True, timeout=PGREP_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    # 인자에 같은 문자열이 있어도 환경 변수가 뒤에 오므로 마지막 것을 쓴다.
+    values = re.findall(r"(?:^|\s){}=(\S+)".format(PANE_ENV), p.stdout)
+    return values[-1] if values else None
 
 
 # ---------------------------------------------------------------- 진입
@@ -178,8 +215,8 @@ def check(event: dict) -> None:
         raise _blocked("전경으로 띄운 대기 명령",
                        "대기는 최대 수십 분 걸린다. 전경 명령은 도구 제한 시간에 끊기고, 끊긴 대기는 "
                        "Orca에 대기 등록이 남아 다음 대기가 waiter_exists로 실패한다")
-    pids = running_waits()
+    pids = running_waits(os.environ.get(PANE_ENV))
     if pids:
-        raise _blocked("이미 도는 대기가 있는데 새로 띄운 대기 명령 (PID {})".format(" ".join(pids)),
+        raise _blocked("이 창에서 이미 도는 대기가 있는데 새로 띄운 대기 명령 (PID {})".format(" ".join(pids)),
                        "한 터미널에는 대기가 하나만 걸린다. 앞 대기가 도는 동안 새 대기는 waiter_exists로 "
                        "실패한다. 남은 프로세스는 `ps -o args= -p {}`로 본다".format(shlex.quote(pids[0])))

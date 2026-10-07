@@ -123,8 +123,8 @@ Opus 5.5의 기본 effort는 medium이다. xhigh는 효과가 측정된 경우�
     python3 .claude/scripts/wait_workers.py            # 기본 30분. --timeout-ms, --run으로 바꾼다
 
 - Bash 도구의 백그라운드 실행(`run_in_background`)으로 띄운다. 셸 `&`로 띄우거나 중간에 종료하면 orca에 대기 등록이 남아 다음 대기가 `waiter_exists`로 실패한다.
-- 대기 명령(`wait_workers.py`, `orca orchestration check --wait`)은 단독 명령으로, 앞 대기가 끝난 뒤에 하나만 띄운다. 앞에는 `cd <경로> &&`만 붙일 수 있다. hook(`.claude/hooks/wait_guard.py`)이 `run_in_background` 없는 대기, 셸 `&`·`disown`·`nohup`·`setsid`, 다른 명령과 묶은 대기, 이미 대기 프로세스가 도는 중의 새 대기를 막는다. `--status`는 막지 않는다.
-- `waiter_exists`가 나면 스크립트가 원인과 대처를 출력한다. 남은 대기 프로세스를 `pgrep -fl 'orchestration check .*--wait'`로 찾는다. kill해도 등록은 남으니 앞 대기가 끝나거나 타임아웃될 때까지 기다린다.
+- 대기 명령(`wait_workers.py`, `orca orchestration check --wait`)은 단독 명령으로, 앞 대기가 끝난 뒤에 하나만 띄운다. 앞에는 `cd <경로> &&`만 붙일 수 있다. hook(`.claude/hooks/wait_guard.py`)이 `run_in_background` 없는 대기, 셸 `&`·`disown`·`nohup`·`setsid`, 다른 명령과 묶은 대기, 같은 Orca 창에서 대기 프로세스가 도는 중의 새 대기를 막는다. 다른 창(다른 저장소의 PM 등)의 대기는 막는 이유가 되지 않는다. Orca 대기는 run마다 하나다. `--status`는 막지 않는다.
+- `waiter_exists`가 나면 스크립트가 원인과 대처를 출력한다. 남은 대기 프로세스를 `pgrep -fl 'orchestration check .*--wait'`로 찾는다. 이 목록에는 다른 창의 대기도 나오니 `ps -E -ww -o command= -p <PID>`의 `ORCA_PANE_KEY`가 이 세션의 값과 같은 것만 본다. kill해도 등록은 남으니 앞 대기가 끝나거나 타임아웃될 때까지 기다린다.
 - worker_done·escalation·question을 기다려 요약하고, heartbeat는 워커별 한 줄로 줄인다. 종료 코드는 받음 0, 타임아웃 2, orca 오류 1이다.
 - heartbeat도 대기 종류로 받는다. orca는 걸린 대기가 받는 종류를 PM 채팅 알림에서 빼므로, 이렇게 해야 heartbeat마다 채팅에 알림이 뜨지 않는다. 대기가 걸려 있지 않은 틈에 온 heartbeat는 여전히 알림으로 뜬다.
 - 받은 묶음은 확인 처리(`check --ack`)한다. run에 묶인 `check`는 확인 처리 전까지 같은 묶음을 다시 주므로, 하지 않으면 처리한 `worker_done`이 새 완료처럼 또 나온다.
