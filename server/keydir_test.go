@@ -32,20 +32,37 @@ func TestPrepareKeyDirRejectsDataDir(t *testing.T) {
 	if err := os.Symlink(data, linkToData); err != nil {
 		t.Fatal(err)
 	}
+	// 대소문자를 구분하지 않는 파일 시스템(macOS 기본 APFS 등)에서는 대문자 경로가 같은 작업 공간을 가리킨다.
+	upperData := filepath.Join(base, "DATA")
 	cases := []struct {
 		name       string
 		configured string
+		dataDir    string // 비어 있으면 data
+		// needsCaseInsensitiveFS 는 대문자 경로가 작업 공간을 가리켜야 의미가 있는 경우다.
+		needsCaseInsensitiveFS bool
 	}{
-		{"작업 공간 자체", data},
-		{"작업 공간 아래", filepath.Join(data, "keys")},
-		{"작업 공간을 가리키는 심볼릭 링크", linkToData},
-		{"심볼릭 링크를 거친 작업 공간 아래", filepath.Join(linkToData, "keys")},
+		{name: "작업 공간 자체", configured: data},
+		{name: "작업 공간 아래", configured: filepath.Join(data, "keys")},
+		{name: "작업 공간을 가리키는 심볼릭 링크", configured: linkToData},
+		{name: "심볼릭 링크를 거친 작업 공간 아래", configured: filepath.Join(linkToData, "keys")},
+		{name: "대문자로 쓴 작업 공간 자체", configured: upperData, needsCaseInsensitiveFS: true},
+		{name: "대문자로 쓴 작업 공간 아래", configured: filepath.Join(upperData, "keys"), needsCaseInsensitiveFS: true},
+		{name: "작업 공간을 대문자로 받음", configured: filepath.Join(data, "keys"), dataDir: upperData, needsCaseInsensitiveFS: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := PrepareKeyDir(tc.configured, base, data)
+			if tc.needsCaseInsensitiveFS {
+				if _, err := os.Stat(upperData); err != nil {
+					t.Skipf("대소문자를 구분하는 파일 시스템: %v", err)
+				}
+			}
+			dataDir := tc.dataDir
+			if dataDir == "" {
+				dataDir = data
+			}
+			_, err := PrepareKeyDir(tc.configured, base, dataDir)
 			if !errors.Is(err, ErrKeyDirInsideDataDir) {
-				t.Fatalf("PrepareKeyDir(%q) err = %v, want ErrKeyDirInsideDataDir", tc.configured, err)
+				t.Fatalf("PrepareKeyDir(%q, data %q) err = %v, want ErrKeyDirInsideDataDir", tc.configured, dataDir, err)
 			}
 			if _, err := os.Stat(filepath.Join(data, "keys")); !errors.Is(err, fs.ErrNotExist) {
 				t.Fatalf("rejected key dir was created inside the data dir (stat err = %v)", err)

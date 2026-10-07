@@ -15,11 +15,24 @@ ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"
 . ./docker-keys.sh
 
 # ── 可选：同步仓库到最新代码（compose/脚本/本地编译源码都靠它更新）───────
+# $1 은 고른 메뉴 번호다. pull 이 이 스크립트나 docker-keys.sh 를 바꾸면 bash 는 이미 읽은 옛 함수를 그대로
+# 돌리므로, 새 update.sh 를 같은 메뉴 번호로 다시 띄운다. ARTEX_UPDATE_SKIP_PULL 이 있으면 pull 을 건너뛰어
+# 다시 띄운 스크립트가 또 pull·재실행하지 않는다.
 sync_repo(){
-  [ -d .git ] && command -v git >/dev/null 2>&1 || { warn "非 git 工作副本，跳过 git pull"; return; }
-  [ "$(ask '拉取最新代码 (git pull --ff-only)? (y/n)' y)" = y ] || return
+  [ -z "${ARTEX_UPDATE_SKIP_PULL:-}" ] || return 0
+  if [ ! -d .git ] || ! command -v git >/dev/null 2>&1; then
+    warn "非 git 工作副本，跳过 git pull"
+    return 0
+  fi
+  [ "$(ask '拉取最新代码 (git pull --ff-only)? (y/n)' y)" = y ] || return 0
+  local before; before="$(git rev-parse HEAD)"
   if ! git pull --ff-only; then
     warn "git pull 未能快进（本地有改动或分支分叉）——请手动处理后重试，本次沿用当前代码"
+    return 0
+  fi
+  if ! git diff --quiet "$before" HEAD -- update.sh docker-keys.sh; then
+    info "更新脚本已随代码更新，用新版 update.sh 继续…"
+    ARTEX_UPDATE_SKIP_PULL=1 ARTEX_UPDATE_MODE="$1" exec bash ./update.sh
   fi
 }
 
@@ -75,13 +88,18 @@ update_local(){
   warn "请重启正在运行的 artex 进程以生效（重启时会自动迁移 schema）"
 }
 
-echo "=============================="
-echo "  ARTEX 更新"
-echo "  1) Docker 更新（拉新镜像重建）"
-echo "  2) 本地更新（go 重新编译）"
-echo "=============================="
-case "$(ask '选择' 1)" in
-  1) sync_repo; update_docker ;;
-  2) sync_repo; update_local ;;
+# ARTEX_UPDATE_MODE 는 sync_repo 가 새 update.sh 를 다시 띄울 때만 넘긴다. 이미 고른 메뉴를 다시 묻지 않는다.
+mode="${ARTEX_UPDATE_MODE:-}"
+if [ -z "$mode" ]; then
+  echo "=============================="
+  echo "  ARTEX 更新"
+  echo "  1) Docker 更新（拉新镜像重建）"
+  echo "  2) 本地更新（go 重新编译）"
+  echo "=============================="
+  mode="$(ask '选择' 1)"
+fi
+case "$mode" in
+  1) sync_repo 1; update_docker ;;
+  2) sync_repo 2; update_local ;;
   *) die "无效选择" ;;
 esac

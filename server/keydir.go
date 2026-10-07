@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Autumn-27/artex/db"
 )
@@ -28,7 +27,9 @@ var keyFilenames = []string{jwtKeyFilename, db.CredentialKeyFilename}
 
 // PrepareKeyDir 는 서버 키 디렉터리를 정해 절대 경로로 돌려준다.
 // configured 가 비어 있으면 baseDir 를 쓰고, 상대 경로면 절대 경로로 바꾼다. 디렉터리가 없으면 0700 으로 만든다.
-// 심볼릭 링크를 푼 뒤 dataDir 와 같거나 그 안이면 ErrKeyDirInsideDataDir 를 올린다(dataDir 는 이미 있어야 한다).
+// 키 디렉터리가 dataDir 와 같거나 그 안이면 ErrKeyDirInsideDataDir 를 올린다(dataDir 는 이미 있어야 한다).
+// 경로 문자열이 아니라 파일 정체성(os.SameFile)으로 비교하므로 심볼릭 링크, 대소문자만 다른 경로
+// (대소문자를 구분하지 않는 파일 시스템), bind mount 로 들어가도 거절한다.
 // 키 디렉터리가 baseDir 와 다르고 키 파일이 아직 없으면, baseDir 에 있던 jwt.key·oauth.key 를 0600 으로
 // 옮기고 원래 파일은 지운다. 옮기지 못하면 오류를 올린다. 새 키를 만들면 저장된 구독 토큰을 풀 수 없게 되므로
 // 조용히 넘어가지 않는다.
@@ -45,13 +46,24 @@ func PrepareKeyDir(configured, baseDir, dataDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve data dir: %w", err)
 	}
-	// 거절할 디렉터리를 작업 공간 안에 만들어 두지 않도록, 만들기 전에 있는 조상까지 풀어 비교한다.
-	plannedKeyDir, err := evalExistingPrefix(keyDir)
+	dataInfo, err := os.Stat(realDataDir)
+	if err != nil {
+		return "", fmt.Errorf("stat data dir: %w", err)
+	}
+	insideErr := func(resolvedKeyDir string) error {
+		return fmt.Errorf("%w: key dir %s (resolved %s), data dir %s", ErrKeyDirInsideDataDir, keyDir, resolvedKeyDir, realDataDir)
+	}
+	// 거절할 디렉터리를 작업 공간 안에 만들어 두지 않도록, 만들기 전에 실제로 있는 가장 깊은 조상부터 비교한다.
+	existingKeyDir, err := evalDeepestExisting(keyDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve key dir: %w", err)
 	}
-	if isWithinDir(plannedKeyDir, realDataDir) {
-		return "", fmt.Errorf("%w: key dir %s, data dir %s", ErrKeyDirInsideDataDir, keyDir, dataDir)
+	inside, err := isSameOrUnder(existingKeyDir, dataInfo)
+	if err != nil {
+		return "", fmt.Errorf("check key dir: %w", err)
+	}
+	if inside {
+		return "", insideErr(existingKeyDir)
 	}
 	if err := os.MkdirAll(keyDir, keyDirPerm); err != nil {
 		return "", fmt.Errorf("create key dir: %w", err)
@@ -61,8 +73,11 @@ func PrepareKeyDir(configured, baseDir, dataDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve key dir: %w", err)
 	}
-	if isWithinDir(realKeyDir, realDataDir) {
-		return "", fmt.Errorf("%w: key dir %s, data dir %s", ErrKeyDirInsideDataDir, keyDir, dataDir)
+	if inside, err = isSameOrUnder(realKeyDir, dataInfo); err != nil {
+		return "", fmt.Errorf("check key dir: %w", err)
+	}
+	if inside {
+		return "", insideErr(realKeyDir)
 	}
 	if err := migrateKeyFiles(baseDir, realKeyDir); err != nil {
 		return "", err
@@ -153,27 +168,35 @@ func evalAbs(dir string) (string, error) {
 	return filepath.EvalSymlinks(abs)
 }
 
-// evalExistingPrefix 는 절대 경로 path 에서 실제로 있는 가장 깊은 조상의 심볼릭 링크를 풀고 나머지를 붙인다.
-// 아직 없는 디렉터리가 결국 어디에 만들어질지 알기 위해 쓴다.
-func evalExistingPrefix(path string) (string, error) {
-	var missing []string
+// evalDeepestExisting 는 절대 경로 path 에서 실제로 있는 가장 깊은 조상을 찾아 심볼릭 링크를 푼다.
+// 아직 없는 디렉터리가 결국 어느 디렉터리 아래에 만들어질지 알기 위해 쓴다.
+func evalDeepestExisting(path string) (string, error) {
 	for dir := path; ; dir = filepath.Dir(dir) {
 		real, err := filepath.EvalSymlinks(dir)
 		if err == nil {
-			return filepath.Join(append([]string{real}, missing...)...), nil
+			return real, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) || filepath.Dir(dir) == dir {
 			return "", err
 		}
-		missing = append([]string{filepath.Base(dir)}, missing...)
 	}
 }
 
-// isWithinDir 는 path 가 root 와 같거나 그 아래인지 본다. 두 경로 모두 심볼릭 링크를 푼 절대 경로여야 한다.
-func isWithinDir(path, root string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
+// isSameOrUnder 는 심볼릭 링크를 푼 절대 경로 dir 나 그 조상 중 하나가 root 와 같은 파일인지 본다.
+// 경로 문자열 비교는 대소문자만 다른 경로나 bind mount 를 같은 디렉터리로 알아보지 못해 파일 정체성으로 비교한다.
+func isSameOrUnder(dir string, root os.FileInfo) (bool, error) {
+	for {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return false, err
+		}
+		if os.SameFile(info, root) {
+			return true, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false, nil
+		}
+		dir = parent
 	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

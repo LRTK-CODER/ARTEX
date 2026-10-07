@@ -11,7 +11,9 @@ ARTEX_KEY_FILES=(jwt.key oauth.key)
 # 컨테이너가 없거나 컨테이너에 키가 없으면 건너뛴다. 꺼내다 실패하면 die 로 멈춘다.
 # 키를 잃은 채 업그레이드를 이어 가는 것보다 멈추는 편이 낫기 때문이다.
 prepare_key_volume(){
-  mkdir -p keys && chmod 700 keys
+  mkdir -p keys || die "无法创建 ./keys 目录"
+  # docker 데몬이 먼저 만든 ./keys 는 root 소유라 chmod 가 실패한다. 소유자를 바꾸는 방법을 알려 준다.
+  chmod 700 keys || die "无法将 ./keys 设为 700（可能由 docker 以 root 创建）。请执行：sudo chown \"$(id -u):$(id -g)\" keys 后重试"
 
   local cids
   cids="$(docker compose ps -a -q artex)" || die "无法查询 artex 容器（docker compose ps 失败）"
