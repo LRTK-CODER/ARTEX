@@ -55,7 +55,7 @@ go vet ./...                                     # 정적 검사(커밋·PR 전�
 gofmt -l .                                       # 형식 어긋난 파일 목록(빈 출력이면 통과)
 gofmt -w .                                       # 형식 고치기
 go test ./...                                    # 전체 테스트
-go test -short ./...                             # testing.Short()로 거른 느린 테스트 빼고(지금은 cliprov의 하위 프로세스 유예 대기 테스트들이 빠진다)
+go test -short ./...                             # testing.Short()로 거른 느린 테스트 빼고(지금은 그런 테스트가 없어 go test ./...와 같다)
 go test -race ./...                              # 경쟁 상태 검사
 go test ./server/ -run TestName                 # 특정 패키지의 특정 테스트
 ARTEX_PG_DSN=postgres://... go test ./db/...     # 실제 PostgreSQL이 필요한 테스트

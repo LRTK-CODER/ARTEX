@@ -23,7 +23,7 @@ ARTEX는 Go 백엔드와 Next.js 프런트엔드(`web/`)로 된 AI 자율 보안
 
 모듈은 `github.com/Autumn-27/artex`다. 패키지는 저장소 루트의 디렉터리 하나씩이다. 실제 의존 그래프(비테스트, 저장소 내부 import만):
 
-    config, llmpool, mcphttp, selfupdate, notify, sidequestion, cliprov   잎 패키지(저장소 내부 의존 없음)
+    config, llmpool, mcphttp, selfupdate, notify, sidequestion   잎 패키지(저장소 내부 의존 없음)
     db            → config, notify, sidequestion          영속 계층의 중심(PostgreSQL)
     llmrec, enrich, intercept, report, traffic → db
     evidence      → db, traffic
@@ -73,7 +73,7 @@ ARTEX는 자율 보안 테스트 도구라서 **LLM이 도구를 골라 명령�
 
 - **되도록 라이브러리로 프로세스 안에서 돈다.** MITM 프록시는 `go-mitmproxy`를 라이브러리로(`traffic`), DNS는 `dnsx`를 라이브러리로(`enrich`) 쓴다. 하위 프로세스를 띄우지 않는다.
 - 에이전트가 외부 명령(nmap·curl·playwright 등)을 쓸 때는 **`norma`의 Bash 도구**를 지난다. 타임아웃·보안 기준선·프록시 환경 변수·출력 상한은 `norma`가 맡는다. ARTEX의 명령형 커스텀 도구도 이 Bash 바탕을 재사용한다.
-- ARTEX Go 코드가 직접 `os/exec`를 쓰는 곳은 드물다(커스텀 script 도구의 `execPython`, `python` 탐지, selfupdate 바이너리 점검, `cliprov`의 구독 CLI provider 하위 프로세스 기반). 직접 쓸 때 지킬 것(타임아웃을 `context`로, 인자는 리스트로, 환경 변수 허용 목록)은 `secure-coding.md` "외부 도구 실행"에 있다.
+- ARTEX Go 코드가 직접 `os/exec`를 쓰는 곳은 드물다(커스텀 script 도구의 `execPython`, `python` 탐지, selfupdate 바이너리 점검). 직접 쓸 때 지킬 것(타임아웃을 `context`로, 인자는 리스트로, 환경 변수 허용 목록)은 `secure-coding.md` "외부 도구 실행"에 있다.
 
 ## 설정
 
