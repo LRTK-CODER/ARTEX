@@ -40,7 +40,9 @@ const (
 
 // Client 는 OpenAI 인증 서버와 이야기한다. 제로값은 기본 issuer 와 30초 타임아웃 HTTP 클라이언트를 쓴다.
 type Client struct {
-	// HTTPClient 가 nil 이면 30초 타임아웃 클라이언트를 쓴다.
+	// HTTPClient 가 nil 이면 30초 타임아웃에 리다이렉트를 따르지 않는 클라이언트를 쓴다.
+	// 직접 넘길 때도 리다이렉트를 따르지 않게 한다(CheckRedirect 가 http.ErrUseLastResponse).
+	// 따르면 refresh 토큰·code_verifier 가 든 본문이 리다이렉트 대상에 다시 간다.
 	HTTPClient *http.Client
 	// Issuer 가 비면 DefaultIssuer 를 쓴다. 끝의 "/"는 붙이지 않는다.
 	Issuer string
@@ -68,6 +70,9 @@ func (t Tokens) String() string {
 
 // GoString 은 %#v 에서도 토큰 원문을 숨긴다.
 func (t Tokens) GoString() string { return t.String() }
+
+// ErrResponseTooLarge 는 인증 서버 응답이 1MB 상한을 넘었다는 뜻이다.
+var ErrResponseTooLarge = errors.New("response exceeds 1MB limit")
 
 // ErrorCode 는 인증 서버 오류 응답의 error 코드다.
 type ErrorCode string
@@ -251,9 +256,12 @@ func (c *Client) do(ctx context.Context, op, path, contentType string, body io.R
 		return 0, nil, fmt.Errorf("llmauth: %s: %w", op, err)
 	}
 	defer res.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes))
+	raw, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
 	if err != nil {
 		return 0, nil, fmt.Errorf("llmauth: %s: read response: %w", op, err)
+	}
+	if len(raw) > maxResponseBytes {
+		return 0, nil, fmt.Errorf("llmauth: %s: %w", op, ErrResponseTooLarge)
 	}
 	return res.StatusCode, raw, nil
 }
@@ -278,7 +286,8 @@ func errorCode(raw []byte) ErrorCode {
 		Code string `json:"code"`
 	}
 	switch {
-	case json.Unmarshal(body.Error, &text) == nil:
+	// "error": null 은 문자열로 읽히지만 빈 값이라 최상위 code 를 덮지 않게 한다.
+	case json.Unmarshal(body.Error, &text) == nil && text != "":
 		code = text
 	case json.Unmarshal(body.Error, &nested) == nil && nested.Code != "":
 		code = nested.Code
@@ -298,7 +307,11 @@ func (c *Client) issuer() string {
 
 func (c *Client) httpClient() *http.Client {
 	if c.HTTPClient == nil {
-		return &http.Client{Timeout: defaultHTTPTimeout}
+		return &http.Client{
+			Timeout: defaultHTTPTimeout,
+			// 3xx 는 따르지 않고 그대로 돌려받아 TokenError 가 되게 한다.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 	}
 	return c.HTTPClient
 }

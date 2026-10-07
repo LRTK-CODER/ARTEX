@@ -31,7 +31,7 @@ type DeviceCode struct {
 	DeviceAuthID    string
 	UserCode        string
 	VerificationURL string
-	// Interval 은 서버가 정한 폴링 간격이다.
+	// Interval 은 서버가 정한 폴링 간격이다. 0 이하면 5초를 쓴다.
 	Interval time.Duration
 }
 
@@ -111,6 +111,11 @@ func (c *Client) WaitDeviceCode(ctx context.Context, dc DeviceCode) (Tokens, err
 	if err != nil {
 		return Tokens{}, fmt.Errorf("llmauth: %s: encode request: %w", op, err)
 	}
+	interval := dc.Interval
+	if interval <= 0 {
+		// 호출자가 DeviceCode 를 직접 만들어 간격을 비우면 쉬지 않고 폴링하게 된다.
+		interval = defaultPollInterval
+	}
 	deadline := c.clock().Add(deviceCodeTimeout)
 	for {
 		status, raw, err := c.do(ctx, op, "/api/accounts/deviceauth/token", "application/json", bytes.NewReader(payload))
@@ -127,7 +132,7 @@ func (c *Client) WaitDeviceCode(ctx context.Context, dc DeviceCode) (Tokens, err
 		if remaining <= 0 {
 			return Tokens{}, ErrDeviceCodeTimeout
 		}
-		if err := c.wait(ctx, min(dc.Interval, remaining)); err != nil {
+		if err := c.wait(ctx, min(interval, remaining)); err != nil {
 			return Tokens{}, fmt.Errorf("llmauth: %s: %w", op, err)
 		}
 	}

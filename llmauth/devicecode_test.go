@@ -75,6 +75,22 @@ func TestWaitDeviceCode(t *testing.T) {
 	}
 }
 
+func TestWaitDeviceCodeZeroIntervalUsesDefault(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	f := newFakeAuthServer(t, now)
+	f.pollStatuses = []int{http.StatusForbidden}
+	clock := &fakeClock{now: now}
+	c := f.client()
+	c.now, c.sleep = clock.Now, clock.Sleep
+
+	if _, err := c.WaitDeviceCode(context.Background(), DeviceCode{DeviceAuthID: "dev-1", UserCode: "ABCD-1234"}); err != nil {
+		t.Fatalf("WaitDeviceCode: %v", err)
+	}
+	if len(clock.sleeps) != 1 || clock.sleeps[0] != 5*time.Second {
+		t.Fatalf("sleeps = %v, want one 5s wait", clock.sleeps)
+	}
+}
+
 func TestWaitDeviceCodeTimesOut(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	f := newFakeAuthServer(t, now)

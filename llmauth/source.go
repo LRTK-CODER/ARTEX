@@ -8,32 +8,49 @@ import (
 	"time"
 )
 
-// refreshBefore 는 만료 몇 분 전부터 미리 갱신할지다. Codex CLI 와 같다.
-const refreshBefore = 5 * time.Minute
+const (
+	// refreshBefore 는 만료 몇 분 전부터 미리 갱신할지다. Codex CLI 와 같다.
+	refreshBefore = 5 * time.Minute
+	// refreshTimeout 은 갱신과 저장 한 번에 주는 상한이다. 호출자 ctx 와 떼어 놓으므로 따로 둔다.
+	refreshTimeout = 30 * time.Second
+)
 
 // ErrNoTokens 는 저장소에 토큰이 없다는 뜻이다. 로그인이 필요하다. Store 구현은 이 오류를 감싸 올린다.
 var ErrNoTokens = errors.New("llmauth: no stored tokens")
 
-// Store 는 토큰을 영속하는 곳이다. 갱신마다 refresh 토큰이 회전하므로 Save 가 실패하면
-// 다음 프로세스는 다시 로그인해야 한다.
+// Store 는 토큰을 영속하는 곳이다. refresh 토큰은 갱신마다 회전하므로, 갱신과 저장을
+// 저장소의 잠금 안에서 함께 해야 여러 TokenSource·프로세스가 서로의 회전을 깨지 않는다.
 type Store interface {
 	// Load 는 저장된 토큰을 읽는다. 없으면 ErrNoTokens 를 감싸 올린다.
 	Load(ctx context.Context) (Tokens, error)
-	Save(ctx context.Context, tokens Tokens) error
+	// Refresh 는 저장된 토큰을 잠그고 다시 읽는다. 저장된 access token 이 staleAccessToken 과
+	// 다르면 다른 쪽이 이미 갱신한 것이므로 refresh 를 부르지 않고 그 토큰을 돌려준다.
+	// 같으면 refresh 를 불러 받은 토큰을 같은 잠금 안에서 저장하고 돌려준다.
+	// refresh 나 저장이 실패하면 아무것도 저장하지 않고 오류를 올린다(refresh 의 오류는 감싸 올린다).
+	Refresh(ctx context.Context, staleAccessToken string, refresh func(ctx context.Context, current Tokens) (Tokens, error)) (Tokens, error)
 }
 
 // TokenSource 는 Codex 백엔드 호출에 쓸 access token 을 건넨다. 만료 5분 전이면 갱신하고,
 // 같은 TokenSource 를 여러 goroutine 이 불러도 갱신은 한 번에 하나만 한다.
+// 토큰을 담고 있으므로 fmt 로 출력해도 내용은 보이지 않는다(String).
 type TokenSource struct {
 	client *Client
 	store  Store
 	now    func() time.Time
 
 	// lock 은 크기 1 채널이다. sync.Mutex 와 달리 기다리는 쪽이 ctx 취소로 빠질 수 있다.
+	// 아래 필드는 lock 을 잡고서만 읽고 쓴다.
 	lock      chan struct{}
 	tokens    Tokens
 	hasTokens bool
-	isStale   atomic.Bool
+	// pending 은 인증 서버가 회전해 준 뒤 저장하지 못한 토큰이다. 옛 refresh 토큰은 서버에서
+	// 이미 무효라서, 다음 갱신은 서버를 다시 부르지 않고 이 토큰의 저장을 다시 시도한다.
+	pending    Tokens
+	hasPending bool
+	// loginErr 는 다시 로그인해야 하는 갱신 오류다. 저장된 토큰이 바뀔 때까지 서버를 다시 부르지 않는다.
+	loginErr error
+
+	isStale atomic.Bool
 }
 
 // NewTokenSource 는 store 의 토큰을 client 로 갱신하는 TokenSource 를 만든다.
@@ -45,9 +62,17 @@ func NewTokenSource(client *Client, store Store, now func() time.Time) *TokenSou
 	return &TokenSource{client: client, store: store, now: now, lock: make(chan struct{}, 1)}
 }
 
+// String 은 토큰 원문을 숨긴다.
+func (s *TokenSource) String() string { return "llmauth.TokenSource{...}" }
+
+// GoString 은 %#v 에서도 토큰 원문을 숨긴다.
+func (s *TokenSource) GoString() string { return s.String() }
+
 // Token 은 유효한 access token 과 계정 ID 를 돌려준다.
 // 저장소에 토큰이 없으면 ErrNoTokens, 갱신이 거절되면 *TokenError 를 올린다.
-// 갱신은 성공했지만 저장에 실패하면 오류를 올린다. 새 토큰은 메모리에 남아 이 프로세스는 계속 쓴다.
+// 갱신과 저장은 호출자 ctx 의 취소와 떼어 최대 30초 동안 끝까지 한다. 회전된 토큰을 저장하기 전에
+// 멈추면 저장소의 refresh 토큰이 무효가 되기 때문이다. 그동안 호출자는 기다린다.
+// 갱신은 됐지만 저장이 실패하면 오류를 올리고, 다음 호출이 저장을 다시 시도한다.
 func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string, err error) {
 	select {
 	case s.lock <- struct{}{}:
@@ -56,16 +81,16 @@ func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string,
 	}
 	defer func() { <-s.lock }()
 
-	if !s.hasTokens {
-		tokens, err := s.store.Load(ctx)
-		if err != nil {
-			return "", "", fmt.Errorf("llmauth: load tokens: %w", err)
+	if !s.hasTokens || s.loginErr != nil {
+		if err := s.reload(ctx); err != nil {
+			return "", "", err
 		}
-		s.tokens, s.hasTokens = tokens, true
 	}
 	isExpiring := !s.now().Add(refreshBefore).Before(s.tokens.ExpiresAt)
-	if s.isStale.Swap(false) || isExpiring {
+	if s.isStale.Swap(false) || isExpiring || s.hasPending {
 		if err := s.refresh(ctx); err != nil {
+			// 갱신을 끝내지 못했으니 다음 호출도 다시 갱신하게 한다.
+			s.isStale.Store(true)
 			return "", "", err
 		}
 	}
@@ -78,20 +103,57 @@ func (s *TokenSource) Invalidate() {
 	s.isStale.Store(true)
 }
 
-func (s *TokenSource) refresh(ctx context.Context) error {
-	tokens, err := s.client.Refresh(ctx, s.tokens.RefreshToken)
+// reload 는 저장소에서 토큰을 읽는다. 다시 로그인해야 하는 상태라면 저장된 토큰이 바뀌었을 때만
+// (다시 로그인했을 때만) 그 상태를 푼다.
+func (s *TokenSource) reload(ctx context.Context) error {
+	tokens, err := s.store.Load(ctx)
 	if err != nil {
-		// 갱신이 실패했으니 다음 호출도 다시 갱신을 시도하게 한다.
-		s.isStale.Store(true)
-		return err
+		return fmt.Errorf("llmauth: load tokens: %w", err)
 	}
-	if tokens.IDToken == "" {
-		tokens.IDToken = s.tokens.IDToken
+	if s.loginErr != nil {
+		if tokens.AccessToken == s.tokens.AccessToken {
+			return s.loginErr
+		}
+		// 갱신 실패로 남은 표시는 옛 토큰에 대한 것이라 새로 로그인한 토큰에는 맞지 않는다.
+		s.loginErr = nil
+		s.hasPending, s.pending = false, Tokens{}
+		s.isStale.Store(false)
 	}
-	// 옛 refresh 토큰은 서버에서 이미 무효가 됐으므로 저장 결과와 관계없이 새 토큰을 쓴다.
-	s.tokens = tokens
-	if err := s.store.Save(ctx, tokens); err != nil {
-		return fmt.Errorf("llmauth: save refreshed tokens: %w", err)
-	}
+	s.tokens, s.hasTokens = tokens, true
 	return nil
+}
+
+func (s *TokenSource) refresh(ctx context.Context) error {
+	refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refreshTimeout)
+	defer cancel()
+	tokens, err := s.store.Refresh(refreshCtx, s.tokens.AccessToken, s.rotate)
+	if err != nil {
+		var tokenErr *TokenError
+		if errors.As(err, &tokenErr) && tokenErr.NeedsLogin() {
+			s.loginErr = err
+		}
+		return fmt.Errorf("llmauth: refresh tokens: %w", err)
+	}
+	// 저장소가 다른 쪽이 갱신한 토큰을 돌려줬어도 저장되지 않은 토큰은 쓸모가 없다.
+	s.tokens = tokens
+	s.hasPending, s.pending = false, Tokens{}
+	return nil
+}
+
+// rotate 는 Store.Refresh 가 잠금 안에서 부르는 갱신 함수다. 지난번에 회전만 하고 저장하지 못한
+// 토큰이 있으면 서버를 다시 부르지 않고 그것을 돌려준다.
+func (s *TokenSource) rotate(ctx context.Context, current Tokens) (Tokens, error) {
+	if s.hasPending {
+		return s.pending, nil
+	}
+	next, err := s.client.Refresh(ctx, current.RefreshToken)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if next.IDToken == "" {
+		next.IDToken = current.IDToken
+	}
+	// 서버는 이미 옛 refresh 토큰을 무효로 했다. 저장이 실패해도 잃지 않게 먼저 들고 있는다.
+	s.pending, s.hasPending = next, true
+	return next, nil
 }

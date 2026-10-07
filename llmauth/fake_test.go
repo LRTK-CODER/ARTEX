@@ -44,6 +44,10 @@ type fakeAuthServer struct {
 	validRefresh  string
 	usedRefreshes map[string]bool
 	refreshCalls  int
+	// failRefreshes 만큼 다음 refresh 를 500 으로 실패시킨다.
+	failRefreshes int
+	// onRefresh 는 refresh 가 성공해 응답하기 직전에 불린다.
+	onRefresh     func()
 	exchangeForms []url.Values
 	// pollStatuses 는 폴링 응답 상태를 차례로 정한다. 다 쓰면 성공을 돌려준다.
 	pollStatuses    []int
@@ -138,6 +142,14 @@ func (f *fakeAuthServer) token(w http.ResponseWriter, r *http.Request) {
 		if body["refresh_token"] != f.validRefresh {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
 			return
+		}
+		if f.failRefreshes > 0 {
+			f.failRefreshes--
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "server_error"})
+			return
+		}
+		if f.onRefresh != nil {
+			f.onRefresh()
 		}
 		f.issueLocked(w)
 	default:

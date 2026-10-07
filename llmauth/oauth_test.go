@@ -161,6 +161,7 @@ func TestTokenErrorHidesSecrets(t *testing.T) {
 	}{
 		{"error 문자열", http.StatusBadRequest, `{"error":"invalid_grant","error_description":"token ` + secret + ` bad","refresh_token":"` + secret + `"}`, ErrorCodeInvalidGrant},
 		{"error 객체", http.StatusUnauthorized, `{"error":{"code":"refresh_token_reused","message":"` + secret + `"}}`, ErrorCodeRefreshTokenReused},
+		{"error 가 null 이고 최상위 code", http.StatusUnauthorized, `{"error":null,"code":"refresh_token_reused","detail":"` + secret + `"}`, ErrorCodeRefreshTokenReused},
 		{"최상위 code", http.StatusUnauthorized, `{"code":"refresh_token_expired","detail":"` + secret + `"}`, ErrorCodeRefreshTokenExpired},
 		{"코드 자리에 비밀값", http.StatusBadRequest, `{"error":"` + secret + ` leaked here"}`, ""},
 		{"JSON 이 아닌 본문", http.StatusBadGateway, `<html>` + secret + `</html>`, ""},
@@ -221,11 +222,77 @@ func TestTokenResponseErrorsHideSecrets(t *testing.T) {
 	}
 }
 
-func TestTokensStringHidesSecrets(t *testing.T) {
-	tokens := Tokens{IDToken: "id-SECRET", AccessToken: "access-SECRET", RefreshToken: "refresh-SECRET", AccountID: "acct-1"}
-	for _, format := range []string{"%v", "%+v", "%#v", "%s"} {
-		if got := fmt.Sprintf(format, tokens); strings.Contains(got, "SECRET") {
-			t.Errorf("Sprintf(%q) = %q contains token", format, got)
+func TestStringHidesSecrets(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	tokens := Tokens{IDToken: "id-SECRET", AccessToken: "access-SECRET", RefreshToken: "refresh-SECRET", AccountID: "acct-1", ExpiresAt: now.Add(time.Hour)}
+	store := &memoryStore{tokens: tokens, hasTokens: true}
+	// 만료 전 토큰이라 갱신하지 않는다. Issuer 는 닿지 않는 주소로 두어 실제 서버를 부를 일이 없게 한다.
+	src := NewTokenSource(&Client{Issuer: "http://127.0.0.1:1"}, store, func() time.Time { return now })
+	if _, _, err := src.Token(context.Background()); err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+	values := map[string]any{
+		"Tokens":      tokens,
+		"TokenSource": src,
+		"PKCE":        PKCE{Verifier: "verifier-SECRET", Challenge: "challenge"},
+	}
+	for name, value := range values {
+		for _, format := range []string{"%v", "%+v", "%#v", "%s"} {
+			if got := fmt.Sprintf(format, value); strings.Contains(got, "SECRET") {
+				t.Errorf("%s Sprintf(%q) = %q contains secret", name, format, got)
+			}
 		}
+	}
+}
+
+func TestRedirectIsNotFollowed(t *testing.T) {
+	var otherHostGotBody bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otherHostGotBody = true
+	}))
+	t.Cleanup(other.Close)
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/steal", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(issuer.Close)
+
+	// 기본 HTTP 클라이언트를 쓰는 경로다(HTTPClient 를 넘기지 않는다).
+	c := &Client{Issuer: issuer.URL}
+	_, err := c.Refresh(context.Background(), "refresh-SECRET")
+	var tokenErr *TokenError
+	if !errors.As(err, &tokenErr) || tokenErr.StatusCode != http.StatusTemporaryRedirect {
+		t.Fatalf("err = %v, want TokenError status 307", err)
+	}
+	if otherHostGotBody {
+		t.Fatal("redirect target received the refresh request")
+	}
+}
+
+func TestResponseSizeLimit(t *testing.T) {
+	access := accessJWT(t, "acct-1", time.Unix(1_800_003_600, 0))
+	tests := []struct {
+		name    string
+		padding int
+		wantErr bool
+	}{
+		{"상한 안", 1000, false},
+		{"상한 넘음", maxResponseBytes, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// 공백은 JSON 으로 유효해서, 상한이 없으면 큰 응답도 정상으로 읽힌다.
+				fmt.Fprintf(w, `{"access_token":%q}%s`, access, strings.Repeat(" ", tc.padding))
+			}))
+			t.Cleanup(srv.Close)
+			c := &Client{HTTPClient: srv.Client(), Issuer: srv.URL}
+			_, err := c.Refresh(context.Background(), "r")
+			if tc.wantErr != errors.Is(err, ErrResponseTooLarge) {
+				t.Fatalf("err = %v, want too-large error %v", err, tc.wantErr)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("err = %v", err)
+			}
+		})
 	}
 }
