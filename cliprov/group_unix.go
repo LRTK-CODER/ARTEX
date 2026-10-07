@@ -6,6 +6,7 @@
 package cliprov
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -21,4 +22,10 @@ func killProcessGroup(cmd *exec.Cmd) error {
 		return nil
 	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+}
+
+// exitedOnItsOwn 은 자식이 신호로 죽지 않고 스스로 끝났는지 알려 준다. 취소·시간 초과는
+// 그룹에 SIGKILL 을 보내므로 그때 끝난 자식은 여기서 거짓이다.
+func exitedOnItsOwn(state *os.ProcessState) bool {
+	return state != nil && state.Exited()
 }

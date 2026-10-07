@@ -24,6 +24,12 @@ const DefaultMaxConcurrent = 3
 // DefaultTimeout 은 Config.Timeout 이 0 일 때 호출 하나의 상한이다.
 const DefaultTimeout = 10 * time.Minute
 
+// stderrGrace 는 자식이 끝난 뒤 stderr 의 EOF 를 기다리는 최대 시간이다
+// (exec.Cmd.WaitDelay 와 같은 생각). 그룹을 벗어난 손자(setsid)는 그룹 SIGKILL 이
+// 닿지 않아 stderr 를 계속 쥘 수 있다. 무기한 기다리면 Timeout 을 넘겨 슬롯과
+// 임시 디렉터리가 묶이므로, 넘으면 읽는 쪽을 닫는다.
+const stderrGrace = 2 * time.Second
+
 // stderrLimitBytes 는 오류 메시지 분류에 쓸 stderr 꼬리의 최대 크기다.
 const stderrLimitBytes = 64 << 10
 
@@ -233,14 +239,14 @@ func (r *Runner) start(ctx context.Context, args []string) (*Process, error) {
 		close(stderrDone)
 	}()
 
-	// 자식이 끝나면 그룹에 남은 손자를 정리한다. 이 goroutine 은 자식이 끝나면 끝나고,
-	// 자식은 runCtx 의 시간 초과로 반드시 끝난다.
+	// 자식이 끝나면 그룹에 남은 손자를 정리한다. 자식은 runCtx 의 시간 초과로 반드시
+	// 끝나고, stderr 는 stderrGrace 안에 닫히므로 이 goroutine 은 Timeout+stderrGrace 안에 끝난다.
 	go func() {
 		waitErr := cmd.Wait()
 		_ = killProcessGroup(cmd) // 이미 모두 끝났으면 실패하는 것이 정상이다
-		<-stderrDone
+		awaitStderr(stderrR, stderrDone)
 		p.exit = Exit{Code: cmd.ProcessState.ExitCode(), Stderr: stderr.String()}
-		p.err = waitError(ctx, runCtx, waitErr)
+		p.err = waitError(ctx, runCtx, cmd.ProcessState, waitErr)
 		_ = stdinW.Close() // provider 가 이미 닫았으면 오류가 나는 것이 정상이다
 		cleanup()
 		<-r.slots
@@ -249,9 +255,26 @@ func (r *Runner) start(ctx context.Context, args []string) (*Process, error) {
 	return p, nil
 }
 
+// awaitStderr 는 stderr 복사가 끝나기를 stderrGrace 만큼 기다리고, 넘으면 읽는 쪽을
+// 닫아 복사를 끝낸다. 그때까지 받은 stderr 는 버퍼에 남는다.
+func awaitStderr(stderrR *os.File, copied <-chan struct{}) {
+	grace := time.NewTimer(stderrGrace)
+	defer grace.Stop()
+	select {
+	case <-copied:
+	case <-grace.C:
+		_ = stderrR.Close() // 막힌 Read 를 깨운다. 복사 goroutine 의 두 번째 Close 는 실패해도 된다
+		<-copied
+	}
+}
+
 // waitError 는 cmd.Wait 결과를 provider 에게 줄 오류로 바꾼다. 0 이 아닌 종료 코드는
-// 오류가 아니다.
-func waitError(parent, run context.Context, err error) error {
+// 오류가 아니다. 자식이 스스로 끝났으면(신호로 죽지 않았으면) 그 뒤에 ctx 가 끝났어도
+// 종료 결과를 돌려준다. 취소·시간 초과로 그룹을 죽였다면 자식은 신호로 끝난다.
+func waitError(parent, run context.Context, state *os.ProcessState, err error) error {
+	if exitedOnItsOwn(state) {
+		return nil
+	}
 	if parent.Err() != nil {
 		return fmt.Errorf("cliprov: 호출 취소: %w", parent.Err())
 	}
