@@ -65,6 +65,27 @@ type LLMProfile struct {
 	// inherit the global policy (LLMRetryPolicy), so an untouched profile behaves
 	// exactly as before. See RetryOverride.
 	Retry RetryOverride `json:"retry"`
+	// AuthType 은 요청을 어떻게 인증할지 정한다. 빈 값은 저장할 때 AuthAPIKey 로 본다.
+	AuthType AuthType `json:"auth_type"`
+	// OAuth 는 chatgpt_oauth 프로필의 연결 상태다. ListProfiles 만 채운다.
+	// 토큰은 싣지 않는다. 토큰은 OAuthCredentials 로만 읽는다.
+	OAuth *OAuthStatus `json:"oauth,omitempty"`
+}
+
+// AuthType 은 LLM 프로필의 인증 방식이다. schema.sql 의 llm_profiles_auth_type_check 와 값이 같다.
+type AuthType string
+
+const (
+	// AuthAPIKey 는 api_key 열의 키로 인증한다(기존 동작).
+	AuthAPIKey AuthType = "api_key"
+	// AuthChatGPTOAuth 는 llm_oauth_credentials 의 ChatGPT 구독 OAuth 토큰으로 인증한다.
+	AuthChatGPTOAuth AuthType = "chatgpt_oauth"
+)
+
+// OAuthStatus 는 목록·UI에 보이는 OAuth 연결 상태다. 토큰을 담지 않는다.
+type OAuthStatus struct {
+	Connected bool      `json:"connected"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
 // RetryOverride is one profile's optional override of the three retry layers
@@ -80,22 +101,28 @@ type RetryOverride struct {
 // profileCols is the read column list (hint variant, no api key) shared by the
 // list query; profileColsKey is the same with api_key for the single-row loads.
 const profileRetryCols = `COALESCE(retry_connect_attempts,0),COALESCE(retry_connect_interval_ms,0),COALESCE(retry_empty_attempts,0),COALESCE(retry_empty_interval_ms,0),COALESCE(retry_stream_attempts,0),COALESCE(retry_stream_interval_ms,0)`
-const profileCols = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key_hint,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols
-const profileColsKey = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols
+const profileCols = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key_hint,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols + `,auth_type`
+const profileColsKey = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),model,COALESCE(api_key,''),rate_per_second,rate_per_minute,context_window_k,COALESCE(reasoning_effort,''),is_default,priority,pool_exclude,COALESCE(thinking_type,''),COALESCE(streaming,true),COALESCE(max_tokens,0),COALESCE(max_tokens_field,''),COALESCE(session_header_key,''),` + profileRetryCols + `,auth_type`
 
 // scanProfile reads one row in the profileCols / profileColsKey column order. The
 // 7th column lands in APIKeyHint or APIKey depending on which list the caller used.
-func scanProfile(sc interface{ Scan(...any) error }, into *string, p *LLMProfile) error {
-	return sc.Scan(&p.ID, &p.Name, &p.Format, &p.BaseURL, &p.Proxy, &p.Model, into,
+// extra 는 열 목록 뒤에 덧붙인 열의 대상이다.
+func scanProfile(sc interface{ Scan(...any) error }, into *string, p *LLMProfile, extra ...any) error {
+	dests := []any{&p.ID, &p.Name, &p.Format, &p.BaseURL, &p.Proxy, &p.Model, into,
 		&p.RatePerSecond, &p.RatePerMinute, &p.ContextWindowK, &p.ReasoningEffort, &p.IsDefault, &p.Priority, &p.PoolExclude, &p.ThinkingType, &p.Streaming,
 		&p.MaxTokens, &p.MaxTokensField, &p.SessionHeaderKey,
 		&p.Retry.Connect.Attempts, &p.Retry.Connect.IntervalMS,
 		&p.Retry.Empty.Attempts, &p.Retry.Empty.IntervalMS,
-		&p.Retry.Stream.Attempts, &p.Retry.Stream.IntervalMS)
+		&p.Retry.Stream.Attempts, &p.Retry.Stream.IntervalMS, &p.AuthType}
+	return sc.Scan(append(dests, extra...)...)
 }
 
+// ListProfiles 는 키 없이 힌트만 담은 프로필 목록을 돌려준다. chatgpt_oauth 프로필에는
+// 연결 여부와 만료 시각(OAuth)을 채운다. 토큰 열은 읽지 않는다.
 func (d *DB) ListProfiles() ([]*LLMProfile, error) {
-	rows, err := d.Query(`SELECT ` + profileCols + ` FROM llm_profiles ORDER BY id`)
+	rows, err := d.Query(`SELECT ` + profileCols + `,c.expires_at
+FROM llm_profiles LEFT JOIN llm_oauth_credentials c ON c.profile_id=llm_profiles.id
+ORDER BY llm_profiles.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +130,12 @@ func (d *DB) ListProfiles() ([]*LLMProfile, error) {
 	var out []*LLMProfile
 	for rows.Next() {
 		var p LLMProfile
-		if err := scanProfile(rows, &p.APIKeyHint, &p); err != nil {
+		var expiresAt sql.NullTime
+		if err := scanProfile(rows, &p.APIKeyHint, &p, &expiresAt); err != nil {
 			return nil, err
+		}
+		if p.AuthType == AuthChatGPTOAuth {
+			p.OAuth = &OAuthStatus{Connected: expiresAt.Valid, ExpiresAt: expiresAt.Time}
 		}
 		out = append(out, &p)
 	}
@@ -135,11 +166,14 @@ func (d *DB) ProfileByID(id int64) (*LLMProfile, error) {
 // PoolProfiles returns the failover chain in run order, api keys included: the
 // active profile first, then every other keyed profile that isn't excluded, by
 // priority DESC (id ASC to stay stable). Profiles without an api key can't serve
-// a request, so they never enter the chain. The ordering IS the policy — callers
+// a request, so they never enter the chain. chatgpt_oauth 프로필은 API 키 대신
+// 저장된 OAuth 자격 증명이 있으면 들어간다. The ordering IS the policy — callers
 // walk the slice front to back.
 func (d *DB) PoolProfiles() ([]*LLMProfile, error) {
 	rows, err := d.Query(`SELECT ` + profileColsKey + ` FROM llm_profiles
-WHERE COALESCE(api_key,'') <> '' AND (is_default OR NOT pool_exclude)
+WHERE (COALESCE(api_key,'') <> ''
+       OR (auth_type='chatgpt_oauth' AND EXISTS (SELECT 1 FROM llm_oauth_credentials c WHERE c.profile_id=llm_profiles.id)))
+  AND (is_default OR NOT pool_exclude)
 ORDER BY is_default DESC, priority DESC, id ASC`)
 	if err != nil {
 		return nil, err
@@ -157,6 +191,7 @@ ORDER BY is_default DESC, priority DESC, id ASC`)
 }
 
 // SaveProfile inserts (id==0) or updates a profile. Empty apiKey on update keeps existing.
+// 빈 AuthType 은 새로 만들 때 AuthAPIKey 이고, 수정할 때는 기존 값을 지킨다.
 func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {
 	hint := p.APIKeyHint
 	if len(p.APIKey) >= 4 {
@@ -164,22 +199,26 @@ func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {
 	}
 	r := p.Retry.Clamped()
 	if p.ID == 0 {
+		authType := p.AuthType
+		if authType == "" {
+			authType = AuthAPIKey
+		}
 		var id int64
-		err := d.QueryRow(`INSERT INTO llm_profiles(name,format,base_url,proxy,model,api_key,api_key_hint,rate_per_second,rate_per_minute,context_window_k,reasoning_effort,priority,pool_exclude,thinking_type,streaming,max_tokens,max_tokens_field,session_header_key,retry_connect_attempts,retry_connect_interval_ms,retry_empty_attempts,retry_empty_interval_ms,retry_stream_attempts,retry_stream_interval_ms)
-VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
+		err := d.QueryRow(`INSERT INTO llm_profiles(name,format,base_url,proxy,model,api_key,api_key_hint,rate_per_second,rate_per_minute,context_window_k,reasoning_effort,priority,pool_exclude,thinking_type,streaming,max_tokens,max_tokens_field,session_header_key,retry_connect_attempts,retry_connect_interval_ms,retry_empty_attempts,retry_empty_interval_ms,retry_stream_attempts,retry_stream_interval_ms,auth_type)
+VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,NULLIF($6,''),NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING id`,
 			p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.APIKey, hint, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
-			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS).Scan(&id)
+			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, authType).Scan(&id)
 		return id, err
 	}
 	if p.APIKey == "" {
-		_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,rate_per_second=$6,rate_per_minute=$7,context_window_k=$8,reasoning_effort=$9,priority=$10,pool_exclude=$11,thinking_type=$12,streaming=$13,max_tokens=$14,max_tokens_field=$15,session_header_key=$16,retry_connect_attempts=$17,retry_connect_interval_ms=$18,retry_empty_attempts=$19,retry_empty_interval_ms=$20,retry_stream_attempts=$21,retry_stream_interval_ms=$22 WHERE id=$23`,
+		_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,rate_per_second=$6,rate_per_minute=$7,context_window_k=$8,reasoning_effort=$9,priority=$10,pool_exclude=$11,thinking_type=$12,streaming=$13,max_tokens=$14,max_tokens_field=$15,session_header_key=$16,retry_connect_attempts=$17,retry_connect_interval_ms=$18,retry_empty_attempts=$19,retry_empty_interval_ms=$20,retry_stream_attempts=$21,retry_stream_interval_ms=$22,auth_type=COALESCE(NULLIF($23,''),auth_type) WHERE id=$24`,
 			p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
-			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.ID)
+			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, string(p.AuthType), p.ID)
 		return p.ID, err
 	}
-	_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,api_key=$6,api_key_hint=$7,rate_per_second=$8,rate_per_minute=$9,context_window_k=$10,reasoning_effort=$11,priority=$12,pool_exclude=$13,thinking_type=$14,streaming=$15,max_tokens=$16,max_tokens_field=$17,session_header_key=$18,retry_connect_attempts=$19,retry_connect_interval_ms=$20,retry_empty_attempts=$21,retry_empty_interval_ms=$22,retry_stream_attempts=$23,retry_stream_interval_ms=$24 WHERE id=$25`,
+	_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,api_key=$6,api_key_hint=$7,rate_per_second=$8,rate_per_minute=$9,context_window_k=$10,reasoning_effort=$11,priority=$12,pool_exclude=$13,thinking_type=$14,streaming=$15,max_tokens=$16,max_tokens_field=$17,session_header_key=$18,retry_connect_attempts=$19,retry_connect_interval_ms=$20,retry_empty_attempts=$21,retry_empty_interval_ms=$22,retry_stream_attempts=$23,retry_stream_interval_ms=$24,auth_type=COALESCE(NULLIF($25,''),auth_type) WHERE id=$26`,
 		p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.APIKey, hint, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
-		r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, p.ID)
+		r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, string(p.AuthType), p.ID)
 	return p.ID, err
 }
 
