@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/llmauth"
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
@@ -31,7 +32,7 @@ const (
 )
 
 // fakeTokens 는 차례로 정한 토큰을 돌려주는 손으로 만든 토큰 공급자다.
-// Invalidate 뒤에야 다음 토큰으로 넘어가 실제 TokenSource 처럼 갱신을 흉내 낸다.
+// 실제 TokenSource 처럼 지금 토큰을 Invalidate 했을 때만 다음 토큰으로 넘어간다.
 type fakeTokens struct {
 	mu            sync.Mutex
 	accessTokens  []string
@@ -51,10 +52,13 @@ func (f *fakeTokens) Token(context.Context) (string, string, error) {
 	return f.accessTokens[i], fakeAccountID, nil
 }
 
-func (f *fakeTokens) Invalidate() {
+func (f *fakeTokens) Invalidate(staleAccessToken string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.invalidations++
+	current := f.accessTokens[min(f.invalidations, len(f.accessTokens)-1)]
+	if staleAccessToken == current {
+		f.invalidations++
+	}
 }
 
 // codexServer 는 Codex 백엔드처럼 받은 요청을 기록하고, statuses 의 상태를 차례로 돌려준다.
@@ -108,7 +112,7 @@ var toolTurnSSE = sseEvent("response.created", `{"type":"response.created"}`) +
 func newOAuthProvider(t *testing.T, baseURL string, tokens OAuthTokenSource) llm.Provider {
 	t.Helper()
 	c := ConfigFrom("openai-responses", "gpt-5-codex", baseURL, "", "")
-	c.AuthType = AuthChatGPTOAuth
+	c.AuthType = db.AuthChatGPTOAuth
 	c.OAuthTokens = tokens
 	c.Retry.ConnectAttempts = -1 // Norma 재시도를 끄고 이 transport 의 재시도만 센다
 	prov, err := c.NewProvider()
@@ -313,7 +317,7 @@ func TestOAuthLoginRequiredIsHardFailure(t *testing.T) {
 			defer ts.Close()
 			tokens := &fakeTokens{err: tc.err}
 			c := ConfigFrom("openai-responses", "gpt-5-codex", ts.URL, "", "")
-			c.AuthType = AuthChatGPTOAuth
+			c.AuthType = db.AuthChatGPTOAuth
 			c.OAuthTokens = tokens
 			prov, err := c.NewProvider() // Norma 기본 재시도를 켠 채로 둔다
 			if err != nil {
@@ -382,7 +386,7 @@ func TestOAuthTokensNotInCaptureOrLogs(t *testing.T) {
 	}
 
 	c := ConfigFrom("openai-responses", "gpt-5-codex", ts.URL, "", "")
-	c.AuthType = AuthChatGPTOAuth
+	c.AuthType = db.AuthChatGPTOAuth
 	c.OAuthTokens = tokens
 	if _, _, err := TestConnection(context.Background(), c); err != nil {
 		t.Fatalf("TestConnection: %v", err)
@@ -408,7 +412,7 @@ func TestNewProviderRejectsInvalidOAuthConfig(t *testing.T) {
 	tokens := &fakeTokens{accessTokens: []string{fakeAccessToken}}
 	valid := func() Config {
 		c := ConfigFrom("openai-responses", "gpt-5-codex", "https://codex.example", "", "")
-		c.AuthType = AuthChatGPTOAuth
+		c.AuthType = db.AuthChatGPTOAuth
 		c.OAuthTokens = tokens
 		return c
 	}
@@ -432,5 +436,47 @@ func TestNewProviderRejectsInvalidOAuthConfig(t *testing.T) {
 				t.Fatal("NewProvider accepted an invalid OAuth config")
 			}
 		})
+	}
+}
+
+// TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv 는 BaseURL 이 빈 OAuth 프로필이 OPENAI_BASE_URL
+// 환경 변수의 주소로 토큰을 보내지 않는지 확인한다. Norma 는 빈 BaseURL 을 그 변수로 채운다.
+// 모든 요청을 테스트 프록시로 보내 실제 서버에는 닿지 않게 하고, 프록시가 본 대상과 헤더를 검사한다.
+func TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "http://relay.example.test/v1")
+	var mu sync.Mutex
+	var seen []string
+	var authorizations []string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.Host)
+		if a := r.Header.Get("Authorization"); a != "" {
+			authorizations = append(authorizations, a)
+		}
+		mu.Unlock()
+		// CONNECT 를 거절해 TLS 와 그 안의 헤더가 나가지 않게 한다.
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer proxy.Close()
+
+	c := ConfigFrom("openai-responses", "gpt-5-codex", "", "", proxy.URL)
+	c.AuthType = db.AuthChatGPTOAuth
+	c.OAuthTokens = &fakeTokens{accessTokens: []string{fakeAccessToken}}
+	c.Retry.ConnectAttempts = -1
+	prov, err := c.NewProvider()
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	if _, err := streamAll(context.Background(), prov, llm.CompletionRequest{Messages: []llm.Message{llm.UserText("hi")}}); err == nil {
+		t.Fatal("stream succeeded through a proxy that rejects everything")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(authorizations) != 0 {
+		t.Fatalf("proxy saw Authorization headers %q (requests %v)", authorizations, seen)
+	}
+	if len(seen) != 1 || seen[0] != "CONNECT chatgpt.com:443" {
+		t.Fatalf("proxy saw %v, want one CONNECT to the Codex backend", seen)
 	}
 }

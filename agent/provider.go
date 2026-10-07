@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/compaction"
@@ -77,10 +78,10 @@ type Config struct {
 	// Retry 是该配置解析后的重试参数(profile 覆盖 → 全局策略 → 内置默认,由
 	// server 侧解析)。三层的含义见 RetryConfig;零值 = 完全沿用内置默认。
 	Retry RetryConfig
-	// AuthType 이 AuthChatGPTOAuth 면 APIKey 대신 OAuthTokens 의 토큰으로 Codex 백엔드를 부른다.
-	// 빈 값은 AuthAPIKey 다.
-	AuthType AuthType
-	// OAuthTokens 는 AuthChatGPTOAuth 일 때 필요하다. 다른 방식에서는 쓰지 않는다.
+	// AuthType 이 db.AuthChatGPTOAuth 면 APIKey 대신 OAuthTokens 의 토큰으로 Codex 백엔드를 부른다.
+	// 빈 값은 db.AuthAPIKey 다.
+	AuthType db.AuthType
+	// OAuthTokens 는 db.AuthChatGPTOAuth 일 때 필요하다. 다른 방식에서는 쓰지 않는다.
 	OAuthTokens OAuthTokenSource
 }
 
@@ -259,14 +260,14 @@ func (c Config) Provider() string {
 // limiter lives on the single provider instance — so planner + all workers +
 // main agent (which share this provider) are bounded by one shared rate limit.
 //
-// AuthChatGPTOAuth 는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true 만
+// db.AuthChatGPTOAuth 는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true 만
 // 받으므로 비스트리밍 경로(Provider.Complete)는 SSE 응답을 JSON 으로 읽다가 실패하기 때문이다.
 func (c Config) NewProvider() (llm.Provider, error) {
-	apiKey := c.APIKey
+	apiKey, baseURL := c.APIKey, c.BaseURL
 	var tokens OAuthTokenSource
 	switch c.AuthType {
-	case "", AuthAPIKey:
-	case AuthChatGPTOAuth:
+	case "", db.AuthAPIKey:
+	case db.AuthChatGPTOAuth:
 		if c.OAuthTokens == nil {
 			return nil, fmt.Errorf("llm: auth type %s requires a token source", c.AuthType)
 		}
@@ -279,6 +280,9 @@ func (c Config) NewProvider() (llm.Provider, error) {
 		tokens = c.OAuthTokens
 		// 비우면 Norma 가 OPENAI_API_KEY 로 채운다. 실제 헤더는 oauthTransport 가 덮어쓴다.
 		apiKey = oauthAPIKeyPlaceholder
+		if baseURL == "" {
+			baseURL = codexBaseURL
+		}
 	default:
 		return nil, fmt.Errorf("llm: unknown auth type %q", c.AuthType)
 	}
@@ -288,7 +292,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	}
 	lc := llm.Config{
 		Format:     c.Format,
-		BaseURL:    c.BaseURL,
+		BaseURL:    baseURL,
 		APIKey:     apiKey,
 		Model:      c.Model,
 		HTTPClient: client,

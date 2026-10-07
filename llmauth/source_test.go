@@ -167,10 +167,11 @@ func TestTokenSourcesShareStore(t *testing.T) {
 
 	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401 을 준 것처럼 둘 다 Invalidate 한다.
 	for _, src := range []*TokenSource{first, second} {
-		if _, _, err := src.Token(ctx); err != nil {
+		access, _, err := src.Token(ctx)
+		if err != nil {
 			t.Fatal(err)
 		}
-		src.Invalidate()
+		src.Invalidate(access)
 	}
 	a, _, err := first.Token(ctx)
 	if err != nil {
@@ -199,7 +200,7 @@ func TestTokenSourceInvalidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src.Invalidate()
+	src.Invalidate(first)
 	second, _, err := src.Token(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -211,6 +212,51 @@ func TestTokenSourceInvalidate(t *testing.T) {
 	calls, _ := f.counts()
 	if first == second || second != third || calls != 1 {
 		t.Fatalf("Invalidate: changed=%v stable=%v refreshCalls=%d, want one refresh", first != second, second == third, calls)
+	}
+}
+
+// TestTokenSourceRefreshesOnceForConcurrentRejections 는 여러 요청이 같은 옛 토큰으로 401 을 받아
+// 저마다 Invalidate 해도 갱신은 한 번만 하는지 확인한다.
+func TestTokenSourceRefreshesOnceForConcurrentRejections(t *testing.T) {
+	const callers = 8
+	now := time.Unix(1_800_000_000, 0)
+	f := newFakeAuthServer(t, now)
+	store := storedTokens(t, "refresh-0", now.Add(time.Hour))
+	src := NewTokenSource(f.client(), store, func() time.Time { return now })
+	ctx := context.Background()
+
+	var allHaveOldToken, done sync.WaitGroup
+	allHaveOldToken.Add(callers)
+	results := make([]string, callers)
+	errs := make([]error, callers)
+	for i := range callers {
+		done.Add(1)
+		go func() {
+			defer done.Done()
+			old, _, err := src.Token(ctx)
+			allHaveOldToken.Done()
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			// 모두 옛 토큰을 들고 백엔드에서 401 을 받은 뒤에야 거부를 알린다.
+			allHaveOldToken.Wait()
+			src.Invalidate(old)
+			results[i], _, errs[i] = src.Token(ctx)
+		}()
+	}
+	done.Wait()
+
+	for i := range callers {
+		if errs[i] != nil {
+			t.Fatalf("caller %d: %v", i, errs[i])
+		}
+		if results[i] != results[0] {
+			t.Fatalf("caller %d got a different access token", i)
+		}
+	}
+	if calls, _ := f.counts(); calls != 1 {
+		t.Fatalf("refresh calls = %d, want 1", calls)
 	}
 }
 
@@ -226,7 +272,7 @@ func TestTokenSourceRetriesAfterFailedRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src.Invalidate()
+	src.Invalidate(before)
 	if _, _, err := src.Token(ctx); err == nil {
 		t.Fatal("Token after failed refresh: err = nil")
 	}
@@ -314,7 +360,8 @@ func TestTokenSourceRetriesSaveAfterCommitFailure(t *testing.T) {
 	}
 	// 재시작 흉내: 새 TokenSource 가 저장소만 보고 재로그인 없이 쓸 수 있어야 한다.
 	restarted := NewTokenSource(f.client(), store, clock)
-	restarted.Invalidate()
+	stored, _ = store.snapshot()
+	restarted.Invalidate(stored.AccessToken)
 	if _, _, err := restarted.Token(ctx); err != nil {
 		t.Fatalf("after restart: %v", err)
 	}

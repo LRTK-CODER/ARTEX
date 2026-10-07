@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
@@ -49,8 +49,14 @@ type TokenSource struct {
 	hasPending bool
 	// loginErr 는 다시 로그인해야 하는 갱신 오류다. 저장된 토큰이 바뀔 때까지 서버를 다시 부르지 않는다.
 	loginErr error
+	// mustRefresh 는 Invalidate 로 요청된 갱신을 끝내지 못했다는 표시다. 다음 호출이 다시 갱신한다.
+	mustRefresh bool
 
-	isStale atomic.Bool
+	// rejectedMu 는 rejected 를 지킨다. Invalidate 는 lock 을 기다리지 않아야 하므로 따로 둔다.
+	rejectedMu sync.Mutex
+	// rejected 는 백엔드가 거부해 Invalidate 로 넘어온 access token 이다. 다음 Token 이 지금 토큰과
+	// 견주고 비운다. 이미 갱신돼 지난 토큰이면 다시 갱신하지 않는다.
+	rejected map[string]struct{}
 }
 
 // NewTokenSource 는 store 의 토큰을 client 로 갱신하는 TokenSource 를 만든다.
@@ -87,20 +93,37 @@ func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string,
 		}
 	}
 	isExpiring := !s.now().Add(refreshBefore).Before(s.tokens.ExpiresAt)
-	if s.isStale.Swap(false) || isExpiring || s.hasPending {
+	if s.takeRejected(s.tokens.AccessToken) || s.mustRefresh || isExpiring || s.hasPending {
 		if err := s.refresh(ctx); err != nil {
 			// 갱신을 끝내지 못했으니 다음 호출도 다시 갱신하게 한다.
-			s.isStale.Store(true)
+			s.mustRefresh = true
 			return "", "", err
 		}
+		s.mustRefresh = false
 	}
 	return s.tokens.AccessToken, s.tokens.AccountID, nil
 }
 
-// Invalidate 는 지금 토큰을 버리게 해 다음 Token 호출이 갱신하게 한다.
-// Codex 백엔드가 401 을 돌려줄 때 부른다.
-func (s *TokenSource) Invalidate() {
-	s.isStale.Store(true)
+// Invalidate 는 staleAccessToken 이 지금 토큰이면 다음 Token 호출이 갱신하게 한다.
+// Codex 백엔드가 그 토큰에 401 을 돌려줄 때 부른다. 여러 요청이 같은 옛 토큰으로 401 을 받아도
+// 갱신은 한 번만 한다. 이미 갱신돼 지난 토큰이면 아무것도 하지 않는다.
+func (s *TokenSource) Invalidate(staleAccessToken string) {
+	s.rejectedMu.Lock()
+	defer s.rejectedMu.Unlock()
+	if s.rejected == nil {
+		s.rejected = make(map[string]struct{})
+	}
+	s.rejected[staleAccessToken] = struct{}{}
+}
+
+// takeRejected 는 current 가 거부된 토큰인지 알려 주고 기록을 비운다. 남은 기록은 모두 current 보다
+// 앞선 토큰이라 다시 볼 일이 없다. lock 을 잡고 부른다.
+func (s *TokenSource) takeRejected(current string) bool {
+	s.rejectedMu.Lock()
+	defer s.rejectedMu.Unlock()
+	_, isRejected := s.rejected[current]
+	clear(s.rejected)
+	return isRejected
 }
 
 // reload 는 저장소에서 토큰을 읽는다. 다시 로그인해야 하는 상태라면 저장된 토큰이 바뀌었을 때만
@@ -117,7 +140,7 @@ func (s *TokenSource) reload(ctx context.Context) error {
 		// 갱신 실패로 남은 표시는 옛 토큰에 대한 것이라 새로 로그인한 토큰에는 맞지 않는다.
 		s.loginErr = nil
 		s.hasPending, s.pending = false, Tokens{}
-		s.isStale.Store(false)
+		s.mustRefresh = false
 	}
 	s.tokens, s.hasTokens = tokens, true
 	return nil

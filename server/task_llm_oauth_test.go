@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/llmauth"
 	"github.com/Autumn-27/norma/llm"
 )
@@ -20,7 +21,7 @@ func (loginRequiredTokens) Token(context.Context) (string, string, error) {
 	return "", "", fmt.Errorf("load: %w", llmauth.ErrNoTokens)
 }
 
-func (loginRequiredTokens) Invalidate() {}
+func (loginRequiredTokens) Invalidate(string) {}
 
 // TestTaskLLMDoesNotRetryChatGPTLoginRequired 는 ChatGPT 구독 로그인이 필요하다는 오류를
 // 작업 체인이 같은 프로필에서 다시 시도할 일시 오류로 보지 않는지 확인한다.
@@ -32,7 +33,7 @@ func TestTaskLLMDoesNotRetryChatGPTLoginRequired(t *testing.T) {
 	defer ts.Close()
 
 	c := agent.ConfigFrom("openai-responses", "gpt-5-codex", ts.URL, "", "")
-	c.AuthType = agent.AuthChatGPTOAuth
+	c.AuthType = db.AuthChatGPTOAuth
 	c.OAuthTokens = loginRequiredTokens{}
 	prov, err := c.NewProvider()
 	if err != nil {
