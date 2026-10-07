@@ -51,6 +51,8 @@ type Server struct {
 	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL 이다.
 	// 테스트만 httptest 주소로 바꾼다. 설정·환경 변수로 바꾸는 길은 두지 않는다(codexURL).
 	codexBaseURL string
+	// loginFlows 는 진행 중인 ChatGPT 구독 로그인 흐름이다. 메모리에만 둔다(chatgpt_login.go).
+	loginFlows loginFlows
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -968,6 +970,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/llm/profiles", s.pgSaveProfile)
 	mux.HandleFunc("DELETE /api/llm/profiles/{id}", s.pgDeleteProfile)
 	mux.HandleFunc("POST /api/llm/profiles/active", s.pgActivateProfile)
+	mux.HandleFunc("POST /api/llm/oauth/chatgpt/start", s.startChatGPTLogin)
+	mux.HandleFunc("POST /api/llm/oauth/chatgpt/complete", s.completeChatGPTLogin)
+	mux.HandleFunc("POST /api/llm/oauth/chatgpt/device", s.startChatGPTDeviceLogin)
+	mux.HandleFunc("GET /api/llm/oauth/chatgpt/device/{id}", s.chatGPTDeviceLoginStatus)
+	mux.HandleFunc("POST /api/llm/oauth/chatgpt/disconnect", s.disconnectChatGPT)
 	mux.HandleFunc("GET /api/llm/retry-policy", s.pgGetLLMRetryPolicy)
 	mux.HandleFunc("POST /api/llm/retry-policy", s.pgSaveLLMRetryPolicy)
 	mux.HandleFunc("GET /api/llm/pool", s.pgLLMPoolStatus)
