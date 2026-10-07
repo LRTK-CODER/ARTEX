@@ -27,9 +27,11 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
-import type { LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
+import { oauthConnection } from "@/lib/chatgpt-oauth";
+import type { LLMAuthType, LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { ChatGPTAccount } from "./_components/chatgpt-login";
 import { ProfileRetryFields, RetryPolicyPanel, ZERO_OVERRIDE } from "./_components/retry";
 
 // 思考开关(thinking.type)与思考强度(reasoning_effort)是两个【互相独立】的字段，
@@ -75,7 +77,15 @@ function cooldownText(secs: number) {
 // 其余状态来自轮询的熔断记录（轮询关着时不会产生新记录，此时「正常」= 没有已知故障）。
 type Health = { label: string; cls: string; hint?: string };
 function healthOf(p: LLMProfile, m?: LLMPoolMember): Health {
-  if (!p.api_key_hint) {
+  // 구독 프로필은 키가 없으므로 키 대신 로그인 상태를 먼저 본다.
+  const connection = p.auth_type === "chatgpt_oauth" ? oauthConnection(p.oauth) : null;
+  if (connection === "disconnected") {
+    return { label: "ChatGPT 연결 안 됨", cls: "border-muted-foreground/40 text-muted-foreground" };
+  }
+  if (connection === "needs_login") {
+    return { label: "재로그인 필요", cls: "border-amber-500/50 text-amber-600 dark:text-amber-400" };
+  }
+  if (!connection && !p.api_key_hint) {
     return {
       label: "未配置 Key",
       cls: "border-muted-foreground/40 text-muted-foreground",
@@ -307,9 +317,11 @@ function ProfileSheet({
   profile: LLMProfile | null; // null = 新建
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onSaved: (id: string) => void;
+  // needsLogin: 새로 만든 구독 프로필이라 바로 로그인 화면을 다시 열어야 한다.
+  onSaved: (id: string, needsLogin: boolean) => void;
 }) {
   const isNew = !profile;
+  const [authType, setAuthType] = React.useState<LLMAuthType>("api_key");
   const [name, setName] = React.useState("");
   const [format, setFormat] = React.useState<"anthropic" | "openai" | "openai-responses">("anthropic");
   const [model, setModel] = React.useState("");
@@ -340,6 +352,7 @@ function ProfileSheet({
   React.useEffect(() => {
     if (!open) return;
     setName(profile?.name ?? "");
+    setAuthType(profile?.auth_type ?? "api_key");
     setFormat(profile?.format === "openai" || profile?.format === "openai-responses" ? profile.format : "anthropic");
     setModel(profile?.model ?? "");
     setBaseUrl(profile?.base_url ?? "");
@@ -363,13 +376,18 @@ function ProfileSheet({
   }, [open, profile]);
 
   const profileId = profile ? Number(profile.id) : undefined;
+  // 구독은 서버가 형식(Responses)·스트리밍·주소를 고정한다. 화면도 같은 값으로 보내고 보인다.
+  const isOAuth = authType === "chatgpt_oauth";
+  const effectiveFormat = isOAuth ? "openai-responses" : format;
+  // 로그인·해제 뒤 카드 목록만 새로 읽는다. 참조가 바뀌면 디바이스 폴링이 다시 걸리므로 고정한다.
+  const handleAccountChanged = React.useCallback(() => onSaved(profile?.id ?? "", false), [onSaved, profile]);
 
   async function loadModels() {
     if (loadingModels) return;
     setLoadingModels(true);
     setModels([]);
     try {
-      const r = await api.fetchLLMModels(format, baseUrl, apiKey, proxy, profileId);
+      const r = await api.fetchLLMModels(effectiveFormat, baseUrl, apiKey, proxy, profileId, authType);
       if (r.ok && r.models && r.models.length > 0) {
         setModels(r.models);
         setModelsOpen(true);
@@ -391,7 +409,7 @@ function ProfileSheet({
       // 用配置实际会跑的思考参数来测，这样不支持该字段的模型在这里就失败，
       // 而不是等到跑任务时才炸。传 profile id：Key 输入框留空时用已存的 Key。
       const r = await api.testLLM(
-        format,
+        effectiveFormat,
         model,
         baseUrl,
         apiKey,
@@ -399,8 +417,9 @@ function ProfileSheet({
         toStore(thinkingType),
         toStore(effort),
         profileId,
-        streaming,
+        isOAuth || streaming,
         sessionHeaderKey.trim(),
+        authType,
       );
       // 回复内容一并展示：看得见模型确实说了话，才算和会话里跑通是一回事。
       if (r.ok)
@@ -426,11 +445,11 @@ function ProfileSheet({
       const { id } = await api.saveLLMProfile({
         ...(profile ? { id: Number(profile.id) } : {}),
         name: name.trim(),
-        format,
+        format: effectiveFormat,
         model: model.trim(),
-        base_url: baseUrl.trim(),
+        base_url: isOAuth ? "" : baseUrl.trim(),
         proxy: proxy.trim(),
-        api_key: apiKey,
+        api_key: isOAuth ? "" : apiKey,
         rate_per_second: Number(rps) || 0,
         rate_per_minute: Number(rpm) || 0,
         context_window_k: Number(cw) || 0,
@@ -438,17 +457,21 @@ function ProfileSheet({
         reasoning_effort: toStore(effort),
         priority: Number(priority) || 0,
         pool_exclude: poolExclude,
-        streaming,
+        streaming: isOAuth || streaming,
         max_tokens: Math.max(0, Number(maxTokens) || 0),
         // 字段名开关只对 openai(Chat Completions) 有意义，其它格式一律回落到默认；
         // 后端也会再做一次同样的归一化，这里只是别让 UI 送出自相矛盾的值。
-        max_tokens_field: format === "openai" ? toStore(maxTokensField) : "",
+        max_tokens_field: effectiveFormat === "openai" ? toStore(maxTokensField) : "",
         session_header_key: sessionHeaderKey.trim(),
         retry,
+        auth_type: authType,
       });
-      if (isNew) toast.success(`已新建：${name.trim()}（在卡片上「设为激活」以启用）`);
+      // 로그인 API는 저장된 구독 프로필에만 열린다. 방식을 바꿔 저장했으면 화면을 다시 열어 로그인하게 한다.
+      const needsLogin = isOAuth && profile?.auth_type !== "chatgpt_oauth";
+      if (needsLogin) toast.success(`저장했습니다: ${name.trim()}. 이제 ChatGPT에 로그인하세요`);
+      else if (isNew) toast.success(`已新建：${name.trim()}（在卡片上「设为激活」以启用）`);
       else toast.success(profile?.is_default ? "已保存，激活配置即时生效，无需重启" : "已保存");
-      onSaved(String(id));
+      onSaved(String(id), needsLogin);
       onOpenChange(false);
     } catch (e) {
       toast.error(`保存失败：${(e as Error).message}`);
@@ -491,6 +514,23 @@ function ProfileSheet({
               />
             </div>
             <div className="grid gap-2">
+              <Label>인증 방식</Label>
+              <Select value={authType} onValueChange={(v) => setAuthType(v as LLMAuthType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="api_key">API Key</SelectItem>
+                  <SelectItem value="chatgpt_oauth">ChatGPT 구독</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {isOAuth ? (
+            <ChatGPTAccount profile={profile} onChanged={handleAccountChanged} />
+          ) : (
+            <div className="grid gap-2">
               <Label>格式</Label>
               <Select value={format} onValueChange={(v) => setFormat(v as "anthropic" | "openai" | "openai-responses")}>
                 <SelectTrigger>
@@ -503,7 +543,7 @@ function ProfileSheet({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="p-model">模型</Label>
@@ -552,16 +592,18 @@ function ProfileSheet({
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="p-base-url">Base URL（可选）</Label>
-            <Input
-              id="p-base-url"
-              className="font-mono"
-              placeholder="https://api.openai.com/v1"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-          </div>
+          {!isOAuth && (
+            <div className="grid gap-2">
+              <Label htmlFor="p-base-url">Base URL（可选）</Label>
+              <Input
+                id="p-base-url"
+                className="font-mono"
+                placeholder="https://api.openai.com/v1"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+              />
+            </div>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="p-proxy">代理（可选）</Label>
@@ -594,16 +636,18 @@ function ProfileSheet({
             </p>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="p-api-key">API Key</Label>
-            <Input
-              id="p-api-key"
-              type="password"
-              placeholder={keyHint ? `已设置（${keyHint}），留空保持不变` : "sk-…"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-          </div>
+          {!isOAuth && (
+            <div className="grid gap-2">
+              <Label htmlFor="p-api-key">API Key</Label>
+              <Input
+                id="p-api-key"
+                type="password"
+                placeholder={keyHint ? `已设置（${keyHint}），留空保持不变` : "sk-…"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="grid gap-2">
@@ -660,7 +704,7 @@ function ProfileSheet({
               </div>
               <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="不参与轮询" />
             </div>
-            <div className="flex items-center justify-between gap-4 border-t pt-3">
+            <div className={cn("flex items-center justify-between gap-4 border-t pt-3", isOAuth && "hidden")}>
               <div className="grid gap-0.5">
                 <Label className="text-sm">流式输出 · streaming</Label>
                 <p className="text-muted-foreground text-xs">
@@ -698,12 +742,12 @@ function ProfileSheet({
             <div className="flex items-center justify-between gap-4 border-t pt-3">
               <div className="grid gap-0.5">
                 <Label className="text-sm">上限字段名</Label>
-                <p className="text-muted-foreground text-xs">{MAX_TOKENS_FIELD_HINTS[format]}</p>
+                <p className="text-muted-foreground text-xs">{MAX_TOKENS_FIELD_HINTS[effectiveFormat]}</p>
               </div>
               <Select
-                value={format === "openai" ? maxTokensField : NONE}
+                value={effectiveFormat === "openai" ? maxTokensField : NONE}
                 onValueChange={setMaxTokensField}
-                disabled={format !== "openai"}
+                disabled={effectiveFormat !== "openai"}
               >
                 <SelectTrigger className="w-56 shrink-0">
                   <SelectValue />
@@ -807,13 +851,27 @@ export default function LLMPage() {
   }, []);
 
   const load = React.useCallback(async () => {
+    let loaded: LLMProfile[] = [];
     try {
-      setProfiles(await api.llmProfiles());
+      loaded = await api.llmProfiles();
+      setProfiles(loaded);
     } catch {
       /* ignore */
     }
     await loadPool();
+    return loaded;
   }, [loadPool]);
+
+  // 구독 방식으로 막 저장한 프로필은 저장된 상태로 다시 열어야 로그인 버튼이 생긴다.
+  const handleSaved = React.useCallback(
+    (id: string, needsLogin: boolean) => {
+      void load().then((loaded) => {
+        const saved = needsLogin ? loaded.find((p) => p.id === id) : undefined;
+        if (saved) openEditor(saved);
+      });
+    },
+    [load, openEditor],
+  );
 
   React.useEffect(() => {
     void load();
@@ -928,6 +986,7 @@ export default function LLMPage() {
 
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-muted-foreground text-xs">
                       {p.api_key_hint && <span>{p.api_key_hint}</span>}
+                      {p.oauth?.plan && <span>ChatGPT {p.oauth.plan}</span>}
                       <span>
                         {p.rate_per_second}/s · {p.rate_per_minute}/min
                       </span>
@@ -983,7 +1042,7 @@ export default function LLMPage() {
         </TabsContent>
       </Tabs>
 
-      <ProfileSheet profile={editing} open={editOpen} onOpenChange={setEditOpen} onSaved={() => void load()} />
+      <ProfileSheet profile={editing} open={editOpen} onOpenChange={setEditOpen} onSaved={handleSaved} />
       <PoolSheet open={poolOpen} onOpenChange={setPoolOpen} pool={pool} onReload={loadPool} />
     </div>
   );

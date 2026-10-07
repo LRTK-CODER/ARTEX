@@ -1056,6 +1056,41 @@ export interface LLMProfile {
   session_header_key?: string;
   // 本配置对重试的覆盖（建连/空响应/同 provider 安全窗口）。留空/全 0 = 跟随全局策略。
   retry?: LLMRetryOverride;
+  // 인증 방식. 옛 응답에는 없을 수 있어 비면 api_key로 본다.
+  auth_type?: LLMAuthType;
+  // chatgpt_oauth 프로필의 연결 상태. 토큰은 서버가 싣지 않는다.
+  oauth?: LLMProfileOAuth;
+}
+
+export type LLMAuthType = "api_key" | "chatgpt_oauth";
+
+export interface LLMProfileOAuth {
+  connected: boolean;
+  expires_at?: string;
+  // 마지막 토큰 갱신이 재로그인을 요구하며 거절됐다(서버 메모리 상태라 재시작 뒤 false).
+  needs_login: boolean;
+  plan?: string;
+}
+
+// ChatGPT 구독 로그인 API 응답. flow_id 외에 토큰·code·state는 오지 않는다.
+export interface ChatGPTLoginStart {
+  flow_id: string;
+  authorize_url: string;
+  expires_at: string;
+}
+
+export interface ChatGPTDeviceStart {
+  flow_id: string;
+  user_code: string;
+  verification_url: string;
+  expires_at: string;
+}
+
+export type ChatGPTDeviceStatus = "pending" | "succeeded" | "failed" | "expired";
+
+export interface ChatGPTDevicePoll {
+  status: ChatGPTDeviceStatus;
+  code?: string;
 }
 
 // ---- LLM 重试策略 ----

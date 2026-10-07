@@ -20,6 +20,9 @@ import type {
   BatchCategoryItem,
   BatchControlItem,
   ChatAttachment,
+  ChatGPTDevicePoll,
+  ChatGPTDeviceStart,
+  ChatGPTLoginStart,
   CommandRecord,
   Company,
   CompanyScopeMutation,
@@ -54,6 +57,7 @@ import type {
   InterceptRule,
   JudgeConfig,
   JudgeUsage,
+  LLMAuthType,
   LLMPoolStatus,
   LLMProfile,
   LLMRecordDetail,
@@ -106,6 +110,19 @@ import type {
   WorkspaceListing,
 } from "@/lib/types";
 
+// ApiError 는 서버 오류 응답이다. 화면 문구를 서버 문구 대신 code로 고르는 곳(ChatGPT 로그인)이 쓴다.
+// code가 없는 오류(예: DB 미연결 503)도 있으므로 code는 선택이다.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("artex_token");
@@ -133,15 +150,17 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
   if (!r.ok) {
     const fallback = `${init?.method ?? "GET"} ${path}: ${r.status}`;
     let message = fallback;
+    let code: string | undefined;
     try {
-      const payload = (await r.json()) as { error?: unknown };
+      const payload = (await r.json()) as { error?: unknown; code?: unknown };
       if (typeof payload.error === "string" && payload.error.trim()) {
         message = payload.error.trim();
       }
+      if (typeof payload.code === "string" && payload.code) code = payload.code;
     } catch {
       // Keep the status-based fallback for empty or non-JSON error responses.
     }
-    throw new Error(message);
+    throw new ApiError(message, r.status, code);
   }
   if (r.status === 204) return undefined as T;
   return r.json();
@@ -825,8 +844,7 @@ export const api = {
   // 渠道是多实例资源（同一类型可配多个机器人、各有过滤规则），因此独立成组，
   // 不塞进扁平的 settings 键值里。
   notifyMeta: () => get<NotificationMeta>(`/notify/meta`),
-  notifyChannels: () =>
-    get<{ channels: NotificationChannel[] }>(`/notify/channels`).then((r) => arr(r.channels)),
+  notifyChannels: () => get<{ channels: NotificationChannel[] }>(`/notify/channels`).then((r) => arr(r.channels)),
   notifyCreateChannel: (payload: {
     name: string;
     kind: string;
@@ -941,6 +959,7 @@ export const api = {
     profile_id?: number,
     streaming = true, // 用该配置真实的收发模式来测，别让"流式能通、非流式不通"漏到会话里
     session_header_key = "", // 非空=测试请求也带该自定义会话头（值为一次性 session id）
+    auth_type: LLMAuthType = "api_key", // 저장 전 화면에서 고른 인증 방식으로 시험한다
   ) =>
     // reply = 模型实际回复(已截断);一个字都不回的配置后端直接判失败
     post<{ ok: boolean; error?: string; latency_ms?: number; model?: string; reply?: string }>("/llm/test", {
@@ -954,6 +973,7 @@ export const api = {
       profile_id,
       streaming,
       session_header_key,
+      auth_type,
     }),
   llmProfiles: () => get<{ profiles: LLMProfile[] }>("/llm/profiles").then((r) => arr(r.profiles)),
   saveLLMProfile: (p: {
@@ -976,6 +996,7 @@ export const api = {
     max_tokens_field?: string; // ""=max_tokens(默认) | "max_completion_tokens"（仅 openai 格式）
     session_header_key?: string; // 非空=每次请求带该 HTTP 头，头值=当前会话 session id；""=不发送
     retry?: LLMRetryOverride; // 本配置的重试覆盖；各项留 0 = 跟随全局重试策略
+    auth_type?: LLMAuthType; // chatgpt_oauth면 서버가 형식·스트리밍·주소를 고정하고 키를 비운다
   }) => post<{ id: number }>("/llm/profiles", p),
   deleteLLMProfile: (id: string) => del<{ deleted: number }>(`/llm/profiles/${id}`),
   activateLLMProfile: (id: string) => post<{ ok: boolean }>("/llm/profiles/active", { id: Number(id) }),
@@ -986,14 +1007,36 @@ export const api = {
   // 全局重试策略（五层各自的次数+间隔）。全 0 = 全部走内置默认。
   llmRetryPolicy: () => get<LLMRetryPolicy>("/llm/retry-policy"),
   saveLLMRetryPolicy: (p: LLMRetryPolicy) => post<LLMRetryPolicy>("/llm/retry-policy", p),
-  fetchLLMModels: (provider: string, base_url: string, api_key: string, proxy = "", profile_id?: number) =>
+  fetchLLMModels: (
+    provider: string,
+    base_url: string,
+    api_key: string,
+    proxy = "",
+    profile_id?: number,
+    auth_type: LLMAuthType = "api_key",
+  ) =>
     post<{ ok: boolean; error?: string; models?: string[] }>("/llm/models", {
       provider,
       base_url,
       api_key,
       proxy,
       profile_id,
+      auth_type,
     }),
+  // ChatGPT 구독 로그인. 오류는 ApiError.code로 화면 문구를 고른다(chatgpt-oauth.ts).
+  startChatGPTLogin: (profile_id: number) => post<ChatGPTLoginStart>("/llm/oauth/chatgpt/start", { profile_id }),
+  completeChatGPTLogin: (profile_id: number, flow_id: string, callback_url: string) =>
+    post<{ connected: boolean; plan_type?: string }>("/llm/oauth/chatgpt/complete", {
+      profile_id,
+      flow_id,
+      callback_url,
+    }),
+  startChatGPTDeviceLogin: (profile_id: number) =>
+    post<ChatGPTDeviceStart>("/llm/oauth/chatgpt/device", { profile_id }),
+  chatGPTDeviceStatus: (flow_id: string) =>
+    get<ChatGPTDevicePoll>(`/llm/oauth/chatgpt/device/${encodeURIComponent(flow_id)}`),
+  disconnectChatGPT: (profile_id: number) =>
+    post<{ connected: boolean }>("/llm/oauth/chatgpt/disconnect", { profile_id }),
 
   // ---- agents ----
   agents: () => get<{ agents: Agent[] }>("/agents").then((r) => arr(r.agents)),
