@@ -2,7 +2,7 @@
 # ARTEX 更新脚本：① Docker 更新（拉新镜像重建）  ② 本地编译更新（重建二进制）
 # 与 install.sh 对应：install 负责首次落地，update 负责升级到新版本。
 # DB 迁移无需手动执行——artex 每次启动都会幂等重跑 schema.sql（含 ADD COLUMN/CREATE
-# INDEX IF NOT EXISTS），所以“重启即迁移”。数据（pgdata 卷、./data、./skills）不受影响。
+# INDEX IF NOT EXISTS），所以“重启即迁移”。数据（pgdata 卷、./data、./keys、./skills）不受影响。
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)"
 
@@ -11,6 +11,8 @@ ok(){   printf '\033[32m[+]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[33m[!]\033[0m %s\n' "$*"; }
 die(){  printf '\033[31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
+# shellcheck source=docker-keys.sh
+. ./docker-keys.sh
 
 # ── 可选：同步仓库到最新代码（compose/脚本/本地编译源码都靠它更新）───────
 sync_repo(){
@@ -41,6 +43,9 @@ update_docker(){
   # 只动 artex：postgres 是固定的 16-alpine，不需要跟着升级（拉它纯属浪费带宽，
   # 且大版本变动还会有兼容风险）。artex 声明了 depends_on postgres，所以带服务名
   # up 时若 pg 没起会自动拉起，已在跑的则原样保留、不重建。
+  # 새 이미지로 다시 만들면 예전 컨테이너 안의 키(/app/*.key)가 사라진다. 그 전에 ./keys 로 꺼낸다.
+  prepare_key_volume
+
   info "拉取新镜像（仅 artex）…"
   docker compose pull artex
   info "重建并启动（artex 重启时自动迁移 schema）…"

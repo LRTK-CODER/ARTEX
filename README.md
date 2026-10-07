@@ -104,13 +104,17 @@ docker compose up -d          # 拉取 autumn27/artex 镜像 + postgres
 - 키 디렉터리에 키가 없고 실행 파일 옆 디렉터리에 있으면, 시작할 때 키 디렉터리로 옮기고 원래 파일을 지운다.
 - 키를 잃으면 웹 세션이 모두 끊기고 ChatGPT 구독 로그인을 다시 해야 한다. `./keys`(바이너리 설치는 키 디렉터리)를 `./data`·데이터베이스와 함께 백업한다.
 
-**이전 Docker 설치를 올릴 때**: 예전 이미지는 키를 컨테이너 안 `/app/jwt.key`·`/app/oauth.key`에 두었다. 컨테이너를 다시 만들면(`docker compose up -d`로 새 이미지 적용) 이 파일은 사라지므로, 자동 이전은 같은 컨테이너를 재시작할 때만 효과가 있다. 새 이미지로 바꾸기 전에 키를 꺼내 둔다.
+**이전 Docker 설치를 올릴 때**: 예전 이미지는 키를 컨테이너 안 `/app/jwt.key`·`/app/oauth.key`에 두었다. 컨테이너를 다시 만들면(새 이미지 적용, `--force-recreate`) 이 파일은 사라지므로, 서버의 자동 이전은 같은 컨테이너를 재시작할 때만 효과가 있다.
+
+- `./update.sh`(또는 이미 배포된 곳에서 다시 돌린 `./install.sh`)로 올리면 따로 할 일이 없다. 컨테이너를 다시 만들기 전에 예전 컨테이너의 키를 `./keys`로 꺼내므로(이미 있는 키는 덮지 않음, 0600) 다시 로그인하지 않아도 된다. 꺼내다 실패하면 업그레이드를 멈춘다.
+- 손으로 `docker compose pull`·`docker compose up -d --force-recreate`로 올릴 때는 먼저 키를 꺼내 둔다.
 
 ```bash
 mkdir -p keys && chmod 700 keys
 docker compose cp artex:/app/jwt.key keys/     # 없다고 나오면 건너뛴다
 docker compose cp artex:/app/oauth.key keys/   # 구독 로그인을 쓰지 않았다면 없다
-docker compose pull artex && docker compose up -d artex
+chmod 600 keys/*.key
+docker compose pull artex && docker compose up -d --force-recreate artex
 ```
 
 远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。
@@ -187,6 +191,7 @@ cd ARTEX
 脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新** 或 **② 本地编译更新**（与 `install.sh` 对应）：
 
 - **① Docker**：可指定目标镜像 tag（回车沿用 `.env` 的 `ARTEX_TAG`，缺省 `latest`）→ `docker compose pull` → `docker compose up -d`（换新镜像重启即自动迁移）。
+  - 컨테이너를 다시 만들기 전에 예전 컨테이너의 서버 키를 `./keys`로 꺼낸다. 자세한 것은 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업).
 - **② 本地**：重建前端静态产物 → 重新编译 `./artex`（完成后重启进程生效）。
 
 ### 方式三：Docker Compose（手动）
