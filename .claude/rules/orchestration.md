@@ -77,7 +77,7 @@ ARTEX 작업은 PM 한 명과 Orca 감독 워커 여럿이 나눠 한다. 브랜
 - Bash 도구의 `run_in_background` 없이 띄운 대기
 - 셸 `&`, `disown`, `nohup`, `setsid`로 떼어 띄운 대기
 - 다른 명령과 묶은 대기(`;`, `&&`, `||`, 파이프, 줄바꿈, 하위 셸, `bash -c`). 앞에 `cd <경로> &&` 하나만 붙일 수 있다
-- 같은 사용자의 `orchestration check --wait` 프로세스가 이미 돌 때 새 대기. `pgrep`으로 확인하지 못하면 막지 않는다
+- 같은 Orca 창(환경 변수 `ORCA_PANE_KEY`)에서 `orchestration check --wait` 프로세스가 이미 돌 때 새 대기. 다른 창(다른 저장소의 PM, 워커)의 대기는 세지 않는다. 세션에 `ORCA_PANE_KEY`가 없으면 같은 사용자의 대기를 모두 센다. `pgrep`으로 확인하지 못하면 막지 않고, 창을 알아내지 못한 프로세스는 세지 않는다
 
 이유와 올바른 형태는 PM skill "기다리기"에 있다.
 

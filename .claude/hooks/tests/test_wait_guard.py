@@ -123,6 +123,89 @@ class RunningWaitsTest(unittest.TestCase):
         self.assertIsNone(self.run_with(subprocess.TimeoutExpired("pgrep", 5)))
 
 
+MY_PANE = "tab-artex:leaf-pm"
+OTHER_PANE = "tab-oml:leaf-pm"
+
+
+class PaneFilterTest(unittest.TestCase):
+    """다른 창(다른 저장소 PM)의 대기는 이 창의 대기를 막지 않는다(#10).
+
+    pgrep과 ps는 가짜 subprocess.run으로, Linux의 /proc는 임시 디렉터리로 바꿔 끼운다.
+    """
+
+    PS_LINES = {
+        "101": "orca orchestration check --wait --json ORCA_PANE_KEY={} HOME=/x".format(OTHER_PANE),
+        "202": "orca orchestration check --wait --json ORCA_PANE_KEY={} HOME=/x".format(MY_PANE),
+        # 인자에 같은 문자열이 있어도 뒤에 오는 환경 변수가 이긴다
+        "303": "orca --note ORCA_PANE_KEY={} check --wait ORCA_PANE_KEY={}".format(MY_PANE, OTHER_PANE),
+        "404": "orca orchestration check --wait --json HOME=/x",  # 창 정보 없음
+    }
+
+    def fake_run(self, pids):
+        def run(cmd, *a, **kw):
+            if cmd[0] == "pgrep":
+                return subprocess.CompletedProcess(cmd, 0, stdout="\n".join(pids) + "\n", stderr="")
+            if cmd[0] == "ps":
+                line = self.PS_LINES.get(cmd[-1])
+                if line is None:  # 그 사이 끝난 프로세스
+                    return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+                return subprocess.CompletedProcess(cmd, 0, stdout=line + "\n", stderr="")
+            raise AssertionError("예상하지 못한 명령: {}".format(cmd))
+        return run
+
+    def setUp(self):
+        # /proc가 없는 것으로 두어 ps 경로를 탄다. Linux 경로는 test_linux_proc에서 따로 본다.
+        # create=True: 수정 전 모듈(PROC_DIR 없음)에서도 동작 차이로 실패하게 한다.
+        patcher = mock.patch.object(wait_guard, "PROC_DIR", os.path.join(TESTS_DIR, "no-such-proc"),
+                                    create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def waits(self, pids, pane_key):
+        with mock.patch.object(wait_guard.subprocess, "run", self.fake_run(pids)):
+            return wait_guard.running_waits(pane_key)
+
+    def test_filters_by_pane(self):
+        cases = [
+            ("다른 창만", ["101"], []),
+            ("같은 창", ["101", "202"], ["202"]),
+            ("인자 속 문자열", ["303"], []),
+            ("창 정보 없음", ["404"], []),
+            ("끝난 프로세스", ["999"], []),
+        ]
+        for name, pids, want in cases:
+            with self.subTest(name):
+                self.assertEqual(self.waits(pids, MY_PANE), want)
+
+    def test_no_own_pane_counts_all(self):
+        self.assertEqual(self.waits(["101", "404"], None), ["101", "404"])
+        self.assertEqual(self.waits(["101", "404"], ""), ["101", "404"])
+
+    def test_check_allows_when_only_other_pane_waits(self):
+        """수정 전에는 다른 저장소 PM의 대기(PID 101) 때문에 막혔다."""
+        with mock.patch.dict(os.environ, {"ORCA_PANE_KEY": MY_PANE}), \
+                mock.patch.object(wait_guard.subprocess, "run", self.fake_run(["101"])):
+            wait_guard.check(event(WAIT))
+
+    def test_check_blocks_same_pane_wait(self):
+        with mock.patch.dict(os.environ, {"ORCA_PANE_KEY": MY_PANE}), \
+                mock.patch.object(wait_guard.subprocess, "run", self.fake_run(["101", "202"])):
+            with self.assertRaises(Blocked) as ctx:
+                wait_guard.check(event(WAIT))
+        self.assertIn("이 창에서 이미 도는 대기가 있는데 새로 띄운 대기 명령 (PID 202)", ctx.exception.message())
+
+    def test_linux_proc(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as proc:
+            for pid, pane in (("101", OTHER_PANE), ("202", MY_PANE)):
+                os.makedirs(os.path.join(proc, pid))
+                with open(os.path.join(proc, pid, "environ"), "wb") as f:
+                    f.write("HOME=/x\0ORCA_PANE_KEY={}\0".format(pane).encode())
+            os.makedirs(os.path.join(proc, "303"))  # environ을 읽지 못하는 프로세스
+            with mock.patch.object(wait_guard, "PROC_DIR", proc):
+                self.assertEqual(self.waits(["101", "202", "303", "999"], MY_PANE), ["202"])
+
+
 class GuardEntryTest(unittest.TestCase):
     def test_guard_runs_wait_check(self):
         payload = json.dumps(event(WAIT + " &"))

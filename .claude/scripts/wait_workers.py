@@ -45,7 +45,8 @@ EXIT_OK, EXIT_ORCA_ERROR, EXIT_TIMEOUT = 0, 1, 2
 WAITER_EXISTS_HINT = (
     "원인: 이 터미널(run)에 다른 대기가 이미 걸려 있다. 앞 대기가 아직 돌고 있거나, 셸 `&`로 띄웠다가 "
     "죽인 대기의 등록이 Orca에 남았다.\n"
-    "대처: `pgrep -fl 'orchestration check .*--wait'`로 남은 대기 프로세스를 찾는다. 프로세스를 kill해도 "
+    "대처: `pgrep -fl 'orchestration check .*--wait'`로 남은 대기 프로세스를 찾는다. 다른 창의 대기도 나오니 "
+    "`ps -E -ww -o command= -p <PID>`의 ORCA_PANE_KEY가 이 터미널과 같은 것만 본다. 프로세스를 kill해도 "
     "등록은 남으니, 앞 대기가 끝나거나 타임아웃될 때까지 기다린 뒤 다시 띄운다.")
 
 
