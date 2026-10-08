@@ -46,8 +46,10 @@ Thumbs.db
 /server/webui/dist/
 /dist/
 
-# JWT 签名密钥（运行时生成，存项目根，绝不提交）
+# 서버 키(jwt.key, oauth.key). 실행 중 만들어지며 커밋하지 않는다.
 /jwt.key
+/oauth.key
+/keys/
 
 # Docker 部署生成的本地环境（含密码/密钥，不提交）
 .env

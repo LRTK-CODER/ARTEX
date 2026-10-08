@@ -91,7 +91,38 @@ docker compose up -d          # 拉取 autumn27/artex 镜像 + postgres
 # → http://localhost:8787
 ```
 
-镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
+镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills`、`./data` 与 `./keys` 以绑定挂载持久化。
+손으로 띄울 때는 `keys/`를 먼저 만든다: `mkdir -p keys && chmod 700 keys`(`install.sh`는 알아서 만든다).
+
+### 서버 키 디렉터리와 백업
+
+서버 키 `jwt.key`(웹 로그인 세션 서명)와 `oauth.key`(DB에 저장한 ChatGPT 구독 토큰 암호화)는 키 디렉터리에 둔다.
+
+- 키 디렉터리는 환경 변수 `ARTEX_KEY_DIR`로 정한다. 비어 있으면 실행 파일 옆 디렉터리다. 상대 경로는 절대 경로로 바뀌고, 없으면 `0700`으로 만든다.
+- 키 디렉터리가 작업 공간(`-data`, 기본 `data/`)과 같거나 그 안이면 서버가 시작하지 않는다. 작업 공간은 파일 관리자로 내려받을 수 있기 때문이다. 심볼릭 링크는 풀어서 비교한다.
+- Docker 이미지는 `ARTEX_KEY_DIR=/app/keys`이고, `docker-compose.yml`이 프로젝트 루트의 `./keys`를 붙인다. 컨테이너를 다시 만들어도 키가 남는다.
+- 키 디렉터리에 키가 없고 실행 파일 옆 디렉터리에 있으면, 시작할 때 키 디렉터리로 옮기고 원래 파일을 지운다.
+- 키를 잃으면 웹 세션이 모두 끊기고 ChatGPT 구독 로그인을 다시 해야 한다. `./keys`(바이너리 설치는 키 디렉터리)를 `./data`·데이터베이스와 함께 백업한다.
+
+**이전 Docker 설치를 올릴 때**: 예전 이미지는 키를 컨테이너 안 `/app/jwt.key`·`/app/oauth.key`에 두었다. 컨테이너를 다시 만들면(새 이미지 적용, `--force-recreate`) 이 파일은 사라지므로, 서버의 자동 이전은 같은 컨테이너를 재시작할 때만 효과가 있다.
+
+- **먼저 `git pull --ff-only`를 하고, 그다음 `./update.sh`를 돌린다.** 새 `update.sh`는 컨테이너를 다시 만들기 전에 예전 컨테이너의 키를 `./keys`로 꺼낸다(이미 있는 키는 덮지 않음, 0600). 그래서 다시 로그인하지 않아도 된다. 꺼내다 실패하면 업그레이드를 멈춘다. 이미 배포된 곳에서 `git pull` 뒤 `./install.sh`를 다시 돌려도 같다.
+
+  ```bash
+  git pull --ff-only
+  ./update.sh            # ① Docker
+  ```
+
+- **주의: 지금 가진 옛 `update.sh`를 바로 돌리면 키가 사라진다.** 옛 스크립트는 git pull로 새 파일을 받아도 이미 읽어 둔 옛 순서대로 컨테이너를 다시 만들고, 키를 꺼내지 않는다. 이미 그렇게 올렸다면 서버가 새 키를 만든 상태다. 웹에 다시 로그인하고, LLM 프로필에서 ChatGPT 구독 로그인을 다시 한다. 다음 업그레이드부터는 `update.sh`가 스스로 바뀐 것을 알아채고 새 스크립트로 다시 시작한다.
+- 대안으로, 손으로 `docker compose pull`·`docker compose up -d --force-recreate`로 올릴 때는 먼저 키를 꺼내 둔다.
+
+```bash
+mkdir -p keys && chmod 700 keys
+docker compose cp artex:/app/jwt.key keys/     # 없다고 나오면 건너뛴다
+docker compose cp artex:/app/oauth.key keys/   # 구독 로그인을 쓰지 않았다면 없다
+chmod 600 keys/*.key
+docker compose pull artex && docker compose up -d --force-recreate artex
+```
 
 远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。
 旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的
@@ -142,7 +173,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ## 更新升级
 
-> 升级只换程序、不动数据：Postgres 数据卷 `pgdata`、`./data`（jwt.key / SQLite 等）、`./skills` 都会保留。**数据库迁移无需手动执行**——`artex` 每次启动会幂等重跑 `schema.sql`（含 `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`），即“重启即迁移”。升级前仍建议先备份 `./data` 与数据库。
+> 升级只换程序、不动数据：Postgres 数据卷 `pgdata`、`./data`（SQLite 等）、`./keys`（jwt.key / oauth.key）、`./skills` 都会保留。**数据库迁移无需手动执行**——`artex` 每次启动会幂等重跑 `schema.sql`（含 `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`），即“重启即迁移”。升级前仍建议先备份 `./data`、`./keys` 与数据库。从键文件仍在容器内的旧版 Docker 升级时，见[서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업)。
 
 ### 方式一：页面一键更新（推荐）
 
@@ -161,12 +192,15 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ```bash
 cd ARTEX
+git pull --ff-only   # 먼저 받는다. 옛 update.sh 로 바로 올리면 서버 키를 잃는다(아래 참고)
 ./update.sh
 ```
 
 脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新** 或 **② 本地编译更新**（与 `install.sh` 对应）：
 
 - **① Docker**：可指定目标镜像 tag（回车沿用 `.env` 的 `ARTEX_TAG`，缺省 `latest`）→ `docker compose pull` → `docker compose up -d`（换新镜像重启即自动迁移）。
+  - 컨테이너를 다시 만들기 전에 예전 컨테이너의 서버 키를 `./keys`로 꺼낸다. 이 단계가 없는 옛 `update.sh`로 바로 올리면 키를 잃으므로 먼저 `git pull --ff-only`를 한다. 자세한 것은 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업).
+  - git pull이 `update.sh`를 바꾸면 고른 메뉴 그대로 새 `update.sh`로 다시 시작한다. git pull 질문에 `n`이라고 답하면 지금 코드로 업데이트를 이어 간다.
 - **② 本地**：重建前端静态产物 → 重新编译 `./artex`（完成后重启进程生效）。
 
 ### 方式三：Docker Compose（手动）
@@ -174,6 +208,7 @@ cd ARTEX
 ```bash
 cd ARTEX
 git pull                       # 更新 compose / 脚本（可选）
+# 키가 아직 컨테이너 안(/app/*.key)에 있는 예전 설치는 여기서 먼저 키를 ./keys 로 꺼낸다(서버 키 디렉터리와 백업 절 참고)
 # 指定版本：在 .env 设 ARTEX_TAG=v0.2.0；不设则用 latest
 docker compose pull artex
 docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema

@@ -2,7 +2,7 @@
 # ARTEX 更新脚本：① Docker 更新（拉新镜像重建）  ② 本地编译更新（重建二进制）
 # 与 install.sh 对应：install 负责首次落地，update 负责升级到新版本。
 # DB 迁移无需手动执行——artex 每次启动都会幂等重跑 schema.sql（含 ADD COLUMN/CREATE
-# INDEX IF NOT EXISTS），所以“重启即迁移”。数据（pgdata 卷、./data、./skills）不受影响。
+# INDEX IF NOT EXISTS），所以“重启即迁移”。数据（pgdata 卷、./data、./keys、./skills）不受影响。
 set -euo pipefail
 cd "$(cd "$(dirname "$0")" && pwd)"
 
@@ -11,13 +11,28 @@ ok(){   printf '\033[32m[+]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[33m[!]\033[0m %s\n' "$*"; }
 die(){  printf '\033[31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
+# shellcheck source=docker-keys.sh
+. ./docker-keys.sh
 
 # ── 可选：同步仓库到最新代码（compose/脚本/本地编译源码都靠它更新）───────
+# $1 은 고른 메뉴 번호다. pull 이 이 스크립트나 docker-keys.sh 를 바꾸면 bash 는 이미 읽은 옛 함수를 그대로
+# 돌리므로, 새 update.sh 를 같은 메뉴 번호로 다시 띄운다. ARTEX_UPDATE_SKIP_PULL 이 있으면 pull 을 건너뛰어
+# 다시 띄운 스크립트가 또 pull·재실행하지 않는다.
 sync_repo(){
-  [ -d .git ] && command -v git >/dev/null 2>&1 || { warn "非 git 工作副本，跳过 git pull"; return; }
-  [ "$(ask '拉取最新代码 (git pull --ff-only)? (y/n)' y)" = y ] || return
+  [ -z "${ARTEX_UPDATE_SKIP_PULL:-}" ] || return 0
+  if [ ! -d .git ] || ! command -v git >/dev/null 2>&1; then
+    warn "非 git 工作副本，跳过 git pull"
+    return 0
+  fi
+  [ "$(ask '拉取最新代码 (git pull --ff-only)? (y/n)' y)" = y ] || return 0
+  local before; before="$(git rev-parse HEAD)"
   if ! git pull --ff-only; then
     warn "git pull 未能快进（本地有改动或分支分叉）——请手动处理后重试，本次沿用当前代码"
+    return 0
+  fi
+  if ! git diff --quiet "$before" HEAD -- update.sh docker-keys.sh; then
+    info "更新脚本已随代码更新，用新版 update.sh 继续…"
+    ARTEX_UPDATE_SKIP_PULL=1 ARTEX_UPDATE_MODE="$1" exec bash ./update.sh
   fi
 }
 
@@ -41,6 +56,9 @@ update_docker(){
   # 只动 artex：postgres 是固定的 16-alpine，不需要跟着升级（拉它纯属浪费带宽，
   # 且大版本变动还会有兼容风险）。artex 声明了 depends_on postgres，所以带服务名
   # up 时若 pg 没起会自动拉起，已在跑的则原样保留、不重建。
+  # 새 이미지로 다시 만들면 예전 컨테이너 안의 키(/app/*.key)가 사라진다. 그 전에 ./keys 로 꺼낸다.
+  prepare_key_volume
+
   info "拉取新镜像（仅 artex）…"
   docker compose pull artex
   info "重建并启动（artex 重启时自动迁移 schema）…"
@@ -70,13 +88,18 @@ update_local(){
   warn "请重启正在运行的 artex 进程以生效（重启时会自动迁移 schema）"
 }
 
-echo "=============================="
-echo "  ARTEX 更新"
-echo "  1) Docker 更新（拉新镜像重建）"
-echo "  2) 本地更新（go 重新编译）"
-echo "=============================="
-case "$(ask '选择' 1)" in
-  1) sync_repo; update_docker ;;
-  2) sync_repo; update_local ;;
+# ARTEX_UPDATE_MODE 는 sync_repo 가 새 update.sh 를 다시 띄울 때만 넘긴다. 이미 고른 메뉴를 다시 묻지 않는다.
+mode="${ARTEX_UPDATE_MODE:-}"
+if [ -z "$mode" ]; then
+  echo "=============================="
+  echo "  ARTEX 更新"
+  echo "  1) Docker 更新（拉新镜像重建）"
+  echo "  2) 本地更新（go 重新编译）"
+  echo "=============================="
+  mode="$(ask '选择' 1)"
+fi
+case "$mode" in
+  1) sync_repo 1; update_docker ;;
+  2) sync_repo 2; update_local ;;
   *) die "无效选择" ;;
 esac

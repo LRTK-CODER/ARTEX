@@ -9,6 +9,8 @@ warn(){ printf '\033[33m[!]\033[0m %s\n' "$*"; }
 die(){  printf '\033[31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
 rand(){ head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24; }
+# shellcheck source=docker-keys.sh
+. ./docker-keys.sh
 
 # ── docker 环境检测 / 自动安装 ───────────────────
 ensure_docker(){
@@ -45,6 +47,9 @@ install_docker(){
   else
     info "沿用已存在的 .env"
   fi
+  # 서버 키 볼륨(./keys)을 소유자 전용으로 미리 만든다. docker 가 대신 만들면 0755 가 된다.
+  # 이미 배포된 곳에서 다시 돌리면 아래 up 이 컨테이너를 새로 만드니, 예전 컨테이너의 키도 꺼내 둔다.
+  prepare_key_volume
   info "拉取镜像并启动…"
   docker compose pull || true
   docker compose up -d
