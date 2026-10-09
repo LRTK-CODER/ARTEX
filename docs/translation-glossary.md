@@ -416,8 +416,54 @@ web 시스템 화면(`web/src/app/(main)/system/**`)을 옮기며 정한 말이�
 | 一键更新 / 回滚 | 원클릭 업데이트 / 롤백 | one-click update / rollback | |
 | 冒烟测试 | 스모크 테스트 | smoke test | 업계 표준 음차 |
 
+### 화면 공통(#113에서 더함)
+
+web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅, 로그인)을 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| zh-CN (지역 설정) | ko-KR | — | 날짜·숫자·정렬 지역 설정. `web/src/lib/locale.ts`의 `DISPLAY_LOCALE` 하나로 쓴다 |
+| 误报 | 오탐 | false positive | 발견 사항 처리 상태. 보안 업계 표준 용어 |
+| 风险接受 | 위험 수용 | risk accepted | 발견 사항 처리 상태. 위험 관리 표준 용어 |
+| 停滞 / 空闲 (엔진 상태) | 정체 / 유휴 | stalled / idle | |
+| 演示 | 데모 | demo | mock 모드 |
+| 正常对照 / 漏洞证明 / 补充验证 / 辅助证据 | 정상 대조 / 취약점 증명 / 추가 검증 / 보조 증거 | baseline / proof / verification / supporting | 트래픽 증거 용도 값 |
+| 仍可复现 / 无法确认 | 여전히 재현됨 / 확인 불가 | still reproducible / inconclusive | 재검사 판정 |
+| 等待启动 | 시작 대기 | pending start | 재검사 상태 |
+| 继承 (출처 작업) | 이어받음 | inherited | 다른 작업에서 가져온 읽기 전용 노드·증거 |
+| 解除绑定 | 연결 해제 | unlink | "绑定 → 연결"을 따른다 |
+| 推理 / 总结 / 说明 (기록 종류) | 사고 / 요약 / 설명 | thinking / result / note | "思考 → 사고"를 따른다 |
+| 等于 / 不等于 / 大于 / 大于等于 / 小于 / 小于等于 | 같음 / 같지 않음 / 초과 / 이상 / 미만 / 이하 | eq / ne / gt / gte / lt / lte | 자산 검색 DSL 비교 연산자 |
+| 且 / 或 | 그리고 / 또는 | and / or | 자산 검색 DSL 논리 연산자 |
+| 引用 (@ 멘션) | 참조 | reference | 입력 칸에서 기록을 참조하는 기능 |
+| 备用 / 已跳过 (프로필 체인) | 예비 / 건너뜀 | standby / skipped | |
+| 跟随 (프로필) | 따르기 | follow | 예: "전역 활성 프로필 따르기" |
+| 收尾提示词 / 收尾轮数 | 마무리 프롬프트 / 마무리 턴 수 | wrap-up prompt / wrap-up turns | "收尾 → 마무리"를 따른다 |
+| 轮 (에이전트 대화) | 턴 | turn | 모델 호출 횟수를 세는 곳은 "회"(예: "12회") |
+| 串行 / 并行 | 직렬 / 병렬 | serial / parallel | |
+| 交互式 Shell | 대화형 셸 | interactive shell | Microsoft 한국어 표기 |
+| 渲染 / 预览 | 렌더링 / 미리 보기 | render / preview | |
+| 版本对比 / 版本历史 | 버전 비교 / 버전 기록 | version diff / version history | |
+| 已停用 | 사용 안 함 | disabled | "未启用 → 사용 안 함"과 같은 말 |
+| 待审批 / 已允许 / 已拒绝 | 심사 대기 / 허용됨 / 거부됨 | pending / allowed / denied | 승인 심사 상태 |
+| 审批记录 | 승인 심사 기록 | approval records | 사이드바 메뉴와 화면 제목 |
+| 初判 | 1차 판정 | initial verdict | |
+| 审计片段 | 감사 기록 일부 | audit excerpt | |
+| 摘要 (해시 값) | 다이제스트 | digest | SHA-256 값. 글 요약인 "摘要 → 요약"과 구분한다 |
+| 自动换行 | 자동 줄 바꿈 | word wrap | Microsoft 한국어 |
+| 使用须知 / 免责声明 | 이용 안내 / 면책 조항 | terms of use / disclaimer | 로그인 화면 |
+| 《网络安全法》《数据安全法》《个人信息保护法》 | '사이버보안법', '데이터보안법', '개인정보보호법' | — | 중국 법령의 국내 통용 이름 |
+| 修改密码 / 退出登录 | 비밀번호 변경 / 로그아웃 | change password / sign out | |
+| 多选 | 다중 선택 | multi-select | |
+| 活动流 | 활동 피드 | activity feed | "播报 → 활동 피드"를 따른다 |
+| 计量账本 (llm_usage) | 사용량 기록 | usage records | |
+| 在途 (작업 표 열) | 진행 중 | in flight | |
+| 弹层 / 遮罩 | 팝업 / 오버레이 | popover / overlay | 주석에서 Radix 레이어를 가리킬 때 |
+| 力导向 | 포스 기반(force-directed) | force-directed | 그래프 배치. #111 화면 표기 |
+
 ## 고친 기록
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
 - 2026-10-10: web 기능 화면 번역(#111)에서 정한 용어를 "화면 기능" 표로 더한다.
 - 2026-10-10: web 시스템 화면 번역(#112)에서 정한 용어를 "화면 시스템" 표로 더한다.
+- 2026-10-10: web 공통 컴포넌트·라이브러리·나머지 화면 번역(#113)에서 정한 용어를 "화면 공통" 표로 더한다.
