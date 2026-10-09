@@ -440,9 +440,37 @@ web 시스템 화면(`web/src/app/(main)/system/**`)을 옮기며 정한 말이�
 | 一键更新 / 回滚 | 원클릭 업데이트 / 롤백 | one-click update / rollback | |
 | 冒烟测试 | 스모크 테스트 | smoke test | 업계 표준 음차 |
 
+### notify 패키지(#109에서 더함)
+
+`notify/*.go`(알림 채널 어댑터와 메시지 템플릿)를 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| 漏洞汇总 / 近 N 分钟新增 N 个漏洞 | 취약점 다이제스트 / 최근 N분 동안 새 취약점 N건 | vulnerability digest | 다이제스트 메시지 제목. "汇总 → 다이제스트"를 따른다 |
+| 漏洞通知 | 취약점 알림 | vulnerability notification | 단건 메시지 제목 |
+| 查看详情 / 回链 | 상세 보기 / 상세 링크 | view details / detail link | 메시지의 취약점 상세 링크 |
+| 在平台中查看全部 | 플랫폼에서 전체 보기 | view all in the platform | |
+| 处理中 / 已处理 / 重复 | 처리 중 / 처리됨 / 중복 | in progress / resolved / duplicate | 취약점 처리 상태(`in_progress`/`resolved`/`duplicate`) |
+| 自定义机器人 / 群机器人 | 사용자 지정 봇 / 그룹 봇 | custom bot / group bot | DingTalk·Feishu / WeCom의 공식 기능 이름 |
+| 加签 | 서명 | signature | DingTalk·Feishu 보안 설정. 화면 '서명 키'와 맞춘다 |
+| Webhook 地址 | Webhook 주소 | webhook URL | 화면 입력 칸 이름과 맞춘다. 주석에서는 "웹훅"도 쓴다 |
+| 发件人 / 收件人 | 보낸 사람 / 받는 사람 | sender / recipient | 화면 입력 칸 이름과 맞춘다 |
+| 隐式 TLS | 암시적 TLS | implicit TLS | 화면 라벨 |
+| 握手 / 信封 / 中继 | 핸드셰이크 / 봉투 / 릴레이 | handshake / envelope / relay | SMTP 표준 용어 |
+| 灰名单 | 그레이리스트 | greylisting | 메일 서버 표준 용어 |
+| 环回 / 链路本地 | 루프백 / 링크 로컬 | loopback / link-local | 네트워크 표준 용어 |
+| 重定向 / 跨主机重定向 | 리다이렉트 / 다른 호스트로의 리다이렉트 | redirect / cross-host redirect | |
+| DNS 重绑定 | DNS 리바인딩 | DNS rebinding | 보안 업계 표준 음차 |
+| 脱敏 | 민감 정보 가리기 | redact | 동사는 "가리다". "탈민"으로 옮기지 않는다 |
+| 反代 | 리버스 프록시 | reverse proxy | |
+| 最低级别门槛 | 최저 심각도 | minimum severity | 화면 라벨과 맞춘다. 문장에서는 "심각도 기준"도 쓴다 |
+| 永久失败 / 可重试 | 영구 실패 / 재시도 가능 | permanent failure / retryable | |
+| 哨兵 | 센티넬 | sentinel | `secure-coding.md`의 표기 |
+
 ## 고친 기록
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
 - 2026-10-10: web 기능 화면 번역(#111)에서 정한 용어를 "화면 기능" 표로 더한다.
 - 2026-10-10: db 패키지 번역(#108)에서 정한 용어를 "db 패키지" 표로 더한다.
 - 2026-10-10: web 시스템 화면 번역(#112)에서 정한 용어를 "화면 시스템" 표로 더한다.
+- 2026-10-10: notify 패키지 번역(#109)에서 정한 용어를 "notify 패키지" 표로 더한다.
