@@ -1282,7 +1282,7 @@ CREATE TRIGGER trg_asset_intercept_rules_upd BEFORE UPDATE ON asset_intercept_ru
 -- 작업과 함께 연쇄 삭제된다. 작업을 만들 때 넣고 작업 상세에서 고칠 수 있다.
 -- action: 'block'=차단(테스트 금지)  'allow'=허용(허용 목록).
 -- 판정: 먼저 차단 규칙(전역 ∪ 작업 block)에 맞춰 보고 일치하면 금지한다. 일치하지 않았는데 그 작업에
--- 켜진 allow 규칙이 있으면 allow 하나와 일치해야 통과하고, 아니면 "테스트를 허용하지 않음"이다.
+-- 켜진 allow 규칙이 있으면 allow 하나와 일치해야 허용되고, 아니면 "테스트를 허용하지 않음"이다.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS task_intercept_rules (
     id          BIGSERIAL PRIMARY KEY,

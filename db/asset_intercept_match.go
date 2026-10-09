@@ -178,10 +178,10 @@ type AssetGateDecision struct {
 // EvaluateAssetGate는 작업 단위 검사를 판정한다.
 //  1. 사용 중인 blockRules 중 하나와 일치하면 거부한다(차단 이유).
 //  2. 아니면, 사용 중인 allowRules가 있는데 하나도 일치하지 않으면 거부한다(허용 범위 밖).
-//  3. 그 밖에는 통과시킨다.
+//  3. 그 밖에는 허용한다.
 //
 // allowRules가 비었거나 사용 중인 규칙이 없으면 허용 검사를 적용하지 않는다(허용 목록을
-// 쓰지 않으므로 모두 통과). 「허용 규칙을 설정하지 않음」이 모든 자산을 막지 않게 하려는 것이다.
+// 쓰지 않으므로 모두 허용). 「허용 규칙을 설정하지 않음」이 모든 자산을 막지 않게 하려는 것이다.
 func EvaluateAssetGate(blockRules, allowRules []AssetInterceptRule, domains, ips, urls []string) AssetGateDecision {
 	if rule, _, ok := MatchAssetInterceptRules(blockRules, domains, ips, urls); ok {
 		return AssetGateDecision{Allowed: false, Reason: rule.Reason()}
@@ -232,7 +232,7 @@ func (s *AssetStore) CheckAssetsIntercept(taskID int64, ids []int64) ([]AssetInt
 		blockRules = append(blockRules, tb...)
 		allowRules = ta
 	}
-	// 차단 규칙도, 사용 중인 허용 규칙도 없으면 판정할 것이 없으므로 모두 통과시킨다.
+	// 차단 규칙도, 사용 중인 허용 규칙도 없으면 판정할 것이 없으므로 모두 허용한다.
 	if len(blockRules) == 0 && !hasEnabledRule(allowRules) {
 		return nil, nil
 	}

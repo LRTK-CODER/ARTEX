@@ -177,7 +177,7 @@ func (d *DB) DigestBatchDue(ctx context.Context, channelID int64, minAge time.Du
 // 번호를 유지해, 여러 번 재시도한 뒤에도 「이 N건은 함께 보냈다」가 그대로 성립한다.
 //
 // 무작위가 아니라 id 오름차순으로 앞의 N개를 가져간다. 가장 먼저 생긴 전달이 가장
-// 먼저 나가므로, 밀린 전달이 있어도 「새 취약점이 먼저 나가고 옛 취약점은 영원히 뒤로
+// 먼저 나가므로, 밀린 알림이 있어도 「새 취약점이 먼저 나가고 옛 취약점은 영원히 뒤로
 // 밀리는」 기아가 생기지 않는다.
 func (d *DB) ClaimDigestBatch(ctx context.Context, channelID int64, limit int, lease time.Duration) ([]*NotificationDelivery, error) {
 	if limit <= 0 {
@@ -327,7 +327,7 @@ WHERE id IN (`+ph+`)`,
 // 쓰는 곳은 하나뿐이다. 다이제스트 메시지를 알림 채널의 길이 상한에 맞춰 나눠 보낼 때,
 // 이번 메시지에 들어가지 못한 항목은 다음 배치로 남겨야 한다. 그것은 실패가 아니므로
 // 재시도 기회를 쓰면 안 된다. 할당할 때 attempts를 낙관적으로 이미 1 늘렸으니 여기서
-// 반드시 되돌린다. 그러지 않으면 밀린 전달 500건이 20건씩 25개로 나뉘고, 뒤쪽 항목은 한 번도
+// 반드시 되돌린다. 그러지 않으면 밀린 알림 500건이 20건씩 25개로 나뉘고, 뒤쪽 항목은 한 번도
 // 오류가 난 적이 없는데도 셋째 묶음에서 MaxNotifyAttempts에 걸려 failed가 된다.
 //
 // GREATEST(...,0)는 「누가 수동으로 재발송해 attempts를 0으로 만든 뒤 여기로 온」
