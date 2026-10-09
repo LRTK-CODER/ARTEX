@@ -63,6 +63,11 @@ import type { Activity, Agent, ChatAttachment, Conversation, LLMProfile } from "
 import { cn } from "@/lib/utils";
 
 // fmtBytes renders a human file size for attachment chips (mirrors transcript.tsx).
+// 서버의 기본 제목 `新对话`(server/conversations.go 사본)도 빈 제목처럼 "새 대화"로 보인다.
+function convTitle(title: string | undefined): string {
+  return !title || title === "新对话" ? "새 대화" : title;
+}
+
 function fmtBytes(n: number): string {
   if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MB`;
   if (n >= 1 << 10) return `${(n / (1 << 10)).toFixed(1)} KB`;
@@ -919,7 +924,7 @@ const ConversationItem = React.memo(function ConversationItem({
         <Checkbox
           checked={selectedForDelete}
           onCheckedChange={(checked) => onSelectedForDeleteChange(conv.id, checked === true)}
-          aria-label={`대화 '${conv.title || "새 대화"}' 선택`}
+          aria-label={`대화 '${convTitle(conv.title)}' 선택`}
           className="ml-1 shrink-0"
         />
       )}
@@ -951,7 +956,7 @@ const ConversationItem = React.memo(function ConversationItem({
         >
           <div className="flex min-w-0 items-center gap-1.5">
             {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label="상단 고정됨" />}
-            <div className="truncate text-sm">{conv.title || "새 대화"}</div>
+            <div className="truncate text-sm">{convTitle(conv.title)}</div>
             {conv.running ? (
               <Badge variant="secondary" className="shrink-0 gap-1" title="에이전트 실행 중">
                 <Spinner className="size-3" aria-hidden="true" />
@@ -985,7 +990,7 @@ const ConversationItem = React.memo(function ConversationItem({
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground shrink-0"
-            aria-label={`대화 '${conv.title || "새 대화"}' 관리`}
+            aria-label={`대화 '${convTitle(conv.title)}' 관리`}
           >
             <MoreHorizontalIcon />
           </Button>
@@ -1013,7 +1018,7 @@ const ConversationItem = React.memo(function ConversationItem({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>대화 '{conv.title || "새 대화"}'을(를) 삭제할까요?</AlertDialogTitle>
+            <AlertDialogTitle>대화 '{convTitle(conv.title)}'을(를) 삭제할까요?</AlertDialogTitle>
             <AlertDialogDescription>삭제한 대화는 되돌릴 수 없습니다.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
