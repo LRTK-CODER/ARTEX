@@ -92,6 +92,11 @@ func TestSideUsageRecordedOnceOnConsumerCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pg.Close()
+	// llm_usage 는 db.Open 의 스키마가 아니라 서버 시작(NewManager)에서 만든다.
+	// 서버를 띄우지 않는 이 테스트는 새 DB 에서도 돌도록 직접 만든다.
+	if err := pg.EnsureLLMUsageTable(); err != nil {
+		t.Fatal(err)
+	}
 	for _, early := range []bool{false, true} {
 		profile := "btw-metering-" + uuid.NewString()
 		ctx, cancel := context.WithCancel(transcript.WithSessionID(t.Context(), "exp0-btw-test"))

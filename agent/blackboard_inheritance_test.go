@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func callReadJSON(t *testing.T, tool actool.CoreTool, input string) any {
 	return out
 }
 
-func TestGraphOverviewExpandsAssociatedCompanyScope(t *testing.T) {
+func TestAssociatedCompanyScopeReachesAgentTools(t *testing.T) {
 	d := testDB(t)
 	defer d.Close()
 
@@ -82,26 +83,16 @@ func TestGraphOverviewExpandsAssociatedCompanyScope(t *testing.T) {
 	if !ok {
 		t.Fatalf("coverage missing: %#v", overview["coverage"])
 	}
-	scopeRows, ok := coverage["scope"].([]map[string]any)
-	if !ok || len(scopeRows) != 1 {
-		t.Fatalf("task scope missing: %#v", coverage["scope"])
-	}
-	companyScope, ok := scopeRows[0]["company_scope"].([]map[string]any)
-	if !ok || len(companyScope) != len(inputs) {
-		t.Fatalf("company scope not expanded: %#v", scopeRows[0])
-	}
-	kinds := make(map[string]string, len(companyScope))
-	for _, rule := range companyScope {
-		kinds[fmt.Sprint(rule["kind"])] = fmt.Sprint(rule["value"])
+	// graph_overview 의 coverage.scope 는 upstream 06a43f3 에서 빠졌다. 관련 기업의 scope 는
+	// 이제 list_companies 로 읽는다.
+	companyScope := listedCompanyScope(t, tools, companiesName(t, companies, companyID), companyID)
+	if len(companyScope) != len(inputs) {
+		t.Fatalf("company scope count=%d want %d: %q", len(companyScope), len(inputs), companyScope)
 	}
 	for _, input := range inputs {
-		if kinds[input.Kind] != input.Value {
-			t.Errorf("scope %s=%q want %q", input.Kind, kinds[input.Kind], input.Value)
+		if !slices.Contains(companyScope, input.Value) {
+			t.Errorf("company scope missing %s=%q: %q", input.Kind, input.Value, companyScope)
 		}
-	}
-	keywords, ok := scopeRows[0]["company_keywords"].([]string)
-	if !ok || len(keywords) != 1 || keywords[0] != keyword {
-		t.Fatalf("company keywords missing: %#v", scopeRows[0]["company_keywords"])
 	}
 	if hc, _ := coverage["host_count"].(int); hc < 1 {
 		t.Fatalf("company asset host not counted in agent context: %#v", coverage["host_count"])
@@ -172,6 +163,31 @@ func TestGraphOverviewExpandsAssociatedCompanyScope(t *testing.T) {
 	if err != nil || len(disabledWorkerAssets) != 1 || disabledWorkerAssets[0].IntentID != disabledIntentID || disabledWorkerAssets[0].AssetID != assetID {
 		t.Fatalf("coverage-disabled worker target=%+v err=%v", disabledWorkerAssets, err)
 	}
+}
+
+// listedCompanyScope 는 list_companies 도구 결과에서 companyID 기업의 scope 원문을 꺼낸다.
+func listedCompanyScope(t *testing.T, tools *ToolSet, companyName string, companyID int64) []string {
+	t.Helper()
+	result, err := tools.listCompanies().Call(context.Background(), json.RawMessage(fmt.Sprintf(`{"search":%q}`, companyName)), nil)
+	if err != nil {
+		t.Fatalf("list_companies: %v", err)
+	}
+	var listed struct {
+		Companies []struct {
+			ID    int64    `json:"id"`
+			Scope []string `json:"scope"`
+		} `json:"companies"`
+	}
+	if err := json.Unmarshal([]byte(result.Flatten()), &listed); err != nil {
+		t.Fatalf("decode list_companies: %v; raw=%s", err, result.Flatten())
+	}
+	for _, company := range listed.Companies {
+		if company.ID == companyID {
+			return company.Scope
+		}
+	}
+	t.Fatalf("company %d missing from list_companies: %s", companyID, result.Flatten())
+	return nil
 }
 
 func companiesName(t *testing.T, companies *db.CompanyStore, companyID int64) string {
