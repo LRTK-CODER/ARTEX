@@ -103,7 +103,7 @@ export default function WorkspacePage() {
         load(path);
       })
       .catch((err) => {
-        toast.error(`저장하지 못했습니다: ${(err as Error).message}`);
+        toast.error(`파일을 저장하지 못했습니다: ${(err as Error).message}`);
         setEdit((cur) => (cur ? { ...cur, saving: false } : cur));
       });
   };
@@ -111,7 +111,7 @@ export default function WorkspacePage() {
   const del = (e: WorkspaceEntry) => {
     if (
       !window.confirm(
-        `${e.dir ? "디렉터리" : "파일"} ‘${e.name}’${e.dir ? "를" : "을"} 삭제할까요?${e.dir ? " (안의 모든 내용 포함)" : ""}`,
+        `${e.dir ? "디렉터리" : "파일"} '${e.name}'${e.dir ? "를" : "을"} 삭제할까요?${e.dir ? " (안의 모든 내용 포함)" : ""}`,
       )
     )
       return;
@@ -121,7 +121,7 @@ export default function WorkspacePage() {
         toast.success("삭제했습니다");
         load(path);
       })
-      .catch((err) => toast.error(`삭제하지 못했습니다: ${(err as Error).message}`));
+      .catch((err) => toast.error(`항목을 삭제하지 못했습니다: ${(err as Error).message}`));
   };
 
   const doUpload = (files: FileList | null) => {
@@ -132,7 +132,7 @@ export default function WorkspacePage() {
         toast.success(`파일 ${r.uploaded}개를 업로드했습니다`);
         load(path);
       })
-      .catch((err) => toast.error(`업로드하지 못했습니다: ${(err as Error).message}`))
+      .catch((err) => toast.error(`파일을 업로드하지 못했습니다: ${(err as Error).message}`))
       .finally(() => {
         if (uploadRef.current) uploadRef.current.value = "";
       });
@@ -239,7 +239,7 @@ export default function WorkspacePage() {
                           onClick={() =>
                             api
                               .workspaceDownload(e.path)
-                              .catch((err) => toast.error(`다운로드하지 못했습니다: ${(err as Error).message}`))
+                              .catch((err) => toast.error(`파일을 다운로드하지 못했습니다: ${(err as Error).message}`))
                           }
                         >
                           <DownloadIcon className="size-3.5" />

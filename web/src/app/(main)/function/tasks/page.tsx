@@ -144,8 +144,8 @@ function fmtBytes(n: number): string {
 }
 
 // UPLOAD_MARKER labels the auto-appended block of uploaded-file paths inside the task
-// description, so re-uploads append under the same block instead of adding a new header.
 const UPLOAD_MARKER = "【업로드한 파일(절대 경로)】";
+const UPLOAD_MARKER = "'업로드한 파일(절대 경로)'";
 
 // appendUploads folds newly-uploaded files' ABSOLUTE paths into the description as a
 // Read/Bash-friendly manifest — the worker opens them by path. Keeps one marked block:
@@ -592,7 +592,7 @@ export default function TasksPage() {
         lastRef.current = "";
         load();
       } catch (error) {
-        toast.error(`${pinned ? "상단 고정을 해제" : "상단에 고정"}하지 못했습니다: ${(error as Error).message}`);
+        toast.error(`${pinned ? "작업 상단 고정을 해제" : "작업을 상단에 고정"}하지 못했습니다: ${(error as Error).message}`);
         throw error;
       }
     },
@@ -738,7 +738,7 @@ export default function TasksPage() {
         lastRef.current = "";
         load();
       } catch (error) {
-        toast.error(`일괄 ${action === "pause" ? "일시 중지" : "재개"}하지 못했습니다: ${(error as Error).message}`);
+        toast.error(`작업을 일괄 ${action === "pause" ? "일시 중지" : "재개"}하지 못했습니다: ${(error as Error).message}`);
       } finally {
         setBatchControlling(null);
       }
@@ -1105,7 +1105,7 @@ function ConcurrencySettingsDialog() {
       );
       setOpen(false);
     } catch (error) {
-      toast.error(`저장하지 못했습니다: ${(error as Error).message}`);
+      toast.error(`동시 실행 설정을 저장하지 못했습니다: ${(error as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -1754,7 +1754,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
       if (failed > 0) toast.error(`작업 ${failed}개를 복원하지 못했습니다.`);
       afterAction();
     } catch (error) {
-      toast.error(`복원하지 못했습니다: ${(error as Error).message}`);
+      toast.error(`작업을 복원하지 못했습니다: ${(error as Error).message}`);
     }
   }
 
@@ -1779,7 +1779,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
       if (failed > 0) toast.error(`보관본 ${failed}개를 삭제하지 못했습니다.`);
       afterAction();
     } catch (error) {
-      toast.error(`영구 삭제하지 못했습니다: ${(error as Error).message}`);
+      toast.error(`보관본을 영구 삭제하지 못했습니다: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -1792,7 +1792,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
       toast.success("처리 대기열에 다시 넣었습니다.");
       afterAction();
     } catch (error) {
-      toast.error(`재시도하지 못했습니다: ${(error as Error).message}`);
+      toast.error(`보관본 처리를 재시도하지 못했습니다: ${(error as Error).message}`);
     }
   }
 
@@ -3151,7 +3151,7 @@ function CreateTaskSheet({
       setDescription((prev) => appendUploads(prev, r.attachments));
       setUploadCount((n) => n + r.attachments.length);
     } catch (e) {
-      toast.error("업로드하지 못했습니다: " + (e as Error).message);
+      toast.error("파일을 업로드하지 못했습니다: " + (e as Error).message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = ""; // allow re-picking the same file

@@ -172,10 +172,10 @@ export function FindingsTab({ taskId }: { taskId: string }) {
     setFindings((cur) => cur.map((x) => (x.id === f.id ? { ...x, status: next } : x)));
     try {
       await api.setFindingStatus(f.finding_id, next);
-      toast.success(`「${statusMeta("finding", next).label}」(으)로 표시했습니다`);
+      toast.success(`'${statusMeta("finding", next).label}'(으)로 표시했습니다`);
     } catch (e) {
       setFindings((cur) => cur.map((x) => (x.id === f.id ? { ...x, status: prev } : x)));
-      toast.error("업데이트하지 못했습니다: " + (e as Error).message);
+      toast.error("처리 상태를 업데이트하지 못했습니다: " + (e as Error).message);
     }
   }, []);
 

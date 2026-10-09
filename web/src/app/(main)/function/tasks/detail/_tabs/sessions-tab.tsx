@@ -553,7 +553,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
       const r = await api.chatUpload("task", taskId, Array.from(files));
       setAttachments((prev) => [...prev, ...r.attachments]);
     } catch (e) {
-      toast.error(`업로드하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`파일을 업로드하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -712,7 +712,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
             patchStore(key, (s) => ({
               ...s,
               loading: false,
-              error: (error as Error).message || "불러오지 못했습니다",
+              error: (error as Error).message || "활동 기록을 불러오지 못했습니다",
             }));
           })
           .finally(() => loadingKeysRef.current.delete(key));
@@ -740,7 +740,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
         })
         .catch((e) => {
           if (reqTokenRef.current[key] !== token) return;
-          patchStore(key, (s) => ({ ...s, loading: false, error: (e as Error).message || "불러오지 못했습니다" }));
+          patchStore(key, (s) => ({ ...s, loading: false, error: (e as Error).message || "활동 기록을 불러오지 못했습니다" }));
         })
         .finally(() => loadingKeysRef.current.delete(key));
     },
@@ -1038,7 +1038,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
       .catch((err) => {
         if (!alive || reqTokenRef.current.mainboot !== token) return;
         if ((err as Error).message === "superseded") return;
-        patchStore(bootKey, (s) => ({ ...s, loading: false, error: (err as Error).message || "불러오지 못했습니다" }));
+        patchStore(bootKey, (s) => ({ ...s, loading: false, error: (err as Error).message || "활동 기록을 불러오지 못했습니다" }));
       })
       .finally(() => loadingKeysRef.current.delete(bootKey));
 
@@ -1515,7 +1515,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
       .catch((e) => {
         setInput(text); // restore so the user doesn't lose their text / attachments
         setAttachments(atts);
-        toast.error(`보내지 못했습니다: ${(e as Error).message || "잠시 뒤 다시 시도하세요"}`);
+        toast.error(`메시지를 보내지 못했습니다: ${(e as Error).message || "잠시 뒤 다시 시도하세요"}`);
       })
       .finally(() => setSending(false));
   }
@@ -1543,7 +1543,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
         toast.success(`워커 #${intentId}에 메시지를 보냈고 바로 실행을 이어 갑니다`);
       })
       .catch((error) => {
-        toast.error(`보내지 못했습니다: ${(error as Error).message || "잠시 뒤 다시 시도하세요"}`);
+        toast.error(`메시지를 보내지 못했습니다: ${(error as Error).message || "잠시 뒤 다시 시도하세요"}`);
       })
       .finally(() => setWorkerMessageSending(false));
   }
@@ -1891,7 +1891,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                 ) : activeState?.error ? (
                   <div className="flex items-center gap-2 pl-9 text-xs text-red-500">
                     <CircleXIcon className="size-3.5" />
-                    불러오지 못했습니다: {activeState.error}
+                    활동 기록을 불러오지 못했습니다: {activeState.error}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -2137,9 +2137,9 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                   </>
                 ) : (
                   <>
-                    <strong>소프트 삭제</strong>는 이 의도를 「삭제됨」으로 두고 삭제 이유를 기록합니다. 의도 노드, 실행
-                    기록, 등록된 사실과 취약점은 <strong>모두 보존</strong>됩니다. 플래너가 「사용자가 이 의도를 삭제함
-                    + 이유」를 받고 이를 바탕으로 다시 계획합니다.
+                    <strong>소프트 삭제</strong>는 이 의도를 '삭제됨'으로 두고 삭제 이유를 기록합니다. 의도 노드, 실행
+                    기록, 등록된 사실과 취약점은 <strong>모두 보존</strong>됩니다. 플래너가 '사용자가 이 의도를 삭제함
+                    + 이유'를 받고 이를 바탕으로 다시 계획합니다.
                   </>
                 )}
               </AlertDialogDescription>

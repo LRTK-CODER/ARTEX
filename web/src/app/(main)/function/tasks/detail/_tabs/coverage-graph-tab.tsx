@@ -405,7 +405,7 @@ function FoldSheet({
                 숨겨진 {meta.label}({fold.hidden.length})
               </SheetTitle>
               <p className="text-muted-foreground text-xs">
-                테스트한 자산을 먼저 보여 줍니다. 「더 보기」를 누르면 다음 묶음을 그래프에 더합니다.
+                테스트한 자산을 먼저 보여 줍니다. '더 보기'를 누르면 다음 묶음을 그래프에 더합니다.
               </p>
             </SheetHeader>
             <ScrollArea className="min-h-0 flex-1">
@@ -685,7 +685,7 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
           </span>
         </div>
         <p className="text-muted-foreground/80 border-border/60 border-t pt-2 leading-relaxed">
-          포스 기반(force-directed) 배치입니다. 노드를 드래그하고 휠로 확대·축소할 수 있습니다. 회색 「⋯」는 접힌
+          포스 기반(force-directed) 배치입니다. 노드를 드래그하고 휠로 확대·축소할 수 있습니다. 회색 '⋯'는 접힌
           노드이며 클릭하면 더 펼칩니다.
         </p>
       </div>

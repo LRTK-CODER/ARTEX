@@ -196,7 +196,7 @@ export default function AssetsPage() {
       setSelected(new Set());
       refresh();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + String((e as Error)?.message ?? e));
+      toast.error("자산을 삭제하지 못했습니다: " + String((e as Error)?.message ?? e));
     } finally {
       setDeleting(false);
       setDeleteOpen(false);
@@ -215,7 +215,7 @@ export default function AssetsPage() {
       toast.success(msg);
       refresh();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + String((e as Error)?.message ?? e));
+      toast.error("기업을 삭제하지 못했습니다: " + String((e as Error)?.message ?? e));
     } finally {
       setCompanyDeleting(false);
       setCompanyDeleteTarget(null);
@@ -1009,7 +1009,7 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
     } catch (e) {
       const msg = String((e as Error)?.message ?? e);
       if (/:\s*409$/.test(msg)) toast.error("같은 이름의 기업이 이미 있습니다. 다른 이름을 입력하세요.");
-      else toast.error(`저장하지 못했습니다: ${msg}`);
+      else toast.error(`기업을 저장하지 못했습니다: ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -1089,7 +1089,7 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
       setOpen(false);
       onSaved();
     } catch (e) {
-      toast.error(`저장하지 못했습니다: ${String((e as Error)?.message ?? e)}`);
+      toast.error(`자산 범위를 저장하지 못했습니다: ${String((e as Error)?.message ?? e)}`);
     } finally {
       setBusy(false);
     }
@@ -1173,7 +1173,7 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
       setOpen(false);
       onSaved();
     } catch (e) {
-      toast.error(`저장하지 못했습니다: ${String((e as Error)?.message ?? e)}`);
+      toast.error(`자산 범위를 저장하지 못했습니다: ${String((e as Error)?.message ?? e)}`);
     } finally {
       setBusy(false);
     }

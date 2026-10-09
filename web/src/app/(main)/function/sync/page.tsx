@@ -132,7 +132,7 @@ function DataSourceCard({
       setApiKey("");
       onChanged();
     } catch (e) {
-      toast.error(`저장하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`데이터 소스를 저장하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -293,7 +293,7 @@ function SyncWorkbench() {
       const total = Object.values(r.synced ?? {}).reduce((a, b) => a + b, 0);
       toast.success(`동기화를 마쳤습니다. 자산 ${total}개를 저장했습니다`);
     } catch (e) {
-      toast.error(`동기화하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`자산을 동기화하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setSyncing(false);
     }
