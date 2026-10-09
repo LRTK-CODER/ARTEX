@@ -105,7 +105,7 @@ func (s *Server) sendWorkerMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if node == nil {
 		if inherited, sourceErr := t.Store.GetNodeWithSources(iid); sourceErr == nil && inherited != nil && inherited.Inherited {
-			writeErr(w, http.StatusConflict, "상속된 탐색 의도는 읽기 전용이라 워커에게 메시지를 보낼 수 없습니다")
+			writeErr(w, http.StatusConflict, "이어받은 탐색 의도는 읽기 전용이라 워커에게 메시지를 보낼 수 없습니다")
 			return
 		}
 		writeErr(w, http.StatusNotFound, "intent not found")

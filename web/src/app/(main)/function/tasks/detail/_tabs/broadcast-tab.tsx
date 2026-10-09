@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { type Tone, toneClasses, toneDot } from "@/lib/status";
 import { taskAssetTypeLabel } from "@/lib/task-assets";
 import type { Edge, ExploreKind, FindingAsset, NewAssetType, TaskNode } from "@/lib/types";
@@ -92,7 +93,7 @@ const KIND_META: Record<string, KindMeta> = {
   },
 };
 
-// 필터할 수 있는 유형이다. 시작점(fact/state=origin)은 따로 두지 않고 「사실」과 함께 거른다.
+// 필터할 수 있는 유형이다. 시작점(fact/state=origin)은 따로 두지 않고 '사실'과 함께 거른다.
 const FILTER_KINDS: ExploreKind[] = ["goal", "intent", "fact", "finding", "hint", "digest"];
 
 const REL_LABEL: Record<string, string> = {
@@ -125,7 +126,7 @@ const STATE_META: Record<string, Record<string, { label: string; tone: Tone }>> 
   },
 };
 
-// 작업 루트는 state=origin인 fact이고, 피드에서는 「시작점」으로 표시한다.
+// 작업 루트는 state=origin인 fact이고, 피드에서는 '시작점'으로 표시한다.
 function viewKind(n: TaskNode): string {
   return n.type === "fact" && n.state === "origin" ? "begin" : n.type;
 }
@@ -176,8 +177,8 @@ function relTime(ts: number, now: number): string {
   return `${Math.floor(sec / 86400)}일 전`;
 }
 
-const dayFmt = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" });
-const clockFmt = new Intl.DateTimeFormat("zh-CN", {
+const dayFmt = new Intl.DateTimeFormat(DISPLAY_LOCALE, { month: "long", day: "numeric", weekday: "short" });
+const clockFmt = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
   hour: "2-digit",
   minute: "2-digit",
   second: "2-digit",
@@ -260,7 +261,7 @@ function RelatedNodeCard({ node, assets }: { node: TaskNode; assets: FindingAsse
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
         <span>유형 {meta.label}</span>
         <span>출처 {node.origin || "system"}</span>
-        <span>{Number.isNaN(ts) ? node.ts : new Date(ts).toLocaleString("zh-CN")}</span>
+        <span>{Number.isNaN(ts) ? node.ts : new Date(ts).toLocaleString(DISPLAY_LOCALE)}</span>
       </div>
       <p className="line-clamp-4 text-xs break-words">{summary || "(요약 없음)"}</p>
       <AssetList assets={assets} dense />
@@ -403,7 +404,7 @@ function BroadcastRow({
               </span>
               <span>유형 {meta.label}</span>
               <span>출처 {node.origin || "system"}</span>
-              <span>{Number.isNaN(ts) ? node.ts : new Date(ts).toLocaleString("zh-CN")}</span>
+              <span>{Number.isNaN(ts) ? node.ts : new Date(ts).toLocaleString(DISPLAY_LOCALE)}</span>
             </div>
             {node.state === "deleted" && node.delete_reason && (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
@@ -453,7 +454,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
   const seenRef = React.useRef<Set<string>>(new Set());
   const baselineRef = React.useRef<number | null>(null);
   const streamRef = React.useRef("");
-  // 「최신순 1페이지」만 실시간 위치다. 다른 위치에서는 폴링이 읽지 않은 개수만 갱신하고
+  // '최신순 1페이지'만 실시간 위치다. 다른 위치에서는 폴링이 읽지 않은 개수만 갱신하고
   // 목록은 건드리지 않는다. 그래야 페이지를 넘기거나 펼친 동안 내용이 바뀌지 않는다.
   const atLive = page === 1 && order === "desc";
 
@@ -475,7 +476,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
   React.useEffect(() => {
     let alive = true;
     let rendered = false; // 이번 조회가 내용을 이미 렌더링했는지
-    // 작업·필터·정렬을 바꾸면 다른 피드가 되므로 「새」 표시와 읽지 않은 기준선을 지운다. 페이지 이동은 피드를 바꾸지 않는다.
+    // 작업·필터·정렬을 바꾸면 다른 피드가 되므로 '새' 표시와 읽지 않은 기준선을 지운다. 페이지 이동은 피드를 바꾸지 않는다.
     // 그렇지 않으면 최신으로 돌아왔을 때 읽지 않은 개수를 셀 수 없다.
     const stream = `${taskId}|${kinds.join(",")}|${query}|${order}`;
     if (streamRef.current !== stream) {
@@ -537,8 +538,8 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
     setPending(0);
   };
 
-  // 서버의 refs는 「이 페이지에 없는 이웃」만 채워 준다. 같은 페이지 노드끼리의 참조는 items로 직접 채운다.
-  // 그렇지 않으면 이웃한 두 피드 항목이 서로를 참조할 때 맨 「노드 #id」로만 보인다.
+  // 서버의 refs는 '이 페이지에 없는 이웃'만 채워 준다. 같은 페이지 노드끼리의 참조는 items로 직접 채운다.
+  // 그렇지 않으면 이웃한 두 피드 항목이 서로를 참조할 때 맨 '노드 #id'로만 보인다.
   const nodeIndex = React.useMemo(() => {
     const idx: Record<string, TaskNode> = { ...refs };
     for (const n of items) idx[n.id] = n;
@@ -554,7 +555,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
 
-  // 날짜별로 묶는다. 피드를 날짜로 나눠야 긴 작업에서 페이지를 넘길 때도 「어느 날 일인지」 알 수 있다.
+  // 날짜별로 묶는다. 피드를 날짜로 나눠야 긴 작업에서 페이지를 넘길 때도 '어느 날 일인지' 알 수 있다.
   const groups: Array<{ day: string; rows: TaskNode[] }> = [];
   for (const node of items) {
     const ts = Date.parse(node.ts);

@@ -292,7 +292,7 @@ export default function FindingsPage() {
       setExportOpen(false);
       toast.success("내보낸 파일을 내려받기 시작했습니다");
     } catch (e) {
-      toast.error(`내보내지 못했습니다: ${(e as Error).message}`);
+      toast.error(`발견 사항을 내보내지 못했습니다: ${(e as Error).message}`);
     } finally {
       setExporting(false);
     }
@@ -623,7 +623,7 @@ export default function FindingsPage() {
         refreshAfterMutation(f);
       } catch (e) {
         setFindings((cur) => cur.map((x) => (isSameFinding(x, f) ? { ...x, status: prev } : x)));
-        toast.error(`업데이트하지 못했습니다: ${(e as Error).message}`);
+        toast.error(`처리 상태를 업데이트하지 못했습니다: ${(e as Error).message}`);
       }
     },
     [refreshAfterMutation, setFindings, status],
@@ -687,7 +687,7 @@ export default function FindingsPage() {
           });
         refreshAfterMutation(f);
       } catch (e) {
-        toast.error(`저장하지 못했습니다: ${(e as Error).message}`);
+        toast.error(`취약점을 저장하지 못했습니다: ${(e as Error).message}`);
       } finally {
         setSaving(false);
       }
@@ -720,7 +720,7 @@ export default function FindingsPage() {
           });
         refreshAfterMutation(f, true);
       } catch (e) {
-        toast.error(`삭제하지 못했습니다: ${(e as Error).message}`);
+        toast.error(`취약점을 삭제하지 못했습니다: ${(e as Error).message}`);
       }
     },
     [refreshAfterMutation, setFindings],
@@ -745,7 +745,7 @@ export default function FindingsPage() {
       setDeepenFinding(null);
       setDeepenDescription("");
     } catch (error) {
-      toast.error(`제출하지 못했습니다: ${(error as Error).message}`);
+      toast.error(`심화 검증 요청을 제출하지 못했습니다: ${(error as Error).message}`);
     } finally {
       setDeepening(false);
     }

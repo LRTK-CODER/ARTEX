@@ -71,9 +71,9 @@ export function TrafficEvidenceViewer({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>流量证据 #{bindingId}</DialogTitle>
+          <DialogTitle>트래픽 증거 #{bindingId}</DialogTitle>
           <DialogDescription className="break-all">
-            {detail?.binding.snapshot.url ?? "查看绑定时保存的请求与响应"}
+            {detail?.binding.snapshot.url ?? "연결할 때 저장한 요청과 응답을 봅니다"}
           </DialogDescription>
         </DialogHeader>
         {error ? (
@@ -83,14 +83,15 @@ export function TrafficEvidenceViewer({
         ) : detail ? (
           <Tabs defaultValue="request">
             <TabsList>
-              <TabsTrigger value="request">请求 Request</TabsTrigger>
-              <TabsTrigger value="response">响应 Response</TabsTrigger>
+              <TabsTrigger value="request">요청 Request</TabsTrigger>
+              <TabsTrigger value="response">응답 Response</TabsTrigger>
             </TabsList>
             {(["request", "response"] as const).map((side) => (
               <TabsContent key={side} value={side}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">
-                    正文 {detail[side].total.toLocaleString()} 字节{detail[side].truncated ? " · 当前为预览" : ""}
+                    본문 {detail[side].total.toLocaleString()}바이트
+                    {detail[side].truncated ? " · 지금은 미리 보기" : ""}
                   </span>
                   <Button
                     variant="outline"
@@ -101,7 +102,7 @@ export function TrafficEvidenceViewer({
                         .catch((e: Error) => toast.error(e.message))
                     }
                   >
-                    下载完整{side === "request" ? "请求" : "响应"}正文
+                    전체 {side === "request" ? "요청" : "응답"} 본문 다운로드
                   </Button>
                 </div>
                 <HttpCodeBlock
@@ -109,7 +110,7 @@ export function TrafficEvidenceViewer({
                 />
                 {detail[side].truncated && !detail[side].binary ? (
                   <Button variant="outline" size="sm" disabled={busy} onClick={() => void more(side)}>
-                    加载更多正文
+                    본문 더 불러오기
                   </Button>
                 ) : null}
               </TabsContent>
@@ -152,8 +153,8 @@ export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onCl
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>预览流量</DialogTitle>
-          <DialogDescription>流量 ID：{id}。绑定时会保存完整正文。</DialogDescription>
+          <DialogTitle>트래픽 미리 보기</DialogTitle>
+          <DialogDescription>트래픽 ID: {id}. 연결하면 전체 본문을 저장합니다.</DialogDescription>
         </DialogHeader>
         {error ? (
           <Alert variant="destructive">
@@ -162,8 +163,8 @@ export function CapturedTrafficViewer({ id, onClose }: { id: string | null; onCl
         ) : detail ? (
           <Tabs defaultValue="request">
             <TabsList>
-              <TabsTrigger value="request">请求 Request</TabsTrigger>
-              <TabsTrigger value="response">响应 Response</TabsTrigger>
+              <TabsTrigger value="request">요청 Request</TabsTrigger>
+              <TabsTrigger value="response">응답 Response</TabsTrigger>
             </TabsList>
             <TabsContent value="request">
               <HttpCodeBlock raw={detail.req} />

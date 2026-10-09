@@ -1748,10 +1748,10 @@ func (t *Task) NotifyFinding(intentID int64, summary string) {
 }
 
 // NotifyGoal 은 사람이 메인 에이전트를 통해 set_goals 호출 한 번으로 목표를 하나 이상 추가했다고 기록하고
-// planner를 깨운다. 그래서 planner가 개요에서 새 open 목표를 스스로 찾지 않아도 다음 라운드에
+// planner를 깨운다. 그래서 planner가 개요에서 새 open 목표를 스스로 찾지 않아도 다음 계획 회차에
 // "The human (main agent) added N goals: …"가 그대로 적힌다. 호출 한 번이 트리거 이벤트 하나다
 // (set_goals 일괄 호출은 한 건으로 세고, 목표마다 메시지를 쏟아 내지 않는다).
-// 이벤트는 일찍 돌아가는 종료 상태 라운드에서도 남으므로(drain은 게이트 뒤에 한다),
+// 이벤트는 일찍 돌아가는 종료 상태 계획 회차에서도 남으므로(drain은 게이트 뒤에 한다),
 // 완료된 작업을 되살린 set_goals도 작업이 실행되면 드러난다.
 func (t *Task) NotifyGoal(texts []string) {
 	if len(texts) == 0 {
@@ -1764,7 +1764,7 @@ func (t *Task) NotifyGoal(texts []string) {
 }
 
 // NotifyHint 는 사람이 메인 에이전트를 통해, 또는 작업 간 오케스트레이션이 add_hint 호출 한 번으로 힌트를
-// 하나 이상 추가했다고 기록하고 planner를 깨운다. 그래서 다음 라운드는 그래프 개요에 접혀 들어간 새 힌트를
+// 하나 이상 추가했다고 기록하고 planner를 깨운다. 그래서 다음 계획 회차는 그래프 개요에 접혀 들어간 새 힌트를
 // 찾지 않고 "The human (main agent) added N strategic hints: …"를 듣고 바로 본다.
 // 호출 한 번이 트리거 이벤트 하나다(add_hint 일괄 호출은 힌트마다가 아니라 한 건으로 센다).
 func (t *Task) NotifyHint(texts []string) {
@@ -1778,7 +1778,7 @@ func (t *Task) NotifyHint(texts []string) {
 }
 
 // NotifyGoalDeleted 는 사람이 (개요 탭의 '목표 관리'에서) 목표를 삭제했다고 기록하고 planner를 깨워,
-// 다음 라운드에 어떤 목표가 지워졌는지 적히게 한다. 이벤트는 일찍 돌아가는 종료 상태 라운드에서도
+// 다음 계획 회차에 어떤 목표가 지워졌는지 적히게 한다. 이벤트는 일찍 돌아가는 종료 상태 계획 회차에서도
 // 남는다(drain은 게이트 뒤에 한다).
 func (t *Task) NotifyGoalDeleted(text string) {
 	text = strings.TrimSpace(text)
@@ -1792,7 +1792,7 @@ func (t *Task) NotifyGoalDeleted(text string) {
 }
 
 // NotifyGoalEdited 는 사람이 (개요 탭의 '목표 관리'에서) 목표를 고쳤다고 기록하고 planner를 깨워,
-// 다음 라운드에 이전→새 변경이 적히게 한다. 이벤트는 일찍 돌아가는 종료 상태 라운드에서도
+// 다음 계획 회차에 이전→새 변경이 적히게 한다. 이벤트는 일찍 돌아가는 종료 상태 계획 회차에서도
 // 남는다(drain은 게이트 뒤에 한다).
 func (t *Task) NotifyGoalEdited(oldText, newText string) {
 	oldText, newText = strings.TrimSpace(oldText), strings.TrimSpace(newText)
@@ -1806,7 +1806,7 @@ func (t *Task) NotifyGoalEdited(oldText, newText string) {
 }
 
 // NotifyCancelled 는 사람이 intentID를 삭제했다고 기록하고(reason = 삭제 이유) planner를 깨워,
-// 다음 라운드에 어떤 탐색 의도가 왜 지워졌는지 적히게 한다. summary는 삭제 전에 받아 둔 탐색 의도의 텍스트다.
+// 다음 계획 회차에 어떤 탐색 의도가 왜 지워졌는지 적히게 한다. summary는 삭제 전에 받아 둔 탐색 의도의 텍스트다.
 // planner가 트리거를 읽을 때 노드가 이미 없는 영구 삭제에 필요하다. 소프트 삭제(state='deleted')와
 // 영구 삭제(물리적 연쇄 삭제) 모두에 쓴다.
 func (t *Task) NotifyCancelled(intentID int64, summary, reason string) {

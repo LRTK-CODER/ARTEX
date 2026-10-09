@@ -37,6 +37,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import type { Agent, MCPServer, MissingSkill, SkillCall, SkillItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +61,7 @@ function rowActivation(activate: () => void) {
 
 function fmtTime(ts?: string) {
   if (!ts) return "호출 기록 없음";
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString(DISPLAY_LOCALE, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

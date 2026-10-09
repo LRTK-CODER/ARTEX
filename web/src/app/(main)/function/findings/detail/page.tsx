@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
@@ -41,7 +42,7 @@ const FINDING_STATUSES: FindingStatus[] = [
 ];
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN");
+  return new Date(ts).toLocaleString(DISPLAY_LOCALE);
 }
 
 // FieldRow is one label/value line in the right-hand status panel.
@@ -88,7 +89,7 @@ function FindingDetailInner() {
         toast.success(`심각도를 "${statusMeta("severity", next).label}"(으)로 바꿨습니다`);
       } catch (e) {
         setFinding((cur) => (cur ? { ...cur, severity: prev } : cur));
-        toast.error("업데이트하지 못했습니다: " + (e as Error).message);
+        toast.error("심각도를 업데이트하지 못했습니다: " + (e as Error).message);
       }
     },
     [finding, id],
@@ -105,7 +106,7 @@ function FindingDetailInner() {
         toast.success(`처리 상태를 "${statusMeta("finding", next).label}"(으)로 바꿨습니다`);
       } catch (e) {
         setFinding((cur) => (cur ? { ...cur, status: prev } : cur));
-        toast.error("업데이트하지 못했습니다: " + (e as Error).message);
+        toast.error("처리 상태를 업데이트하지 못했습니다: " + (e as Error).message);
       }
     },
     [finding, id],

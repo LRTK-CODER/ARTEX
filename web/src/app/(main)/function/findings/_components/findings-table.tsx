@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { statusMeta } from "@/lib/status";
 import type { ActiveFindingRetest, Finding, FindingStatus, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -78,7 +79,7 @@ export function isSameFinding(left: Finding, right: Finding): boolean {
 }
 
 export function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString(DISPLAY_LOCALE, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

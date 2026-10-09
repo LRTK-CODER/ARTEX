@@ -56,10 +56,9 @@ func TestChatUnavailableReasonDistinguishesStates(t *testing.T) {
 	}
 }
 
-// TestResolveChatAgentHonoursConversationProfile is the regression guard for the
-// reported bug: a conversation that picked a valid profile must resolve a chat
-// agent even when NO global profile is active, so the send precheck stops
-// rejecting it with "LLM 未配置".
+// TestResolveChatAgentHonoursConversationProfile 은 보고된 버그의 회귀 테스트다. 올바른 프로필을
+// 고른 대화는 전역 프로필이 하나도 활성이 아니어도 채팅 에이전트를 얻어야 한다. 그래야 보내기 전
+// 검사가 'LLM 설정 안 됨' 오류로 거부하지 않는다.
 func TestResolveChatAgentHonoursConversationProfile(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "")
 	if err != nil {

@@ -28,6 +28,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import type {
   AssetInterceptKind,
   AssetInterceptRule,
@@ -183,7 +184,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       setGoalVuln("");
       await loadGoals();
     } catch (e) {
-      setGoalErr(e instanceof Error ? e.message : "추가하지 못했습니다");
+      setGoalErr(e instanceof Error ? e.message : "목표를 추가하지 못했습니다");
     } finally {
       setGoalBusy(false);
     }
@@ -211,7 +212,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       cancelEditGoal();
       await loadGoals();
     } catch (e) {
-      setGoalErr(e instanceof Error ? e.message : "저장하지 못했습니다");
+      setGoalErr(e instanceof Error ? e.message : "목표를 저장하지 못했습니다");
     } finally {
       setGoalBusy(false);
     }
@@ -245,7 +246,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       setConText("");
       await loadConstraints();
     } catch (e) {
-      setConErr(e instanceof Error ? e.message : "추가하지 못했습니다");
+      setConErr(e instanceof Error ? e.message : "제약 조건을 추가하지 못했습니다");
     } finally {
       setConBusy(false);
     }
@@ -273,7 +274,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       cancelEditConstraint();
       await loadConstraints();
     } catch (e) {
-      setConErr(e instanceof Error ? e.message : "저장하지 못했습니다");
+      setConErr(e instanceof Error ? e.message : "제약 조건을 저장하지 못했습니다");
     } finally {
       setConBusy(false);
     }
@@ -298,7 +299,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       setScopeValueInput("");
       await loadScope();
     } catch (e) {
-      setScopeErr(e instanceof Error ? e.message : "추가하지 못했습니다");
+      setScopeErr(e instanceof Error ? e.message : "테스트 범위를 추가하지 못했습니다");
     } finally {
       setScopeBusy(false);
     }
@@ -698,7 +699,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           ) : (
             <p className="text-muted-foreground text-sm">
               작업 제약 조건이 없습니다. 작업을 만들 때 설명·목표에서 자동으로 뽑습니다. 여기서 직접 추가·수정·삭제해
-              「어떤 작업을 허용·금지할지」 정할 수도 있습니다.
+              '어떤 작업을 허용·금지할지' 정할 수도 있습니다.
             </p>
           )}
         </CardContent>
@@ -923,7 +924,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             <div className="text-xs text-muted-foreground">최근 활동</div>
             <div className="mt-1 inline-flex items-center gap-1 text-sm">
               <ClockIcon className="size-3.5" />
-              {task?.last_activity ? new Date(task.last_activity).toLocaleTimeString("zh-CN") : "—"}
+              {task?.last_activity ? new Date(task.last_activity).toLocaleTimeString(DISPLAY_LOCALE) : "—"}
             </div>
           </div>
           <div>
@@ -937,7 +938,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               <div className="text-xs text-muted-foreground">완료 시간</div>
               <div className="mt-1 inline-flex items-center gap-1 text-sm">
                 <ClockIcon className="size-3.5" />
-                {new Date(task.completed_unix * 1000).toLocaleString("zh-CN")}
+                {new Date(task.completed_unix * 1000).toLocaleString(DISPLAY_LOCALE)}
               </div>
             </div>
           ) : null}
@@ -1040,7 +1041,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
             ))}
             {blocked.length > 20 && (
               <p className="text-xs text-muted-foreground">
-                앞의 20개만 보여 줍니다. 「전체 재실행」을 누르면 나머지 {blocked.length - 20}개도 처리합니다.
+                앞의 20개만 보여 줍니다. '전체 재실행'을 누르면 나머지 {blocked.length - 20}개도 처리합니다.
               </p>
             )}
           </CardContent>
@@ -1071,7 +1072,7 @@ const TASK_RULE_KIND_LABEL: Record<AssetInterceptKind, string> = Object.fromEntr
   TASK_RULE_KIND_OPTIONS.map((o) => [o.value, o.label]),
 ) as Record<AssetInterceptKind, string>;
 
-// TaskInterceptRulesCard는 작업 상세 개요에서 「작업 단위 자산 차단·허용 규칙」을 관리한다:
+// TaskInterceptRulesCard는 작업 상세 개요에서 '작업 단위 자산 차단·허용 규칙'을 관리한다:
 // 목록 + 추가 + 행 안 편집 + 삭제 + 사용 토글. 규칙은 이 작업에만 적용되고 전역 표에는 들어가지 않는다.
 function TaskInterceptRulesCard({ taskId }: { taskId: string }) {
   const [rules, setRules] = React.useState<AssetInterceptRule[]>([]);
@@ -1320,7 +1321,7 @@ function TaskInterceptRulesCard({ taskId }: { taskId: string }) {
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">
-            작업 단위 규칙이 없습니다. 「차단」에 일치하면 테스트를 금지합니다. 「허용」은 허용 목록입니다. 설정하면 이
+            작업 단위 규칙이 없습니다. '차단'에 일치하면 테스트를 금지합니다. '허용'은 허용 목록입니다. 설정하면 이
             작업은 허용 규칙에 일치한 자산만 테스트합니다(설정하지 않으면 허용 목록을 쓰지 않습니다).
           </p>
         )}

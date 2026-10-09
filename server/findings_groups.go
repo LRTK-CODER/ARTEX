@@ -145,7 +145,7 @@ func (s *Server) deepenFinding(w http.ResponseWriter, r *http.Request) {
 	audit := db.Activity{
 		Worker:  "system",
 		Kind:    "text",
-		Summary: "사용자가 취약점 심화 공격 탐색 의도를 제출함",
+		Summary: "사용자가 취약점 심화 검증 탐색 의도를 제출함",
 		Detail:  description,
 	}
 	intentID, audit, err := t.Store.AddFindingFollowUpIntent(id, *finding.NodeID, description, audit)

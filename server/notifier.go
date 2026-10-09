@@ -523,7 +523,7 @@ func parseSnapshot(dl *db.NotificationDelivery) (notify.Snapshot, error) {
 		return snap, fmt.Errorf("전달 %d의 이벤트 스냅숏이 비어 있음", dl.ID)
 	}
 	if err := json.Unmarshal(dl.Snapshot, &snap); err != nil {
-		return snap, fmt.Errorf("전달 %d의 이벤트 스냅숏 파싱: %w", dl.ID, err)
+		return snap, fmt.Errorf("전달 %d의 이벤트 스냅숏 파싱 실패: %w", dl.ID, err)
 	}
 	if snap.Kind == "" {
 		// 이벤트 유형은 이벤트 행을 기준으로 한다. 스냅숏 안의 값은 이전 버전이 썼을 수 있다.

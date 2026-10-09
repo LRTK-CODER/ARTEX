@@ -28,15 +28,16 @@ import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { type Tone, toneClasses } from "@/lib/status";
 import type { Edge, ExploreKind, TaskNode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const relLabel: Record<string, string> = {
-  spawns: "派生",
-  derived_from: "意图链",
-  yields: "产出",
-  proves: "证明",
+  spawns: "파생",
+  derived_from: "의도 체인",
+  yields: "결과물",
+  proves: "입증",
 };
 
 export const relColor: Record<string, string> = {
@@ -56,56 +57,56 @@ type TypeMeta = {
 
 const typeMeta: Record<ExploreKind, TypeMeta> = {
   task: {
-    label: "根任务",
+    label: "루트 작업",
     icon: Flag,
     iconBg: "bg-slate-500",
     chip: "bg-slate-500/15 text-slate-600 dark:text-slate-300",
     hex: "#64748b",
   },
   begin: {
-    label: "起点",
+    label: "시작점",
     icon: Flag,
     iconBg: "bg-slate-500",
     chip: "bg-slate-500/15 text-slate-600 dark:text-slate-300",
     hex: "#64748b",
   },
   goal: {
-    label: "目标",
+    label: "목표",
     icon: Target,
     iconBg: "bg-emerald-500",
     chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
     hex: "#10b981",
   },
   hint: {
-    label: "提示",
+    label: "힌트",
     icon: Lightbulb,
     iconBg: "bg-violet-500",
     chip: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
     hex: "#8b5cf6",
   },
   intent: {
-    label: "意图",
+    label: "의도",
     icon: Compass,
     iconBg: "bg-blue-500",
     chip: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
     hex: "#3b82f6",
   },
   fact: {
-    label: "事实",
+    label: "사실",
     icon: FlaskConical,
     iconBg: "bg-amber-500",
     chip: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
     hex: "#f59e0b",
   },
   finding: {
-    label: "漏洞",
+    label: "취약점",
     icon: Bug,
     iconBg: "bg-rose-500",
     chip: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
     hex: "#f43f5e",
   },
   digest: {
-    label: "压缩",
+    label: "압축",
     icon: Layers,
     iconBg: "bg-teal-500",
     chip: "bg-teal-500/15 text-teal-600 dark:text-teal-400",
@@ -113,7 +114,7 @@ const typeMeta: Record<ExploreKind, TypeMeta> = {
   },
 };
 
-// The task root is an origin fact (kind='fact', state='origin'); render it as "起点".
+// 작업 루트는 시작점 사실(kind='fact', state='origin')이므로 "시작점"으로 그린다.
 function viewKind(n: TaskNode): ExploreKind {
   return n.type === "fact" && n.state === "origin" ? "begin" : n.type;
 }
@@ -146,7 +147,7 @@ function nodeSummary(n: TaskNode): string {
         }
       }
     } catch {
-      /* 非 JSON：原样显示 */
+      /* JSON이 아니면 그대로 보여 준다 */
     }
   }
   return raw;
@@ -375,8 +376,12 @@ function ExploreNode({ data, selected }: NodeProps<ExploreRFNode>) {
         </div>
         <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
           {n.inherited && n.source_task_id ? (
-            <Badge variant="outline" className="max-w-32 truncate" title={`继承自任务 #${n.source_task_id}，只读`}>
-              来源 #{n.source_task_id}
+            <Badge
+              variant="outline"
+              className="max-w-32 truncate"
+              title={`작업 #${n.source_task_id}에서 이어받음, 읽기 전용`}
+            >
+              출처 #{n.source_task_id}
             </Badge>
           ) : showState ? (
             <StatusBadge
@@ -454,7 +459,7 @@ function NodeDetailSheet({
                 </div>
                 {node.inherited && node.source_task_id && (
                   <Badge variant="outline" className="ml-auto shrink-0">
-                    来源任务 #{node.source_task_id} · 只读
+                    출처 작업 #{node.source_task_id} · 읽기 전용
                   </Badge>
                 )}
               </div>
@@ -463,9 +468,9 @@ function NodeDetailSheet({
             <ScrollArea className="min-h-0 flex-1">
               <div className="flex w-full min-w-0 flex-col gap-4 p-4">
                 <section>
-                  <h4 className="text-muted-foreground mb-1 text-xs font-medium">属性</h4>
-                  <DetailRow label="类型">{meta.label}</DetailRow>
-                  <DetailRow label="状态">
+                  <h4 className="text-muted-foreground mb-1 text-xs font-medium">속성</h4>
+                  <DetailRow label="유형">{meta.label}</DetailRow>
+                  <DetailRow label="상태">
                     {node.type === "goal" || node.type === "intent" ? (
                       <StatusBadge
                         domain={node.type === "goal" ? "goal" : "intent"}
@@ -477,25 +482,25 @@ function NodeDetailSheet({
                       <span className="font-mono text-xs">{node.state}</span>
                     )}
                   </DetailRow>
-                  <DetailRow label="优先级">
+                  <DetailRow label="우선순위">
                     <span className="tabular-nums">{node.priority}</span>
                   </DetailRow>
-                  <DetailRow label="来源">
+                  <DetailRow label="출처">
                     <span className="font-mono text-xs">{node.origin}</span>
                   </DetailRow>
                   {node.inherited && node.source_task_id && (
-                    <DetailRow label="来源任务">
-                      <span className="font-mono text-xs">#{node.source_task_id}（继承，只读）</span>
+                    <DetailRow label="출처 작업">
+                      <span className="font-mono text-xs">#{node.source_task_id}(이어받음, 읽기 전용)</span>
                     </DetailRow>
                   )}
-                  <DetailRow label="时间">{new Date(node.ts).toLocaleString("zh-CN")}</DetailRow>
+                  <DetailRow label="시간">{new Date(node.ts).toLocaleString(DISPLAY_LOCALE)}</DetailRow>
                 </section>
 
                 {node.type === "digest" && (
                   <>
                     {nodeSummary(node) && (
                       <section className="border-t pt-3">
-                        <h4 className="text-muted-foreground mb-1.5 text-xs font-medium">压缩结论</h4>
+                        <h4 className="text-muted-foreground mb-1.5 text-xs font-medium">압축 결론</h4>
                         <p className="text-foreground text-sm leading-relaxed break-words whitespace-pre-wrap">
                           {nodeSummary(node)}
                         </p>
@@ -503,7 +508,7 @@ function NodeDetailSheet({
                     )}
                     <section className="border-t pt-3">
                       <h4 className="text-muted-foreground mb-1.5 text-xs font-medium">
-                        压缩的节点（{memberIds.length}）
+                        압축된 노드({memberIds.length})
                       </h4>
                       <div className="flex flex-col gap-1.5">
                         {members.map((m) => {
@@ -537,7 +542,7 @@ function NodeDetailSheet({
                         })}
                         {members.length < memberIds.length && (
                           <span className="text-muted-foreground text-[10px]">
-                            另有 {memberIds.length - members.length} 个成员节点未随当前图加载
+                            구성 노드 {memberIds.length - members.length}개는 현재 그래프에 불러오지 않았습니다
                           </span>
                         )}
                       </div>
@@ -547,13 +552,13 @@ function NodeDetailSheet({
 
                 <section className="border-t pt-3">
                   <div className="mb-1.5 flex items-center justify-between">
-                    <h4 className="text-muted-foreground text-xs font-medium">原始数据</h4>
+                    <h4 className="text-muted-foreground text-xs font-medium">원본 데이터</h4>
                     <button
                       type="button"
                       onClick={copy}
                       className="text-muted-foreground hover:text-foreground text-xs transition-colors"
                     >
-                      {copied ? "已复制" : "复制"}
+                      {copied ? "복사됨" : "복사"}
                     </button>
                   </div>
                   <pre className="bg-muted/50 text-foreground max-w-full overflow-hidden rounded-md border p-3 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
@@ -575,7 +580,7 @@ function NodeDetailSheet({
 function ExplorationGraphInner({
   nodes,
   edges,
-  emptyHint = "暂无探索数据",
+  emptyHint = "탐색 데이터가 없습니다",
 }: {
   nodes: TaskNode[];
   edges: Edge[];
@@ -705,8 +710,8 @@ function ExplorationGraphInner({
   );
 }
 
-// ExplorationGraph is the shared探索图/攻击链路图 canvas — used by the task graph
-// tab (full graph, polled) and the finding lineage view (origin→finding subgraph).
+// ExplorationGraph는 탐색 그래프와 공격 경로 그래프가 함께 쓰는 캔버스다. 작업
+// 그래프 탭(전체 그래프, 폴링)과 발견 사항 계보 보기(시작점→발견 사항 하위 그래프)가 쓴다.
 export function ExplorationGraph({
   nodes,
   edges,

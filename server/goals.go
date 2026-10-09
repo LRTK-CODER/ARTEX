@@ -20,8 +20,8 @@ type goalSpec struct {
 // launchTask 는 어느 경로(HTTP createTask 또는 orchestration spawn_task)로 만든 작업이든 생성 뒤 공통 순서를
 // 실행한다. 두 곳에 같은 코드를 복사하지 않으려는 것이다.
 //  1. 루트 자산을 seed해 이벤트 기반 loop에 넣는다.
-//  2. 선택적으로 시드 의도를 넣어, 워커가 첫 라운드 플래너를 기다리지 않고 바로 시작한다.
-//  3. 백그라운드에서 비동기로 목표를 분해한다('0번째 라운드: 목표 분해' round + LLM 분해 단계 + 목표별 goal, 화면에 보인다).
+//  2. 선택적으로 시드 의도를 넣어, 워커가 첫 계획 회차의 플래너를 기다리지 않고 바로 시작한다.
+//  3. 백그라운드에서 비동기로 목표를 분해한다('0번째 계획: 목표 분해' round + LLM 분해 단계 + 목표별 goal, 화면에 보인다).
 //     분해가 끝난 뒤 engine.Run을 부른다. 엔진은 goal 노드가 준비된 뒤에 시작하므로 플래너가 goal보다 먼저 도는 경쟁 상태를 피한다.
 //
 // 비동기(goroutine)라 호출자는 바로 돌아온다. 두 경로의 동작이 같다. 작업은 바로 만들어지고 목표는 백그라운드에서 분해된다.
@@ -45,7 +45,7 @@ func (s *Server) startTaskEngine(t *Task) {
 		return
 	}
 	s.engine.emitActivity(t, db.Activity{Worker: "planner", Kind: "round",
-		Summary: "0번째 라운드: 목표 분해"})
+		Summary: "0번째 계획: 목표 분해"})
 	goals := s.createGoals(ctx, t, func(r db.Activity) {
 		s.engine.emitActivity(t, r)
 	})

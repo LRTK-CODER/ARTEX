@@ -128,7 +128,7 @@ func (s *Server) findingTrafficAccess(w http.ResponseWriter, r *http.Request, wr
 			return 0, false
 		}
 		if write && inherited {
-			writeErr(w, 403, "상속받은 취약점은 읽기 전용입니다. 원래 작업에서 수정하세요")
+			writeErr(w, 403, "이어받은 취약점은 읽기 전용입니다. 원래 작업에서 수정하세요")
 			return 0, false
 		}
 	}
