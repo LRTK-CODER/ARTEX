@@ -100,7 +100,7 @@
 | 企业 | 기업 | company | 자산을 묶는 단위 |
 | 官网 | 공식 웹사이트 | official website | |
 | 后台 | 관리자 페이지 | admin panel | "백엔드"와 구분한다 |
-| ICP备案 / 备案号 | ICP 비안 번호 | ICP filing number | 중국 웹사이트 등록 번호. #99 소유자 코멘트 표기 |
+| ICP备案 / 备案号 | ICP 등록 번호 | ICP filing number | 중국 웹사이트 운영 등록 번호(备案). "비안"처럼 음차하지 않는다 |
 | 拦截 | 차단 | block | `intercept` 패키지의 자산 차단 규칙. #99 소유자 코멘트 표기 |
 | 拦截规则 | 차단 규칙 | block rule | |
 | 命中 (규칙) | 일치 | match | "命中规则"은 "일치한 규칙" |
@@ -112,7 +112,7 @@
 | 约束 | 제약 조건 | constraint | 사용자가 정한 허용·금지 작업 |
 | 操作约束 | 작업 제약 조건 | operation constraint | |
 | 允许 / 禁止 | 허용 / 금지 | allow / deny | |
-| 被动侦察 | 수동 정보 수집 | passive reconnaissance | |
+| 被动侦察 | 수동적 정보 수집 | passive reconnaissance | "수동"만 쓰면 "manual"로 읽히므로 "수동적"으로 쓴다 |
 | 审批 | 승인 심사 | approval review | #103 제목과 맞춘다 |
 | 实际操作 | 실제 동작 | actual action | 승인 심사 결과의 첫 항목 |
 | 成功后的后果 | 성공 시 결과 | effect if successful | 승인 심사 결과의 둘째 항목 |
@@ -137,7 +137,7 @@
 | Agent | 에이전트 | agent | |
 | 主 Agent | 메인 에이전트 | main agent | |
 | 规划 | 계획 | planning | |
-| 领取 | 가져가다 | claim | 워커가 의도·작업을 맡는 것 |
+| 领取 | 맡기 | claim | 워커가 의도·작업을 맡는 것. 예: "의도를 맡는다" |
 | 派生 | 파생 | derive | |
 | 产出 | 결과물 | output | 동사일 때는 "만들어 내다" |
 | 达成 | 달성 | achieve | |
@@ -180,10 +180,10 @@
 | 硬取消 | 강제 취소 | hard cancel | |
 | 假删除 | 소프트 삭제 | soft delete | DB 업계 표준 용어 |
 | 真删除 | 영구 삭제 | hard delete | |
-| 级联 | 연쇄 | cascade | "연쇄 삭제" |
+| 级联 | 연쇄 삭제 | cascade delete | DB의 CASCADE 동작 |
 | 已删除 | 삭제됨 | deleted | |
 | 任务正在删除 | 작업을 삭제하는 중입니다 | task is being deleted | |
-| 租约 | 임대 | lease | 알림 발송 행 선점 |
+| 租约 | 선점 기한 | lease | 알림 발송기가 한 행을 잡아 두는 기한. "임대"로 옮기지 않는다 |
 | 一次性 | 일회성 | one-time | |
 
 ### 알림
