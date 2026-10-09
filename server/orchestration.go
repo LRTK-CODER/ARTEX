@@ -24,11 +24,12 @@ func jsonResult(v any) (actool.Result, error) {
 	return actool.Text(string(b)), nil
 }
 
-// 本文件实现 P2「跨任务编排工具集」(docs/跑分编排 §2 P2)。这些是 host 工具——需要
-// 访问 Manager(任意任务的 Store)、Engine(暂停)、以及建任务流程,所以住在 server 层。
-// 读类工具把「现有 per-task 工具」重定向到目标任务的 store 上跑(建一个临时 ToolSet
-// 并 Call 其对应工具),从而复用完全相同的逻辑;控制类(spawn/pause)直接调 Manager/Engine。
-// 它们像流量工具一样 seed 进 tools 表、按 agent 绑定(只绑给编排 agent 才可见)。
+// 이 파일은 '작업 간 오케스트레이션 도구 모음'을 구현한다(docs/跑分编排 §2 P2). 이 도구들은 host
+// 도구다. Manager(모든 작업의 Store), Engine(일시 중지), 작업 생성 흐름에 접근해야 하므로 server
+// 계층에 둔다. 읽기 도구는 '기존 작업별 도구'를 대상 작업의 store에서 돌게 돌려보낸다(임시 ToolSet을
+// 만들어 해당 도구를 Call한다). 그래서 완전히 같은 로직을 재사용한다. 제어 도구(spawn/pause)는
+// Manager/Engine을 직접 부른다. 트래픽 도구처럼 tools 테이블에 시드되고 agent별로 연결된다
+// (오케스트레이션 agent에만 연결해야 보인다).
 
 // hostTools is the runtime host-tool provider fed to ToolAugment: traffic tools
 // (gated by capture) + cross-task orchestration tools + user-defined custom tools.
@@ -40,10 +41,10 @@ func jsonResult(v any) (actool.Result, error) {
 func (s *Server) hostTools() ([]actool.CoreTool, map[string][]string) {
 	tools := append(s.m.HostTools(), s.orchestrationTools()...)
 	tools = append(tools, s.findingRetestTools()...)
-	tools = append(tools, s.platformTools()...) // 平台操作工具(建改 skill/工具/MCP，给 Auto 用)
+	tools = append(tools, s.platformTools()...) // 플랫폼 조작 도구(스킬·도구·MCP 생성과 수정, Auto용)
 	custom, err := s.customTools()
 	if err != nil {
-		log.Printf("[custom-tool] 加载失败: %v", err)
+		log.Printf("[custom-tool] 불러오기 실패: %v", err)
 		return tools, nil
 	}
 	tools = append(tools, custom...)
@@ -152,11 +153,11 @@ func (s *Server) delegateToTask(ctx context.Context, in json.RawMessage, pick fu
 	}
 	_ = json.Unmarshal(in, &head)
 	if strings.TrimSpace(head.TaskID) == "" {
-		return actool.Errorf("task_id 为必填"), nil
+		return actool.Errorf("task_id is required"), nil
 	}
 	t, ok := s.m.Task(head.TaskID)
 	if !ok {
-		return actool.Errorf("task 不存在: " + head.TaskID), nil
+		return actool.Errorf("task not found: " + head.TaskID), nil
 	}
 	var m map[string]json.RawMessage
 	_ = json.Unmarshal(in, &m)
@@ -166,8 +167,8 @@ func (s *Server) delegateToTask(ctx context.Context, in json.RawMessage, pick fu
 	if s.m.Assets() != nil {
 		tsx.SetAssetStore(s.m.Assets(), s.m.Assets().Companies())
 	}
-	tsx.SetNotify(t.Notify)         // 通用唤醒（无专用回调的写操作走它；读工具为 no-op）
-	tsx.SetNotifyHint(t.NotifyHint) // add_hint → 记一条「人新增了 N 条战略提示：…」触发并唤醒 planner
+	tsx.SetNotify(t.Notify)         // 일반 깨우기(전용 콜백이 없는 쓰기 작업이 쓴다. 읽기 도구에서는 no-op)
+	tsx.SetNotifyHint(t.NotifyHint) // add_hint → '사람이 전략 힌트 N건을 더했다: …' 트리거를 기록하고 planner를 깨운다
 	return pick(tsx).Call(ctx, inner, nil)
 }
 
@@ -175,7 +176,7 @@ func (s *Server) delegateToTask(ctx context.Context, in json.RawMessage, pick fu
 
 func (s *Server) toolListTasks() actool.CoreTool {
 	return roTool("list_tasks",
-		"列出所有任务(id/描述/目标/状态/运行时长/父任务/LLM 配置)，编排 agent 用它掌握全局、看哪些任务卡太久、各自用哪个 LLM。运行时长：运行中=创建→现在，终态=创建→最后活动(秒)。llm_profile：任务 planner/worker 用的配置名，(激活配置)=跟随全局激活。",
+		"List all tasks (id/description/goal/status/run time/parent task/LLM profile). The orchestration agent uses it to see the big picture, spot tasks stuck too long, and see which LLM each one uses. Run time: running = created→now, terminal = created→last activity (seconds). llm_profile: the profile name the task's planner/worker uses; (active profile) = follows the global active profile.",
 		objSchema(map[string]any{}),
 		func(context.Context, json.RawMessage) (actool.Result, error) {
 			lastAct, _ := s.m.PG().LastActivityAll()
@@ -205,11 +206,11 @@ func (s *Server) toolListTasks() actool.CoreTool {
 				}
 				llmState := t.llmStateSnapshot()
 				if llmState.ProfileID == nil {
-					row["llm_profile"] = "(激活配置)"
+					row["llm_profile"] = "(active profile)"
 				} else if n, ok := profName[*llmState.ProfileID]; ok {
 					row["llm_profile"] = n
 				} else {
-					row["llm_profile"] = fmt.Sprintf("#%d(已删除)", *llmState.ProfileID)
+					row["llm_profile"] = fmt.Sprintf("#%d (deleted)", *llmState.ProfileID)
 				}
 				out = append(out, row)
 			}
@@ -221,7 +222,7 @@ func (s *Server) toolListTasks() actool.CoreTool {
 // orchestration agent can pick one for spawn_task's llm_profile. Never leaks keys.
 func (s *Server) toolListLLMProfiles() actool.CoreTool {
 	return roTool("list_llm_profiles",
-		"列出可用的 LLM 配置(profile)：id、名称、模型、格式、是否为当前激活配置。用 id 给 spawn_task 的 llm_profile_id 参数指定子任务专属 LLM（如侦察用便宜模型、利用用强模型）。不含 API Key。",
+		"List available LLM profiles: id, name, model, format, and whether it is the current active profile. Pass the id to spawn_task's llm_profile_id parameter to give a subtask its own LLM (e.g. a cheap model for reconnaissance, a strong model for exploitation). Does not include API keys.",
 		objSchema(map[string]any{}),
 		func(context.Context, json.RawMessage) (actool.Result, error) {
 			profs, err := s.m.pg.ListProfiles()
@@ -240,16 +241,16 @@ func (s *Server) toolListLLMProfiles() actool.CoreTool {
 
 func (s *Server) toolSpawnTask() actool.CoreTool {
 	return wrTool("spawn_task",
-		"新建一个子任务并启动探索引擎，返回 task_id。用于把一件事(如一道题/一个目标)派成独立任务。parent_ref 可选：填当前编排关联的父任务 id 做父子关联。",
+		"Create a subtask and start the exploration engine; returns task_id. Use it to dispatch one thing (e.g. a challenge or a goal) as an independent task. parent_ref is optional: set it to the parent task id of the current orchestration to link parent and child.",
 		objSchema(map[string]any{
-			"description":            strParam("任务描述(简短标题)"),
-			"goal":                   strParam("任务目标(要达成什么)"),
-			"parent_ref":             strParam("可选：父任务 id(做父子关联)"),
-			"source_task_ids":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": fmt.Sprintf("可选：只读继承的来源任务 id 列表(最多 %d 个)。子任务可只读引用这些任务已探明的资产/结论作为起点；与 parent_ref 的纯父子指针不同，这是内容继承。", db.MaxTaskSourceCount)},
-			"llm_profile_id":         map[string]any{"type": "integer", "description": "可选：指定本子任务 planner/worker 用的 LLM 配置 id(见 list_llm_profiles)；留空则继承父任务、再回退全局激活配置"},
-			"timeout_seconds":        map[string]any{"type": "integer", "description": "可选：任务级超时(秒)。到点后触发优雅收尾并进入 timeout 终态；留空或 0 = 不限时"},
-			"plan_heartbeat_seconds": map[string]any{"type": "integer", "description": "可选：planner 心跳触发间隔(秒)。距上轮规划结束/任务开始满该值且期间无触发 → 触发一轮规划(兜底死锁 + 唤醒去监督飞行中的 worker)。留空或 0 = 默认 600(10min)；"},
-			"seed_first_intent":      map[string]any{"type": "boolean", "description": "可选：对于简单任务可开启，创建时直接下发一条种子意图(内容=描述+目标)让 worker 免等首轮 planner 直接开跑测试；默认 false(走标准先规划再执行)。"},
+			"description":            strParam("Task description (short title)"),
+			"goal":                   strParam("Task goal (what to achieve)"),
+			"parent_ref":             strParam("Optional: parent task id (links parent and child)"),
+			"source_task_ids":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": fmt.Sprintf("Optional: list of source task ids to inherit read-only (at most %d). The subtask can reference, read-only, the assets/conclusions those tasks already established as a starting point; unlike parent_ref, which is just a parent-child pointer, this inherits content.", db.MaxTaskSourceCount)},
+			"llm_profile_id":         map[string]any{"type": "integer", "description": "Optional: LLM profile id for this subtask's planner/worker (see list_llm_profiles); if empty, inherit the parent task's, then fall back to the global active profile"},
+			"timeout_seconds":        map[string]any{"type": "integer", "description": "Optional: task-level timeout (seconds). When reached, it triggers a graceful wrap-up and the task ends in the timeout state; empty or 0 = unlimited"},
+			"plan_heartbeat_seconds": map[string]any{"type": "integer", "description": "Optional: planner heartbeat interval (seconds). If this long has passed since the last planning round ended / the task started with no trigger in between → trigger a planning round (a fallback against deadlock + a wake-up to supervise in-flight workers). Empty or 0 = default 600 (10 min)."},
+			"seed_first_intent":      map[string]any{"type": "boolean", "description": "Optional: can be enabled for simple tasks; on creation it dispatches one seed intent (content = description + goal) so a worker starts testing without waiting for the first planner round; default false (the standard plan-then-execute flow)."},
 		}, "description", "goal"),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct {
@@ -264,27 +265,27 @@ func (s *Server) toolSpawnTask() actool.CoreTool {
 			}
 			_ = json.Unmarshal(in, &a)
 			if strings.TrimSpace(a.Description) == "" {
-				a.Description = "未命名任务"
+				a.Description = "이름 없는 작업"
 			}
 			if strings.TrimSpace(a.Goal) == "" {
-				return actool.Errorf("goal 为必填"), nil
+				return actool.Errorf("goal is required"), nil
 			}
 			if a.TimeoutSeconds < 0 {
 				a.TimeoutSeconds = 0
 			}
-			// 只读继承来源任务：数量上限 + 每个 id 有效/去重/存在，校验规则与 HTTP 建任务一致。
+			// 읽기 전용으로 이어받는 출처 작업: 개수 상한과 각 id의 유효성·중복·존재를 HTTP 작업 생성과 같은 규칙으로 검사한다.
 			if len(a.SourceTaskIDs) > db.MaxTaskSourceCount {
-				return actool.Errorf(fmt.Sprintf("关联任务最多选择 %d 个", db.MaxTaskSourceCount)), nil
+				return actool.Errorf(fmt.Sprintf("at most %d source tasks can be selected", db.MaxTaskSourceCount)), nil
 			}
 			sourceIDs := make([]int64, 0, len(a.SourceTaskIDs))
 			seenSources := map[int64]bool{}
 			for _, raw := range a.SourceTaskIDs {
 				id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 				if err != nil || id <= 0 || seenSources[id] {
-					return actool.Errorf("关联任务 id 无效或重复"), nil
+					return actool.Errorf("source task id is invalid or duplicated"), nil
 				}
 				if _, ok := s.m.Task(strconv.FormatInt(id, 10)); !ok {
-					return actool.Errorf(fmt.Sprintf("关联任务 #%d 不存在", id)), nil
+					return actool.Errorf(fmt.Sprintf("source task #%d not found", id)), nil
 				}
 				seenSources[id] = true
 				sourceIDs = append(sourceIDs, id)
@@ -293,7 +294,7 @@ func (s *Server) toolSpawnTask() actool.CoreTool {
 			var pin *int64
 			if id := parseProfileID(a.LLMProfileID); id > 0 {
 				if _, ok := s.loadProfileConfig(id); !ok {
-					return actool.Errorf(fmt.Sprintf("LLM 配置 #%d 不存在或未设置 API Key", id)), nil
+					return actool.Errorf(fmt.Sprintf("LLM profile #%d not found or has no API key", id)), nil
 				}
 				pin = &id
 			} else if a.ParentRef != "" {

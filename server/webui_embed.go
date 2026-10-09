@@ -31,10 +31,10 @@ func (s *Server) webuiHandler() http.Handler {
 		if p == "" {
 			p = "index.html"
 		}
-		// 1) exact file (assets: _next/*, favicon.ico, ...)
-		// 2) route dir → <p>/index.html (trailingSlash export)
+		// 1) 정확히 일치하는 파일(애셋: _next/*, favicon.ico, ...)
+		// 2) 라우트 디렉터리 → <p>/index.html(trailingSlash export)
 		// 3) <p>.html
-		// 4) SPA 兜底 → index.html（交给客户端路由）
+		// 4) SPA 대체 → index.html(클라이언트 라우팅에 맡긴다)
 		for _, cand := range []string{p, p + "/index.html", p + ".html"} {
 			if serveFileIfExists(w, r, root, cand) {
 				return
