@@ -1008,7 +1008,7 @@ func TestAssetIPRejectsHostname(t *testing.T) {
 // are excluded. Direct source tasks' scope is included.
 func TestQueryDSLInScopeMembership(t *testing.T) {
 	d, assets, _ := testSetup(t)
-	defer d.Close()
+	t.Cleanup(func() { d.Close() })
 
 	task, err := d.CreateTask("scope membership", "goal", nil, 0, 0)
 	if err != nil {
