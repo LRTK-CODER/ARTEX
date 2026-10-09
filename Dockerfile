@@ -32,6 +32,8 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && node --version && npm --version && npx --version
 # Playwright MCP·CLI는 docker/playwright의 lockfile대로 npm ci로 설치한다.
 # npm ci는 lockfile의 integrity 해시를 검사하므로 빌드마다 같은 패키지가 들어온다.
+# playwright는 @playwright/mcp·cli가 정확히 의존하는 버전(alpha여도)에 맞춘다. 버전이 다르면
+# playwright install이 받는 chromium 리비전이 MCP·CLI가 찾는 리비전과 달라진다.
 # 설치한 패키지와 실행 파일을 전역 위치(/usr/local/lib/node_modules, /usr/local/bin)에
 # 링크해 예전 `npm install -g`와 같은 자리에서 보이게 한다. 내장 browser MCP는
 # `npx @playwright/mcp`로 뜨는데, npx는 PATH가 아니라 전역 node_modules와 전역 bin을 본다.
