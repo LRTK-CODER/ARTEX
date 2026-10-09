@@ -9,7 +9,7 @@ import { MOCK } from "@/lib/mock/enabled";
 import type { LogLine } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// Mock demo：无后端 SSE，塞几行示例日志。
+// 목업 데모: 백엔드 SSE가 없으므로 예시 로그 몇 줄을 넣는다.
 const MOCK_LOGS: LogLine[] = [
   {
     seq: 1,
@@ -30,28 +30,28 @@ const MOCK_LOGS: LogLine[] = [
     ts: "2026-07-26T03:56:10Z",
     level: "info",
     tag: "planner",
-    text: "task t-acme-web: 第 3 轮规划，生成意图 i-4",
+    text: "task t-acme-web: 3번째 계획, 탐색 의도 i-4 생성",
   },
   {
     seq: 4,
     ts: "2026-07-26T03:57:00Z",
     level: "warn",
     tag: "guard",
-    text: "block bash: 目标越界 out.evil.example 不在 scope 内",
+    text: "block bash: 대상 범위 벗어남, out.evil.example은 scope 밖",
   },
   {
     seq: 5,
     ts: "2026-07-26T03:57:30Z",
     level: "info",
     tag: "work#1",
-    text: "report_finding: Default Credentials (high) 已落库",
+    text: "report_finding: Default Credentials (high) 저장함",
   },
   {
     seq: 6,
     ts: "2026-07-26T03:58:20Z",
     level: "error",
     tag: "work#3",
-    text: "intercept: mysqldump 命中破坏性规则，等待人工审批",
+    text: "intercept: mysqldump가 파괴적 동작 규칙에 일치, 사람의 승인 심사 대기",
   },
 ];
 
@@ -180,13 +180,13 @@ export default function LogsPage() {
   return (
     <div className="flex flex-1 flex-col gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">系统日志</h1>
-        <p className="text-muted-foreground text-sm">后端实时日志流(planner / worker / 数据库 / 流量 …)</p>
+        <h1 className="text-xl font-semibold tracking-tight">시스템 로그</h1>
+        <p className="text-muted-foreground text-sm">백엔드 실시간 로그 스트림(planner / worker / 데이터베이스 / 트래픽 …)</p>
       </div>
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            placeholder="过滤(文本 / tag)…"
+            placeholder="필터(텍스트 / tag)…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="h-8 max-w-xs"
@@ -200,7 +200,7 @@ export default function LogsPage() {
                 className="h-8"
                 onClick={() => setLevel(lv)}
               >
-                {lv === "all" ? "全部" : lv}
+                {lv === "all" ? "전체" : lv}
               </Button>
             ))}
           </div>
@@ -210,14 +210,14 @@ export default function LogsPage() {
             className="h-8"
             onClick={() => setPaused((p) => !p)}
           >
-            {paused ? "已暂停" : "暂停"}
+            {paused ? "일시 중지됨" : "일시 중지"}
           </Button>
           <Button size="sm" variant="outline" className="h-8" onClick={() => setLines([])}>
-            清空
+            비우기
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">
-            {counts.total} 行 · <span className="text-amber-600 dark:text-amber-400">{counts.warn} 警告</span> ·{" "}
-            <span className="text-red-600 dark:text-red-400">{counts.error} 错误</span>
+            {counts.total}줄 · <span className="text-amber-600 dark:text-amber-400">경고 {counts.warn}</span> ·{" "}
+            <span className="text-red-600 dark:text-red-400">오류 {counts.error}</span>
           </span>
         </div>
 
@@ -237,12 +237,12 @@ export default function LogsPage() {
                 disabled={loadingHistory}
                 onClick={loadOlderHistory}
               >
-                {loadingHistory ? "加载中…" : "加载更早日志"}
+                {loadingHistory ? "불러오는 중…" : "이전 로그 불러오기"}
               </Button>
             </div>
           )}
           {filtered.length === 0 ? (
-            <p className="py-10 text-center text-muted-foreground">暂无日志。</p>
+            <p className="py-10 text-center text-muted-foreground">로그가 없습니다.</p>
           ) : (
             filtered.map((l) => {
               const body =
