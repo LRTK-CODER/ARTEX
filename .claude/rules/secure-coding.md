@@ -1,5 +1,5 @@
 ---
-paths: ["agent/**/*.go", "server/**/*.go", "guard/**/*.go", "intercept/**/*.go", "traffic/**/*.go", "enrich/**/*.go", "llmpool/**/*.go", "llmrec/**/*.go", "mcphttp/**/*.go", "notify/**/*.go", "config/**/*.go", "db/**/*.go", "selfupdate/**/*.go", "evidence/**/*.go", "sidequestion/**/*.go", "report/**/*.go"]
+paths: ["go.mod", "agent/**/*.go", "server/**/*.go", "guard/**/*.go", "intercept/**/*.go", "traffic/**/*.go", "enrich/**/*.go", "llmpool/**/*.go", "llmrec/**/*.go", "mcphttp/**/*.go", "notify/**/*.go", "config/**/*.go", "db/**/*.go", "selfupdate/**/*.go", "evidence/**/*.go", "sidequestion/**/*.go", "report/**/*.go"]
 ---
 
 # 안전한 코드 작성 규칙
@@ -84,3 +84,12 @@ ARTEX의 비밀값: DB 비밀번호/DSN, LLM API 키, 알림 채널 자격 증�
 | 설정 검증 오류에 입력값을 넣지 않는다. 키 경로와 이유만 남긴다. | 규칙 | 실패 경로 테스트 |
 | 비밀값을 커밋하지 않는다. 환경 변수(`ARTEX_PG_DSN`, `ANTHROPIC_API_KEY` 등)나 앱 안 설정으로 넣는다. 정본은 `AGENTS.md` "꼭 지킬 것". | 규칙 | 리뷰 |
 | 비밀값을 담는 파일을 새로 만들면 소유자만 읽게(0600) 쓰고, 쓰는 도중 실패해도 기존 파일이 깨지지 않게 임시 파일에 쓴 뒤 이름을 바꾼다. | 규칙 | 테스트: 만든 파일의 권한, 쓰기 도중 실패 시 기존 파일 보존 |
+
+## 외부 Go 모듈
+
+`go.sum`과 checksum DB(sum.golang.org)는 이미 받은 버전의 바이트가 바뀌지 않음을 보장한다. 새 버전에 들어온 코드가 안전한지는 보장하지 않는다. 그래서 위험 지점은 버전을 올리는 순간이다.
+
+| 규칙 | 등급 | 확인 방법 |
+|---|---|---|
+| 외부 Go 모듈, 특히 `github.com/Autumn-27/norma`의 버전을 올리는 PR은 이전 버전과의 소스 diff 요약(네트워크·파일·프로세스 실행 변경 중심)을 PR 본문에 적는다. | 규칙 | 리뷰: `go.mod` 버전 변경 PR 본문에 diff 요약이 있다 |
+| `GOSUMDB=off`·`GONOSUMDB`·`GOFLAGS=-insecure`를 쓰지 않는다. 빌드 스크립트·워크플로·문서에 넣지 않는다. | 규칙 | 리뷰, `grep -rn 'GOSUMDB=off\|GONOSUMDB\|-insecure'` 결과가 이 문서뿐이다 |
