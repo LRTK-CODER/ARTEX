@@ -51,7 +51,7 @@ const MOCK_LOGS: LogLine[] = [
     ts: "2026-07-26T03:58:20Z",
     level: "error",
     tag: "work#3",
-    text: "intercept: mysqldump가 파괴적 동작 규칙에 일치, 사람의 승인 심사 대기",
+    text: "intercept: mysqldump가 파괴적 동작 규칙에 일치, 수동 승인 대기",
   },
 ];
 
