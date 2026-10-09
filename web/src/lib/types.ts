@@ -1058,11 +1058,11 @@ export interface LLMProfile {
   retry?: LLMRetryOverride;
   // 인증 방식. 옛 응답에는 없을 수 있어 비면 api_key로 본다.
   auth_type?: LLMAuthType;
-  // chatgpt_oauth 프로필의 연결 상태. 토큰은 서버가 싣지 않는다.
+  // 구독 프로필의 연결 상태. 토큰은 서버가 싣지 않는다.
   oauth?: LLMProfileOAuth;
 }
 
-export type LLMAuthType = "api_key" | "chatgpt_oauth";
+export type LLMAuthType = "api_key" | "chatgpt_oauth" | "claude_oauth";
 
 export interface LLMProfileOAuth {
   connected: boolean;

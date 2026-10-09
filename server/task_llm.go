@@ -272,10 +272,15 @@ func completeTaskLLM(ctx context.Context, taskID string, req llm.CompletionReque
 		}
 		transition, markErr := hooks.exhaust(selection, callErr)
 		if markErr != nil {
-			return llm.Message{}, "", llm.Usage{}, fmt.Errorf("mark profile quota exhausted after %v: %w", callErr, markErr)
+			return llm.Message{}, "", llm.Usage{}, fmt.Errorf("mark profile quota exhausted: %w: %w", callErr, markErr)
 		}
 		if transition.Advanced && !transition.Stale && hooks.transition != nil {
 			hooks.transition(selection, transition, callErr)
+		}
+		var claudeErr *agent.ClaudeRequestError
+		if errors.As(callErr, &claudeErr) {
+			// 백업 선택은 저장하되 Claude에서 거절된 요청 자체는 다시 보내지 않는다.
+			return llm.Message{}, "", llm.Usage{}, &taskLLMError{taskID: taskID, chainExhausted: transition.ChainExhausted, cause: callErr}
 		}
 		if !transition.Stale && transition.NextProfileID == nil {
 			return llm.Message{}, "", llm.Usage{}, &taskLLMError{taskID: taskID, chainExhausted: transition.ChainExhausted, cause: callErr}
@@ -359,7 +364,7 @@ func streamTaskLLM(ctx context.Context, taskID string, req llm.CompletionRequest
 			}
 			transition, markErr := hooks.exhaust(selection, streamErr)
 			if markErr != nil {
-				cause := fmt.Errorf("mark profile quota exhausted after %v: %w", streamErr, markErr)
+				cause := fmt.Errorf("mark profile quota exhausted: %w: %w", streamErr, markErr)
 				if committed {
 					// Output may already have driven tool execution. Report the persistence
 					// failure, but classify it as router-handled so the worker does not
@@ -373,7 +378,8 @@ func streamTaskLLM(ctx context.Context, taskID string, req llm.CompletionRequest
 			if transition.Advanced && !transition.Stale && hooks.transition != nil {
 				hooks.transition(selection, transition, streamErr)
 			}
-			if committed || (!transition.Stale && transition.NextProfileID == nil) {
+			var claudeErr *agent.ClaudeRequestError
+			if committed || errors.As(streamErr, &claudeErr) || (!transition.Stale && transition.NextProfileID == nil) {
 				yield(llm.StreamEvent{}, &taskLLMError{taskID: taskID, chainExhausted: transition.ChainExhausted, cause: streamErr})
 				return
 			}
@@ -430,6 +436,10 @@ func sameProviderRetryPolicy(r agent.RetryConfig) (retries int, backoff func(int
 //   - 4xx 确定性拒绝(400/401/403/404/422):到哪个 provider 都一样会失败
 func isRetryableStreamError(err error) bool {
 	if err == nil {
+		return false
+	}
+	var claudeErr *agent.ClaudeRequestError
+	if errors.As(err, &claudeErr) {
 		return false
 	}
 	if isQuotaExhaustedError(err) {

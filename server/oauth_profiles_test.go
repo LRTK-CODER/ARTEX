@@ -541,7 +541,7 @@ func TestSaveProfileValidatesAuthType(t *testing.T) {
 				t.Fatalf("status %d, want %d: %s", code, tc.wantStatus, raw)
 			}
 			if code != http.StatusOK {
-				if strings.Contains(raw, "bogus_auth") || !strings.Contains(raw, "auth_type은 api_key 또는 chatgpt_oauth여야 한다") {
+				if strings.Contains(raw, "bogus_auth") || !strings.Contains(raw, "auth_type은 api_key, chatgpt_oauth 또는 claude_oauth여야 한다") {
 					t.Fatalf("rejection body = %s", raw)
 				}
 				return

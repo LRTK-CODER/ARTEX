@@ -16,12 +16,19 @@ type oauthStore struct {
 	pg        *db.DB
 	cipher    *db.TokenCipher
 	profileID int64
+	authType  db.AuthType
 	// onRefresh 는 갱신 결과를 레지스트리에 알린다. 다시 로그인해야 하는지 기록하려고 쓴다.
 	onRefresh func(err error)
 }
 
 func (s oauthStore) Load(ctx context.Context) (llmauth.Tokens, error) {
-	cred, err := s.pg.OAuthCredentials(ctx, s.cipher, s.profileID)
+	var cred db.OAuthCredentials
+	var err error
+	if s.authType == "" {
+		cred, err = s.pg.OAuthCredentials(ctx, s.cipher, s.profileID)
+	} else {
+		cred, err = s.pg.OAuthCredentialsForAuth(ctx, s.cipher, s.profileID, s.authType)
+	}
 	if err != nil {
 		return llmauth.Tokens{}, wrapNoTokens(err)
 	}
@@ -31,20 +38,26 @@ func (s oauthStore) Load(ctx context.Context) (llmauth.Tokens, error) {
 // Refresh 는 db 의 행 잠금 안에서 갱신한다. 잠금을 쥔 채 인증 서버를 부르므로 ctx 에 시간 상한이
 // 있어야 한다. llmauth.TokenSource 가 30초 상한을 건 ctx 를 넘기고, 여기서는 그대로 전달한다.
 func (s oauthStore) Refresh(ctx context.Context, staleAccessToken string, refresh func(context.Context, llmauth.Tokens) (llmauth.Tokens, error)) (llmauth.Tokens, error) {
-	cred, err := s.pg.RefreshOAuthCredentials(ctx, s.cipher, s.profileID, staleAccessToken,
-		func(ctx context.Context, current db.OAuthCredentials) (db.OAuthCredentials, error) {
-			next, err := refresh(ctx, tokensFromCredentials(current))
-			if err != nil {
-				return db.OAuthCredentials{}, err
-			}
-			return db.OAuthCredentials{
-				AccessToken:  next.AccessToken,
-				RefreshToken: next.RefreshToken,
-				ExpiresAt:    next.ExpiresAt,
-				AccountID:    next.AccountID,
-				PlanType:     next.PlanType,
-			}, nil
-		})
+	rotate := func(ctx context.Context, current db.OAuthCredentials) (db.OAuthCredentials, error) {
+		next, err := refresh(ctx, tokensFromCredentials(current))
+		if err != nil {
+			return db.OAuthCredentials{}, err
+		}
+		return db.OAuthCredentials{
+			AccessToken:  next.AccessToken,
+			RefreshToken: next.RefreshToken,
+			ExpiresAt:    next.ExpiresAt,
+			AccountID:    next.AccountID,
+			PlanType:     next.PlanType,
+		}, nil
+	}
+	var cred db.OAuthCredentials
+	var err error
+	if s.authType == "" {
+		cred, err = s.pg.RefreshOAuthCredentials(ctx, s.cipher, s.profileID, staleAccessToken, rotate)
+	} else {
+		cred, err = s.pg.RefreshOAuthCredentialsForAuth(ctx, s.cipher, s.profileID, staleAccessToken, s.authType, rotate)
+	}
 	if s.onRefresh != nil {
 		s.onRefresh(err)
 	}
@@ -74,17 +87,19 @@ func tokensFromCredentials(c db.OAuthCredentials) llmauth.Tokens {
 	}
 }
 
-// oauthTokenRegistry 는 chatgpt_oauth 프로필마다 TokenSource 를 하나만 만들어 나눠 준다.
+// oauthTokenRegistry 는 구독 OAuth 프로필마다 TokenSource를 하나만 만들어 나눠 준다.
 // 같은 프로필을 쓰는 프로바이더들이 TokenSource 를 공유해야 갱신이 한 번에 하나만 돌고,
 // agent.Config 비교(applyLLM)에서도 같은 설정으로 보인다.
 // nil 레지스트리(키를 불러오지 못했거나 테스트의 제로값 Server)는 OAuth 프로필을 쓸 수 없다고 답한다.
 type oauthTokenRegistry struct {
-	pg     *db.DB
-	cipher *db.TokenCipher
-	client *llmauth.Client
+	pg           *db.DB
+	cipher       *db.TokenCipher
+	client       *llmauth.Client
+	claudeClient *llmauth.ClaudeClient
 
-	mu      sync.Mutex
-	sources map[int64]*llmauth.TokenSource
+	mu         sync.Mutex
+	sources    map[int64]*llmauth.TokenSource
+	sourceAuth map[int64]db.AuthType
 	// needsLogin 은 갱신이 "다시 로그인해야 한다"로 거절된 프로필이다. 메모리에만 둔다.
 	// 갱신이 성공하거나 forget 으로 TokenSource 를 버리면 지운다.
 	needsLogin map[int64]bool
@@ -92,6 +107,7 @@ type oauthTokenRegistry struct {
 
 func newOAuthTokenRegistry(pg *db.DB, cipher *db.TokenCipher, client *llmauth.Client) *oauthTokenRegistry {
 	return &oauthTokenRegistry{pg: pg, cipher: cipher, client: client,
+		claudeClient: &llmauth.ClaudeClient{}, sourceAuth: map[int64]db.AuthType{},
 		sources: map[int64]*llmauth.TokenSource{}, needsLogin: map[int64]bool{}}
 }
 
@@ -103,12 +119,12 @@ func loadOAuthTokenRegistry(pg *db.DB, keyDir string) *oauthTokenRegistry {
 	}
 	key, err := db.LoadOrCreateCredentialKey(keyDir)
 	if err != nil {
-		log.Printf("[auth] OAuth credential key unavailable, chatgpt_oauth profiles disabled: %v", err)
+		log.Printf("[auth] OAuth credential key unavailable, chatgpt_oauth profiles disabled, claude_oauth profiles disabled: %v", err)
 		return nil
 	}
 	cipher, err := db.NewTokenCipher(key)
 	if err != nil {
-		log.Printf("[auth] OAuth credential key unusable, chatgpt_oauth profiles disabled: %v", err)
+		log.Printf("[auth] OAuth credential key unusable, chatgpt_oauth profiles disabled, claude_oauth profiles disabled: %v", err)
 		return nil
 	}
 	return newOAuthTokenRegistry(pg, cipher, &llmauth.Client{})
@@ -116,18 +132,30 @@ func loadOAuthTokenRegistry(pg *db.DB, keyDir string) *oauthTokenRegistry {
 
 // source 는 프로필의 TokenSource 를 돌려준다. 처음 부를 때 만들고 그 뒤로는 같은 것을 준다.
 func (r *oauthTokenRegistry) source(profileID int64) *llmauth.TokenSource {
+	return r.sourceForAuth(profileID, db.AuthChatGPTOAuth)
+}
+
+func (r *oauthTokenRegistry) sourceForAuth(profileID int64, authType db.AuthType) *llmauth.TokenSource {
 	if r == nil {
 		return nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if src := r.sources[profileID]; src != nil {
+	if src := r.sources[profileID]; src != nil && r.sourceAuth[profileID] == authType {
 		return src
 	}
-	store := oauthStore{pg: r.pg, cipher: r.cipher, profileID: profileID,
+	if src := r.sources[profileID]; src != nil {
+		src.Revoke()
+	}
+	store := oauthStore{pg: r.pg, cipher: r.cipher, profileID: profileID, authType: authType,
 		onRefresh: func(err error) { r.recordRefresh(profileID, err) }}
-	src := llmauth.NewTokenSource(r.client, store, nil)
+	var client llmauth.TokenRefresher = r.client
+	if authType == db.AuthClaudeOAuth {
+		client = r.claudeClient
+	}
+	src := llmauth.NewTokenSource(client, store, nil)
 	r.sources[profileID] = src
+	r.sourceAuth[profileID] = authType
 	return src
 }
 
@@ -139,27 +167,42 @@ func (r *oauthTokenRegistry) forget(profileID int64) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if src := r.sources[profileID]; src != nil {
+		src.Revoke()
+	}
 	delete(r.sources, profileID)
+	delete(r.sourceAuth, profileID)
 	delete(r.needsLogin, profileID)
 }
 
 // errOAuthNotConnected 는 프로필에 저장된 OAuth 자격 증명이 없다는 뜻이다. 로그인이 필요하다.
-var errOAuthNotConnected = errors.New("chatgpt oauth profile is not connected")
+var errOAuthNotConnected = errors.New("oauth profile is not connected")
 
 // connectedSource 는 자격 증명이 저장된 프로필의 TokenSource 를 돌려준다. 자격 증명이 없으면
 // errOAuthNotConnected, 조회·복호화가 실패하면 그 오류를 올린다. 토큰은 갱신하지 않는다.
 func (r *oauthTokenRegistry) connectedSource(ctx context.Context, profileID int64) (*llmauth.TokenSource, error) {
+	return r.connectedSourceForAuth(ctx, profileID, db.AuthChatGPTOAuth)
+}
+
+func (r *oauthTokenRegistry) connectedSourceForAuth(ctx context.Context, profileID int64, authType db.AuthType) (*llmauth.TokenSource, error) {
 	if r == nil {
 		return nil, errors.New("oauth credential key unavailable")
 	}
-	_, err := r.pg.OAuthCredentials(ctx, r.cipher, profileID)
+	p, err := r.pg.ProfileByID(profileID)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil || p.AuthType != authType || !authType.IsOAuth() {
+		return nil, errOAuthNotConnected
+	}
+	_, err = r.pg.OAuthCredentials(ctx, r.cipher, profileID)
 	if errors.Is(err, db.ErrOAuthCredentialsNotFound) {
 		return nil, errOAuthNotConnected
 	}
 	if err != nil {
 		return nil, err
 	}
-	return r.source(profileID), nil
+	return r.sourceForAuth(profileID, authType), nil
 }
 
 // loginRequired 는 프로필의 마지막 갱신이 다시 로그인해야 한다는 이유로 거절됐는지 알려 준다.

@@ -167,6 +167,34 @@ func (d *DB) SaveOAuthCredentials(ctx context.Context, c *TokenCipher, cred OAut
 	return saveOAuthCredentials(ctx, d.DB, c, cred)
 }
 
+// SaveOAuthCredentialsForAuth 는 교환 도중 인증 방식이 바뀌었으면 늦은 로그인 결과를 저장하지 않는다.
+func (d *DB) SaveOAuthCredentialsForAuth(ctx context.Context, c *TokenCipher, cred OAuthCredentials, authType AuthType) error {
+	if !authType.IsOAuth() {
+		return ErrOAuthCredentialsNotFound
+	}
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := lockOAuthProfile(ctx, tx, cred.ProfileID, authType); err != nil {
+		return err
+	}
+	if err := saveOAuthCredentials(ctx, tx, c, cred); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func lockOAuthProfile(ctx context.Context, tx *sql.Tx, profileID int64, authType AuthType) error {
+	var actual AuthType
+	err := tx.QueryRowContext(ctx, `SELECT auth_type FROM llm_profiles WHERE id=$1 FOR UPDATE`, profileID).Scan(&actual)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && actual != authType) {
+		return ErrOAuthCredentialsNotFound
+	}
+	return err
+}
+
 type execContexter interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
@@ -195,11 +223,12 @@ type queryRowContexter interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-func loadOAuthCredentials(ctx context.Context, q queryRowContexter, c *TokenCipher, profileID int64, lockClause string) (OAuthCredentials, error) {
+func loadOAuthCredentials(ctx context.Context, q queryRowContexter, c *TokenCipher, profileID int64, lockClause string, authType AuthType) (OAuthCredentials, error) {
 	var access, refresh string
 	cred := OAuthCredentials{ProfileID: profileID}
 	err := q.QueryRowContext(ctx, `SELECT access_token,refresh_token,expires_at,account_id,plan_type
-FROM llm_oauth_credentials WHERE profile_id=$1`+lockClause, profileID).Scan(&access, &refresh, &cred.ExpiresAt, &cred.AccountID, &cred.PlanType)
+FROM llm_oauth_credentials WHERE profile_id=$1
+AND ($2::text='' OR EXISTS (SELECT 1 FROM llm_profiles p WHERE p.id=profile_id AND p.auth_type=$2))`+lockClause, profileID, authType).Scan(&access, &refresh, &cred.ExpiresAt, &cred.AccountID, &cred.PlanType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return OAuthCredentials{}, fmt.Errorf("%w: profile %d", ErrOAuthCredentialsNotFound, profileID)
 	}
@@ -218,7 +247,15 @@ FROM llm_oauth_credentials WHERE profile_id=$1`+lockClause, profileID).Scan(&acc
 // OAuthCredentials 는 프로필의 OAuth 토큰을 복호화해 돌려준다. 실제로 요청을 인증할 때만 부른다.
 // 없으면 ErrOAuthCredentialsNotFound, 풀지 못하면 ErrCredentialDecrypt 를 올린다.
 func (d *DB) OAuthCredentials(ctx context.Context, c *TokenCipher, profileID int64) (OAuthCredentials, error) {
-	return loadOAuthCredentials(ctx, d.DB, c, profileID, "")
+	return loadOAuthCredentials(ctx, d.DB, c, profileID, "", "")
+}
+
+// OAuthCredentialsForAuth 는 인증 방식도 같은 조회에서 대조해 이전 소스가 다른 제공자 토큰을 못 읽게 한다.
+func (d *DB) OAuthCredentialsForAuth(ctx context.Context, c *TokenCipher, profileID int64, authType AuthType) (OAuthCredentials, error) {
+	if !authType.IsOAuth() {
+		return OAuthCredentials{}, ErrOAuthCredentialsNotFound
+	}
+	return loadOAuthCredentials(ctx, d.DB, c, profileID, "", authType)
 }
 
 // DeleteOAuthCredentials 는 프로필의 OAuth 자격 증명을 지운다. 연결을 끊을 때 부른다.
@@ -248,13 +285,31 @@ type RefreshFunc func(ctx context.Context, current OAuthCredentials) (OAuthCrede
 // refresh 토큰이 갱신마다 회전하므로, 겹친 갱신이 옛 refresh 토큰을 다시 쓰면 토큰을 잃는다.
 // refresh 가 실패하면 저장된 값을 바꾸지 않고 오류를 올린다.
 func (d *DB) RefreshOAuthCredentials(ctx context.Context, c *TokenCipher, profileID int64, staleAccessToken string, refresh RefreshFunc) (OAuthCredentials, error) {
+	return d.refreshOAuthCredentials(ctx, c, profileID, staleAccessToken, "", refresh)
+}
+
+// RefreshOAuthCredentialsForAuth 는 프로필 인증 방식 변경도 갱신 트랜잭션과 직렬화한다.
+func (d *DB) RefreshOAuthCredentialsForAuth(ctx context.Context, c *TokenCipher, profileID int64, staleAccessToken string, authType AuthType, refresh RefreshFunc) (OAuthCredentials, error) {
+	if !authType.IsOAuth() {
+		return OAuthCredentials{}, ErrOAuthCredentialsNotFound
+	}
+	return d.refreshOAuthCredentials(ctx, c, profileID, staleAccessToken, authType, refresh)
+}
+
+func (d *DB) refreshOAuthCredentials(ctx context.Context, c *TokenCipher, profileID int64, staleAccessToken string, authType AuthType, refresh RefreshFunc) (OAuthCredentials, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return OAuthCredentials{}, fmt.Errorf("begin oauth refresh: %w", err)
 	}
 	defer tx.Rollback() // Commit 뒤에는 아무 일도 하지 않는다
 
-	current, err := loadOAuthCredentials(ctx, tx, c, profileID, " FOR UPDATE")
+	if authType != "" {
+		// SaveProfile과 같은 프로필→자격 증명 순서로 잠가 교착과 제공자 변경 경쟁을 막는다.
+		if err := lockOAuthProfile(ctx, tx, profileID, authType); err != nil {
+			return OAuthCredentials{}, err
+		}
+	}
+	current, err := loadOAuthCredentials(ctx, tx, c, profileID, " FOR UPDATE", authType)
 	if err != nil {
 		return OAuthCredentials{}, err
 	}

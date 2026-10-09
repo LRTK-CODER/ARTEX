@@ -44,9 +44,14 @@ export function errorCode(error: unknown): string | undefined {
   return typeof error.code === "string" ? error.code : undefined;
 }
 
-export function loginErrorMessage(code: string | undefined): string {
+export function loginErrorMessage(code: string | undefined, provider: "chatgpt" | "claude" = "chatgpt"): string {
   // hasOwn: "toString" 같은 code가 Object.prototype 값을 꺼내지 않게 한다.
-  return code && Object.hasOwn(LOGIN_ERROR_MESSAGES, code) ? LOGIN_ERROR_MESSAGES[code] : UNKNOWN_LOGIN_ERROR;
+  const message = code && Object.hasOwn(LOGIN_ERROR_MESSAGES, code) ? LOGIN_ERROR_MESSAGES[code] : UNKNOWN_LOGIN_ERROR;
+  return provider === "claude"
+    ? message
+        .replaceAll("ChatGPT", "Claude")
+        .replaceAll("http://localhost:1455/auth/callback", "http://localhost:53692/callback")
+    : message;
 }
 
 // deviceFailureMessage 는 폴링이 끝난 상태(failed·expired)의 문구다. expired에는 code가 없을 수 있다.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,13 +31,14 @@ type Store interface {
 	Refresh(ctx context.Context, staleAccessToken string, refresh func(ctx context.Context, current Tokens) (Tokens, error)) (Tokens, error)
 }
 
-// TokenSource 는 Codex 백엔드 호출에 쓸 access token 을 건넨다. 만료 5분 전이면 갱신하고,
+// TokenSource 는 구독 백엔드 호출에 쓸 access token을 건넨다. 만료 5분 전이면 갱신하고,
 // 같은 TokenSource 를 여러 goroutine 이 불러도 갱신은 한 번에 하나만 한다.
 // 토큰을 담고 있으므로 fmt 로 출력해도 내용은 보이지 않는다(String).
 type TokenSource struct {
-	client *Client
-	store  Store
-	now    func() time.Time
+	revoked atomic.Bool
+	client  TokenRefresher
+	store   Store
+	now     func() time.Time
 
 	// lock 은 크기 1 채널이다. sync.Mutex 와 달리 기다리는 쪽이 ctx 취소로 빠질 수 있다.
 	// 아래 필드는 lock 을 잡고서만 읽고 쓴다.
@@ -61,7 +63,7 @@ type TokenSource struct {
 
 // NewTokenSource 는 store 의 토큰을 client 로 갱신하는 TokenSource 를 만든다.
 // now 가 nil 이면 time.Now 를 쓴다.
-func NewTokenSource(client *Client, store Store, now func() time.Time) *TokenSource {
+func NewTokenSource(client TokenRefresher, store Store, now func() time.Time) *TokenSource {
 	if now == nil {
 		now = time.Now
 	}
@@ -80,12 +82,18 @@ func (s *TokenSource) GoString() string { return s.String() }
 // 멈추면 저장소의 refresh 토큰이 무효가 되기 때문이다. 그동안 호출자는 기다린다.
 // 갱신은 됐지만 저장이 실패하면 오류를 올리고, 다음 호출이 저장을 다시 시도한다.
 func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string, err error) {
+	if s.revoked.Load() {
+		return "", "", ErrNoTokens
+	}
 	select {
 	case s.lock <- struct{}{}:
 	case <-ctx.Done():
 		return "", "", ctx.Err()
 	}
 	defer func() { <-s.lock }()
+	if s.revoked.Load() {
+		return "", "", ErrNoTokens
+	}
 
 	if !s.hasTokens || s.loginErr != nil {
 		if err := s.reload(ctx); err != nil {
@@ -101,11 +109,18 @@ func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string,
 		}
 		s.mustRefresh = false
 	}
+	if s.revoked.Load() {
+		return "", "", ErrNoTokens
+	}
 	return s.tokens.AccessToken, s.tokens.AccountID, nil
 }
 
+// Revoke 는 연결 해제·인증 방식 변경 뒤 이미 실행 중인 제공자도 캐시 토큰을 못 쓰게 한다.
+// 갱신 중의 저장은 끝까지 마치되 이후 Token 호출에는 자격 증명을 돌려주지 않는다.
+func (s *TokenSource) Revoke() { s.revoked.Store(true) }
+
 // Invalidate 는 staleAccessToken 이 지금 토큰이면 다음 Token 호출이 갱신하게 한다.
-// Codex 백엔드가 그 토큰에 401 을 돌려줄 때 부른다. 여러 요청이 같은 옛 토큰으로 401 을 받아도
+// 구독 백엔드가 그 토큰에 401을 돌려줄 때 부른다. 여러 요청이 같은 옛 토큰으로 401을 받아도
 // 갱신은 한 번만 한다. 이미 갱신돼 지난 토큰이면 아무것도 하지 않는다.
 func (s *TokenSource) Invalidate(staleAccessToken string) {
 	s.rejectedMu.Lock()
@@ -180,7 +195,15 @@ func (s *TokenSource) rotate(ctx context.Context, current Tokens) (Tokens, error
 	if next.PlanType == "" {
 		next.PlanType = current.PlanType
 	}
+	if next.AccountID == "" {
+		next.AccountID = current.AccountID
+	}
 	// 서버는 이미 옛 refresh 토큰을 무효로 했다. 저장이 실패해도 잃지 않게 먼저 들고 있는다.
 	s.pending, s.hasPending = next, true
 	return next, nil
+}
+
+// TokenRefresher 는 제공자별 토큰 갱신 경계다. Client와 ClaudeClient가 같은 저장·잠금 흐름을 쓴다.
+type TokenRefresher interface {
+	Refresh(context.Context, string) (Tokens, error)
 }

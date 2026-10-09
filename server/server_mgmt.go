@@ -1810,13 +1810,17 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	p.APIKey = body.APIKey
 	p.Streaming = body.Streaming == nil || *body.Streaming
 	switch p.AuthType {
-	case "", db.AuthAPIKey, db.AuthChatGPTOAuth:
+	case "", db.AuthAPIKey, db.AuthChatGPTOAuth, db.AuthClaudeOAuth:
 	default:
 		// DB CHECK 위반 원문이 500 으로 나가지 않게 여기서 거절한다. 입력값은 문구에 싣지 않는다.
-		writeErr(w, 400, "auth_type은 api_key 또는 chatgpt_oauth여야 한다")
+		writeErr(w, 400, "auth_type은 api_key, chatgpt_oauth 또는 claude_oauth여야 한다")
 		return
 	}
 	// 수정할 때 auth_type 을 빼면 기존 값을 지키므로(db.SaveProfile) 고정 규칙도 기존 값으로 정한다.
+	// 로그인 저장·연결 해제와 같은 잠금으로 인증 방식 변경을 묶는다.
+	lock := s.loginFlows.profileLock(p.ID)
+	lock.Lock()
+	defer lock.Unlock()
 	effectiveAuth := p.AuthType
 	if effectiveAuth == "" && p.ID != 0 {
 		existing, err := pg.ProfileByID(p.ID)
@@ -1828,12 +1832,14 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 			effectiveAuth = existing.AuthType
 		}
 	}
-	isOAuth := effectiveAuth == db.AuthChatGPTOAuth
+	isOAuth := effectiveAuth.IsOAuth()
 	if isOAuth {
-		// Codex 백엔드가 받는 형식만 저장해 화면과 실제 동작이 어긋나지 않게 한다(applyChatGPTOAuthRules).
+		// 구독 제공자가 받는 형식만 저장해 화면과 실제 동작이 어긋나지 않게 한다.
 		// BaseURL 은 쓰지 않으므로 비운다. API 키 프로필에서 바꿀 때 남은 중계 주소가 보이지 않게 한다.
-		p.Format = string(llm.FormatOpenAIResponses)
-		p.Streaming = true
+		p.Format = profileFormat(effectiveAuth, p.Format)
+		if effectiveAuth == db.AuthChatGPTOAuth {
+			p.Streaming = true
+		}
 		p.BaseURL = ""
 		p.APIKey, p.APIKeyHint = "", ""
 	}
@@ -1851,6 +1857,9 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	s.oauth.forget(id)
+	s.loginFlows.dropProfile(id)
+	s.claudeLoginFlows.dropProfile(id)
 	// Editing a profile rebuilds any task pinned to it on its next round. Reapply
 	// the active profile too: the global fallback and explicit task chains must
 	// repopulate the same provider-cache entry and therefore share one limiter.
@@ -1901,6 +1910,9 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := pathInt(r, "id")
+	lock := s.loginFlows.profileLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	if err := pg.DeleteProfileContext(r.Context(), id); err != nil {
 		switch {
 		case errors.Is(err, db.ErrActiveLLMProfileDelete):
@@ -1919,6 +1931,8 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	s.invalidateProfileAgents() // drop cached agents for the removed profile
 	s.llmHealth.Reset(id)       // its breaker state is meaningless now (row is FK-cascaded away)
 	s.oauth.forget(id)          // 자격 증명도 CASCADE 로 지워졌으니 메모리의 토큰도 버린다
+	s.loginFlows.dropProfile(id)
+	s.claudeLoginFlows.dropProfile(id)
 	s.restoreTasksAfterProfileDelete(pg)
 	// Cache invalidation also removed the active profile's shared provider entry.
 	// Reapply after task-state sync so the wake-up observes the post-delete chain.
@@ -2070,6 +2084,10 @@ func (s *Server) pgListModels(w http.ResponseWriter, r *http.Request) {
 	}
 	if authType == db.AuthChatGPTOAuth {
 		s.listChatGPTModels(w, r, stored, req.Proxy)
+		return
+	}
+	if authType == db.AuthClaudeOAuth {
+		s.listClaudeModels(w, r, stored, req.Proxy)
 		return
 	}
 	// Resolve API key: form input > profile stored key.

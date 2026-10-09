@@ -45,14 +45,18 @@ type Server struct {
 
 	skillDir string // root directory for skill subdirectories
 	jwtKey   []byte // keyDir/jwt.key 에서 읽거나 새로 만든 HS256 서명 키
-	// oauth 는 chatgpt_oauth 프로필의 TokenSource 를 프로필마다 하나씩 들고 있다.
+	// oauth 는 구독 OAuth 프로필의 TokenSource를 프로필마다 하나씩 들고 있다.
 	// oauth.key 를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry
 	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL 이다.
 	// 테스트만 httptest 주소로 바꾼다. 설정·환경 변수로 바꾸는 길은 두지 않는다(codexURL).
 	codexBaseURL string
+	// claudeBaseURL은 내부 테스트에서만 바꾸며 설정·환경 변수를 따르지 않는다.
+	claudeBaseURL string
 	// loginFlows 는 진행 중인 ChatGPT 구독 로그인 흐름이다. 메모리에만 둔다(chatgpt_login.go).
 	loginFlows loginFlows
+	// claudeLoginFlows 는 Claude 로그인 흐름이며 연결 해제 전까지 메모리에만 둔다.
+	claudeLoginFlows loginFlows
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -345,14 +349,14 @@ func (s *Server) loadLLMConfig() (agent.Config, bool) {
 	return cfg, true
 }
 
-// errLegacyOAuthProfile 은 레거시 설정 저장이 chatgpt_oauth 인 "default" 프로필을 덮으려 했다는 뜻이다.
-var errLegacyOAuthProfile = errors.New(`legacy LLM config cannot overwrite the chatgpt_oauth "default" profile`)
+// errLegacyOAuthProfile 은 레거시 설정 저장이 구독 인증의 "default" 프로필을 덮으려 했다는 뜻이다.
+var errLegacyOAuthProfile = errors.New(`legacy LLM config cannot overwrite the OAuth "default" profile`)
 
 // legacyOAuthProfileMessage 는 errLegacyOAuthProfile 을 받은 사용자에게 보일 문구다.
-const legacyOAuthProfileMessage = "default 프로필이 ChatGPT 구독 프로필이라 이 설정으로 바꿀 수 없다. LLM 프로필 화면에서 바꿔야 한다"
+const legacyOAuthProfileMessage = "default 프로필이 구독 인증 프로필이라 이 설정으로 바꿀 수 없다. LLM 프로필 화면에서 바꿔야 한다"
 
 // saveLLMConfig persists the LLM config as the active "default" profile in PG.
-// "default" 가 chatgpt_oauth 프로필이면 errLegacyOAuthProfile 을 올린다. 이 경로는 API 키 설정만
+// "default"가 구독 OAuth 프로필이면 errLegacyOAuthProfile을 올린다. 이 경로는 API 키 설정만
 // 다뤄서, 덮으면 OAuth 행에 API 키·중계 주소가 남는다.
 func (s *Server) saveLLMConfig(cfg agent.Config) error {
 	// cfg.Provider() already returns one of the three valid format strings
@@ -372,7 +376,7 @@ func (s *Server) saveLLMConfig(cfg agent.Config) error {
 	if profs, _ := s.m.pg.ListProfiles(); profs != nil {
 		for _, p := range profs {
 			if p.Name == "default" {
-				if p.AuthType == db.AuthChatGPTOAuth {
+				if p.AuthType.IsOAuth() {
 					return errLegacyOAuthProfile
 				}
 				id, priority, poolExclude, streaming = p.ID, p.Priority, p.PoolExclude, p.Streaming
@@ -504,7 +508,7 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 
 // loadProfileConfig builds an agent.Config from a specific profile id (with its key).
 // ok=false when the profile is missing or has no api key.
-// chatgpt_oauth 프로필은 API 키 대신 저장된 OAuth 자격 증명이 없으면 ok=false 다.
+// 구독 OAuth 프로필은 API 키 대신 저장된 OAuth 자격 증명이 없으면 ok=false 다.
 func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 	p, err := s.m.pg.ProfileByID(id)
 	if err != nil || p == nil {
@@ -528,13 +532,18 @@ func (s *Server) profileConfig(p *db.LLMProfile) (agent.Config, bool) {
 	cfg.MaxTokens, cfg.MaxTokensField = p.MaxTokens, p.MaxTokensField
 	cfg.SessionHeaderKey = p.SessionHeaderKey
 	s.applyProfileRetry(&cfg, p)
-	if p.AuthType != db.AuthChatGPTOAuth {
+	if !p.AuthType.IsOAuth() {
 		return cfg, cfg.APIKey != ""
 	}
-	applyChatGPTOAuthRules(&cfg, s.codexURL())
+	if p.AuthType == db.AuthClaudeOAuth {
+		applyClaudeOAuthRules(&cfg)
+		cfg.BaseURL = s.claudeURL()
+	} else {
+		applyChatGPTOAuthRules(&cfg, s.codexURL())
+	}
 	ctx, cancel := context.WithTimeout(s.ctxOrBackground(), oauthCheckTimeout)
 	defer cancel()
-	src, err := s.oauth.connectedSource(ctx, p.ID)
+	src, err := s.oauth.connectedSourceForAuth(ctx, p.ID, p.AuthType)
 	if err != nil {
 		if !errors.Is(err, errOAuthNotConnected) {
 			log.Printf("[engine] LLM profile %d OAuth credentials unavailable: %v", p.ID, err)
@@ -545,9 +554,12 @@ func (s *Server) profileConfig(p *db.LLMProfile) (agent.Config, bool) {
 	return cfg, true
 }
 
-// profileFormat 은 프로필이 실제로 쓸 형식이다. chatgpt_oauth 는 저장된 형식과 무관하게
-// openai-responses 다. ConfigFrom 이 형식에 맞춰 BaseURL·기본 모델을 고르므로 그 전에 정한다.
+// profileFormat 은 프로필이 실제로 쓸 형식이다. 구독 인증은 저장값과 무관하게 제공자 형식을 쓴다.
+// ConfigFrom이 형식에 맞춰 주소·기본 모델을 고르므로 그 전에 정한다.
 func profileFormat(authType db.AuthType, format string) string {
+	if authType == db.AuthClaudeOAuth {
+		return string(llm.FormatAnthropic)
+	}
 	if authType == db.AuthChatGPTOAuth {
 		return string(llm.FormatOpenAIResponses)
 	}
@@ -975,6 +987,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/llm/oauth/chatgpt/device", s.startChatGPTDeviceLogin)
 	mux.HandleFunc("GET /api/llm/oauth/chatgpt/device/{id}", s.chatGPTDeviceLoginStatus)
 	mux.HandleFunc("POST /api/llm/oauth/chatgpt/disconnect", s.disconnectChatGPT)
+	mux.HandleFunc("POST /api/llm/oauth/claude/start", s.startClaudeLogin)
+	mux.HandleFunc("POST /api/llm/oauth/claude/complete", s.completeClaudeLogin)
+	mux.HandleFunc("POST /api/llm/oauth/claude/disconnect", s.disconnectClaude)
+	mux.HandleFunc("GET /api/llm/oauth/claude/status/{id}", s.claudeLoginStatus)
 	mux.HandleFunc("GET /api/llm/retry-policy", s.pgGetLLMRetryPolicy)
 	mux.HandleFunc("POST /api/llm/retry-policy", s.pgSaveLLMRetryPolicy)
 	mux.HandleFunc("GET /api/llm/pool", s.pgLLMPoolStatus)
@@ -1490,15 +1506,15 @@ func (s *Server) testLLM(w http.ResponseWriter, r *http.Request) {
 	if stored != nil && cfg.SessionHeaderKey == "" {
 		cfg.SessionHeaderKey = stored.SessionHeaderKey
 	}
-	if authType == db.AuthChatGPTOAuth {
-		if msg := s.prepareOAuthTest(r.Context(), &cfg, stored); msg != "" {
+	if authType.IsOAuth() {
+		if msg := s.prepareSubscriptionTest(r.Context(), &cfg, stored, authType); msg != "" {
 			writeJSON(w, 200, map[string]any{"ok": false, "error": msg})
 			return
 		}
 	} else if stored != nil && cfg.APIKey == "" {
 		cfg.APIKey = stored.APIKey
 	}
-	if cfg.AuthType != db.AuthChatGPTOAuth {
+	if !cfg.AuthType.IsOAuth() {
 		if cfg.APIKey == "" {
 			s.cfgMu.Lock()
 			cfg.APIKey = s.llmCfg.APIKey

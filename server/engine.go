@@ -76,11 +76,11 @@ const (
 
 var errWorkControlConflict = errors.New("work control conflict")
 
-// retryableWorkerModelError excludes errors already handled by the task router.
-// In particular, a quota error after partial streaming advances the task cursor
-// for the next LLM call but must not replay this whole intent on the backup.
+// retryableWorkerModelError 는 라우터가 처리한 오류와 Claude 구독의 재전송 금지 오류를 뺀다.
+// 일부 출력 뒤 한도 오류로 프로필이 바뀌어도 전체 의도를 백업에서 다시 실행하지 않는다.
 func retryableWorkerModelError(reason harness.TerminalReason, err error) bool {
-	return reason == harness.ReasonModelError && !isTaskLLMRuntimeError(err)
+	var claudeErr *agent.ClaudeRequestError
+	return reason == harness.ReasonModelError && !isTaskLLMRuntimeError(err) && !errors.As(err, &claudeErr)
 }
 
 // Engine drives the event-driven exploration loop with real LLM agents
