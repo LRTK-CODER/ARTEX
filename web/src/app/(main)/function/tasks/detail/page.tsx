@@ -282,7 +282,7 @@ function TaskDetailInner() {
     try {
       await api.controlTask(id, next ? "pause" : "resume");
       setPaused(next);
-      toast.success(next ? "탐색을 일시 중지했습니다." : "탐색을 재개했습니다.");
+      toast.success(next ? "탐색을 일시 중지했습니다" : "탐색을 재개했습니다");
     } catch (e) {
       toast.error("작업 상태를 바꾸지 못했습니다: " + (e as Error).message);
     }

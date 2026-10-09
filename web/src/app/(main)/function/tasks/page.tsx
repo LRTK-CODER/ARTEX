@@ -766,7 +766,7 @@ export default function TasksPage() {
         const failed = result.items.filter((item) => !item.ok);
         const target = result.category?.name ?? "미분류";
         if (succeeded.length > 0) {
-          toast.success(`작업 ${succeeded.length}개를 "${target}"(으)로 옮겼습니다.`);
+          toast.success(`작업 ${succeeded.length}개를 "${target}"(으)로 옮겼습니다`);
           setSelectedIds(new Set());
         }
         if (failed.length > 0) {
@@ -2518,7 +2518,7 @@ function CategoryPicker({
       onValueChange(created.id);
       setInputValue("");
       onCategoryCreated();
-      toast.success(`분류 "${created.name}"을(를) 만들었습니다.`);
+      toast.success(`분류 "${created.name}"을(를) 만들었습니다`);
     } catch (e) {
       toast.error(`분류를 만들지 못했습니다: ${(e as Error).message}`);
     } finally {
@@ -2895,7 +2895,7 @@ function CategoryManagementSheet({
     try {
       await api.updateTaskCategory(task.id, category?.id);
       onTaskMoved(task.id, category);
-      toast.success(`작업 #${task.id}을 "${category?.name ?? "미분류"}"(으)로 옮겼습니다.`);
+      toast.success(`작업 #${task.id}을 "${category?.name ?? "미분류"}"(으)로 옮겼습니다`);
     } catch (error) {
       toast.error(`작업을 옮기지 못했습니다: ${(error as Error).message}`);
     } finally {
