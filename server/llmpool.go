@@ -10,11 +10,11 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// LLM 轮询(故障转移)的服务端接线。设计见 docs/LLM轮询设计.md：
-//   - 全局激活配置这条路径(agent 未绑定、任务未 pin)才轮询;
-//   - 绑定/pin 的路径默认独占该配置,失败即失败(可由 llm_pool_bind_fallback 打开兜底);
-//   - 链序 = 激活配置 → 其余按 priority DESC,排除 pool_exclude 的;
-//   - 熔断状态进程级共享(s.llmHealth),重建 pool 不清空。
+// LLM 장애 조치의 서버 쪽 배선이다. 설계는 docs/LLM 장애 조치 설계.md 참고.
+//   - 전역 활성 프로필 경로(에이전트에 바인딩이 없고 작업에 pin이 없을 때)에서만 장애 조치한다.
+//   - 바인딩·pin 경로는 기본적으로 그 프로필만 쓰고, 실패하면 그대로 실패한다(llm_pool_bind_fallback으로 대체 경로를 켤 수 있다).
+//   - 체인 순서 = 활성 프로필 → 나머지는 priority 내림차순, pool_exclude인 것은 뺀다.
+//   - 회로 차단기 상태는 프로세스 전체가 공유하고(s.llmHealth), pool을 다시 만들어도 비우지 않는다.
 
 // newLLMHealthRegistry builds the process-wide circuit-breaker registry, mirroring
 // state into PG so a cooling-off window survives a restart. Writes are async and
@@ -31,7 +31,7 @@ func newLLMHealthRegistry(pg *db.DB) *llmpool.Registry {
 		}
 		go func() {
 			if err := pg.SaveLLMHealth(h); err != nil {
-				log.Printf("[llmpool] 熔断状态落库失败: %v", err)
+				log.Printf("[llmpool] 회로 차단기 상태 저장 실패: %v", err)
 			}
 		}()
 	}
@@ -48,7 +48,7 @@ func newLLMHealthRegistry(pg *db.DB) *llmpool.Registry {
 				st.OpenUntil = *h.OpenUntil
 			}
 			reg.Restore(h.ProfileID, st)
-			log.Printf("[llmpool] 恢复熔断状态: 配置 #%d 冷却至 %s", h.ProfileID, st.OpenUntil.Format(time.RFC3339))
+			log.Printf("[llmpool] 회로 차단기 상태 복원: 프로필 #%d, %s까지 대기", h.ProfileID, st.OpenUntil.Format(time.RFC3339))
 		}
 	}
 	return reg
@@ -84,7 +84,7 @@ func (s *Server) poolChain(headID int64, headProv llm.Provider, headCfg agent.Co
 	}
 	profs, err := s.m.pg.PoolProfiles()
 	if err != nil {
-		log.Printf("[llmpool] 读取轮询链失败: %v", err)
+		log.Printf("[llmpool] 장애 조치 체인 읽기 실패: %v", err)
 		return nil
 	}
 	var head *db.LLMProfile
@@ -137,7 +137,7 @@ func (s *Server) poolForActive(activeID int64, prov llm.Provider, cfg agent.Conf
 	for _, m := range pool.Members() {
 		names = append(names, m.Name+"/"+m.Model)
 	}
-	log.Printf("[llmpool] LLM 轮询已启用，链路(%d): %v", len(names), names)
+	log.Printf("[llmpool] LLM 장애 조치 켜짐, 체인(%d): %v", len(names), names)
 	return pool
 }
 

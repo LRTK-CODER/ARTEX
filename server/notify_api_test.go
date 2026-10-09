@@ -17,44 +17,44 @@ import (
 	"github.com/Autumn-27/artex/notify"
 )
 
-// 本文件覆盖推送功能的端到端行为：漏洞落库 → 事件 → 分派 → 真发 HTTP。
+// 이 파일은 알림 발송 기능을 끝에서 끝까지 검사한다: 취약점 저장 → 이벤트 → 분배 → 실제 HTTP 발송.
 //
-// 一个安全上的注意点：这些用例**不调用全局的 Notifier.step()**，只对自己创建的
-// 渠道调用 stepRealtime/stepDigest。原因是 step() 会遍历库里所有启用渠道——
-// 在一个已配好真实钉钉/企微机器人的开发库上跑测试，全局 step 会把测试期间
-// 产生的漏洞真推到那些群里。逐渠道调用把影响面严格限制在测试自造的假接收端上。
+// 보안상 주의할 점: 이 테스트 케이스들은 **전역 Notifier.step()을 부르지 않고**, 자기가 만든
+// 알림 채널에만 stepRealtime/stepDigest를 부른다. step()은 DB의 사용 중인 알림 채널을 모두 돈다.
+// 실제 DingTalk/WeCom 봇이 설정된 개발 DB에서 테스트를 돌리면 전역 step이 테스트 중에
+// 생긴 취약점을 그 그룹들로 실제로 보낸다. 알림 채널별로 부르면 영향 범위가 테스트가 만든 가짜 수신 측으로 엄격히 한정된다.
 //
-// 清理：用例结束时删掉本用例产生的事件（级联删投递）与渠道，不给真实渠道留积压。
+// 정리: 테스트 케이스가 끝나면 그 케이스가 만든 이벤트(전달은 연쇄 삭제)와 알림 채널을 지워, 실제 알림 채널에 밀린 알림을 남기지 않는다.
 //
-// 断言口径：stepRealtime/stepDigest 不返回值、内部记日志，因此这里断言的是
-// **可观测的外部行为**（假接收端收到了什么、投递行落到什么状态），而不是函数的
-// 返回值——这比对返回值打桩更接近真实调用路径。
+// 검사 기준: stepRealtime/stepDigest는 값을 돌려주지 않고 안에서 로그만 남긴다. 그래서 여기서는
+// 함수의 반환값이 아니라 **밖에서 관찰할 수 있는 동작**(가짜 수신 측이 무엇을 받았는지, 전달 행이 어떤 상태가 됐는지)을
+// 검사한다. 반환값을 스텁으로 바꿔 검사하는 것보다 실제 호출 경로에 가깝다.
 
-// notifyFixture 是本文件用例的公共装置。
+// notifyFixture 는 이 파일 테스트 케이스들이 함께 쓰는 픽스처다.
 type notifyFixture struct {
 	s       *Server
 	pg      *db.DB
 	request func(method, path, body string) *httptest.ResponseRecorder
 	n       *Notifier
-	// 自建的 task/exploration：用例把漏洞记到这里，与其它用例的数据隔离。
+	// 직접 만든 task/exploration. 테스트 케이스가 취약점을 여기에 기록해 다른 테스트 케이스의 데이터와 분리한다.
 	taskID int64
 	expID  int64
-	// cleanupMark 之后产生的事件在清理时一并删除。
+	// cleanupMark 뒤에 생긴 이벤트는 정리할 때 함께 지운다.
 	cleanupMark int64
 }
 
 func newNotifyFixture(t *testing.T) *notifyFixture {
 	t.Helper()
-	// 本文件的所有假接收端都跑在 127.0.0.1 上，而投递默认拒绝环回地址
-	// （防 SSRF 打到同机服务与云元数据）。测试显式打开这个开关；
-	// 守卫「默认拒绝」的行为由 notify 包的 ssrf_test.go 覆盖。
+	// 이 파일의 가짜 수신 측은 모두 127.0.0.1에서 돌지만, 전달은 기본적으로 루프백 주소를 거부한다
+	// (SSRF가 같은 기기의 서비스와 클라우드 메타데이터에 닿지 않게). 테스트는 이 스위치를 명시적으로 켠다.
+	// '기본 거부' 동작은 notify 패키지의 ssrf_test.go가 검사한다.
 	t.Setenv(notify.AllowLocalTargetsEnv, "1")
 	s, _, request := trafficEvidenceServer(t)
 	pg := s.m.pg
 
-	// 自建一个 task：共享装置 trafficEvidenceServer 造的 task 拿不到 exploration id，
-	// 而记录漏洞必须提供它。
-	task, err := s.m.CreateTask("通知推送测试", "推送行为验证", nil, 0, 0)
+	// task를 직접 만든다. 공용 픽스처 trafficEvidenceServer가 만든 task로는 exploration id를 얻을 수 없는데,
+	// 취약점을 기록하려면 그 값이 있어야 한다.
+	task, err := s.m.CreateTask("알림 발송 테스트", "알림 발송 동작 검증", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,13 +68,13 @@ func newNotifyFixture(t *testing.T) *notifyFixture {
 	if err := pg.QueryRow(`SELECT COALESCE(max(id),0) FROM notification_events`).Scan(&mark); err != nil {
 		t.Fatal(err)
 	}
-	// 让装置自成闭环：把建 fixture 之前就存在的事件一次性标记为已分派。
+	// 픽스처가 스스로 닫힌 상태가 되게 한다. 픽스처를 만들기 전부터 있던 이벤트를 한 번에 분배됨으로 표시한다.
 	//
-	// 为什么必须做：FanOutPendingEvents 是**全局**的，会把库里所有未分派事件
-	// 展开到所有匹配渠道上。而共享装置 trafficEvidenceServer 自己就会记一条漏洞
-	// （正是它返回的那个初始 finding），其它用例也可能有残留。不隔离的话，
-	// 这些杂散事件会被分派到本用例的渠道上，让「应有 N 条投递」这类断言
-	// 时对时错——而且错法取决于用例执行顺序，比直接失败更难查。
+	// 꼭 해야 하는 이유: FanOutPendingEvents는 **전역**이라 DB의 분배되지 않은 이벤트를 모두
+	// 일치하는 알림 채널 전체로 펼친다. 공용 픽스처 trafficEvidenceServer도 스스로 취약점 하나를 기록하고
+	// (바로 그것이 돌려주는 첫 finding이다), 다른 테스트 케이스가 남긴 것도 있을 수 있다. 분리하지 않으면
+	// 이 떠도는 이벤트가 이 테스트 케이스의 알림 채널로 분배돼 '전달이 N건이어야 함' 같은 검사가
+	// 될 때도 있고 안 될 때도 있다. 게다가 어떻게 틀리는지가 테스트 케이스 실행 순서에 달려 있어, 바로 실패하는 것보다 찾기 어렵다.
 	if _, err := pg.Exec(`UPDATE notification_events SET fanned_out = true WHERE id <= $1 AND NOT fanned_out`, mark); err != nil {
 		t.Fatal(err)
 	}
@@ -82,18 +82,18 @@ func newNotifyFixture(t *testing.T) *notifyFixture {
 	f := &notifyFixture{s: s, pg: pg, request: request, n: newNotifier(s), taskID: taskID, expID: task.ExpID, cleanupMark: mark}
 	t.Cleanup(func() {
 		if _, err := pg.Exec(`DELETE FROM notification_events WHERE id > $1`, f.cleanupMark); err != nil {
-			t.Logf("清理通知事件失败: %v", err)
+			t.Logf("알림 이벤트 정리 실패: %v", err)
 		}
 	})
-	// 总开关必须是开的（其它用例可能关过它）。
+	// 전체 스위치는 켜져 있어야 한다(다른 테스트 케이스가 껐을 수 있다).
 	if err := pg.SetBool(settingNotifyEnabled, true); err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
 
-// record 走真实的证据写入路径落一条漏洞，返回 finding id。
-// 这条路会在**同一事务**里登记推送事件——正是本功能的挂点。
+// record 는 실제 증거 쓰기 경로로 취약점 하나를 저장하고 finding id를 돌려준다.
+// 이 경로는 **같은 트랜잭션** 안에서 알림 발송 이벤트를 등록한다. 바로 이 기능이 걸리는 지점이다.
 func (f *notifyFixture) record(t *testing.T, vulnclass, severity string) int64 {
 	t.Helper()
 	out, err := f.s.evidenceStore().Record(context.Background(), db.RecordFindingInput{
@@ -103,54 +103,54 @@ func (f *notifyFixture) record(t *testing.T, vulnclass, severity string) int64 {
 		VulnClass:     vulnclass,
 		Name:          vulnclass,
 		Severity:      severity,
-		Summary:       vulnclass + " 的摘要",
+		Summary:       vulnclass + " 요약",
 		Evidence:      "poc",
 	}, nil)
 	if err != nil {
-		t.Fatalf("记录漏洞失败: %v", err)
+		t.Fatalf("취약점 기록 실패: %v", err)
 	}
 	return out.FindingID
 }
 
-// channel 读回渠道配置（供逐渠道调用 stepX 使用）。
+// channel 은 알림 채널 설정을 다시 읽는다(알림 채널별로 stepX를 부를 때 쓴다).
 func (f *notifyFixture) channel(t *testing.T, id int64) *db.NotificationChannel {
 	t.Helper()
 	ch, err := f.pg.NotificationChannelByID(context.Background(), id)
 	if err != nil {
-		t.Fatalf("读渠道失败: %v", err)
+		t.Fatalf("알림 채널 읽기 실패: %v", err)
 	}
 	return ch
 }
 
-// deliver 分派事件并只对指定渠道跑一轮投递。
+// deliver 는 이벤트를 분배하고 지정한 알림 채널에만 전달을 한 번 돌린다.
 func (f *notifyFixture) deliver(t *testing.T, chID int64, baseURL string) {
 	t.Helper()
 	ctx := context.Background()
 	if _, _, err := f.pg.FanOutPendingEvents(ctx, 500); err != nil {
-		t.Fatalf("分派失败: %v", err)
+		t.Fatalf("분배 실패: %v", err)
 	}
 	f.n.stepRealtime(ctx, f.channel(t, chID), 50, baseURL)
 }
 
-// createChannel 通过 HTTP 接口建渠道，顺带覆盖接口自身的校验路径。
+// createChannel 은 HTTP API로 알림 채널을 만든다. 그러면서 API 자체의 검사 경로도 함께 검사한다.
 func (f *notifyFixture) createChannel(t *testing.T, payload map[string]any) int64 {
 	t.Helper()
 	raw, _ := json.Marshal(payload)
 	r := f.request("POST", "/api/notify/channels", string(raw))
 	if r.Code != 200 {
-		t.Fatalf("建渠道失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("알림 채널 만들기 실패 %d: %s", r.Code, r.Body)
 	}
 	var res struct {
 		ID int64 `json:"id"`
 	}
 	if err := json.Unmarshal(r.Body.Bytes(), &res); err != nil || res.ID == 0 {
-		t.Fatalf("建渠道返回异常: %s (%v)", r.Body, err)
+		t.Fatalf("알림 채널 만들기 응답이 이상함: %s (%v)", r.Body, err)
 	}
 	t.Cleanup(func() { f.pg.Exec(`DELETE FROM notification_channels WHERE id=$1`, res.ID) })
 	return res.ID
 }
 
-// fakeWebhook 是记录收到的请求体的假接收端。
+// fakeWebhook 은 받은 요청 본문을 기록하는 가짜 수신 측이다.
 type fakeWebhook struct {
 	*httptest.Server
 	mu     sync.Mutex
@@ -185,7 +185,7 @@ func (f *fakeWebhook) body(t *testing.T, i int) map[string]any {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if i >= len(f.bodies) {
-		t.Fatalf("假接收端只收到 %d 条请求，取不到第 %d 条", len(f.bodies), i)
+		t.Fatalf("가짜 수신 측이 받은 요청은 %d건뿐이라 %d번째를 꺼낼 수 없음", len(f.bodies), i)
 	}
 	return f.bodies[i]
 }
@@ -193,13 +193,13 @@ func (f *fakeWebhook) body(t *testing.T, i int) map[string]any {
 func (f *fakeWebhook) last(t *testing.T) map[string]any {
 	t.Helper()
 	if f.count() == 0 {
-		t.Fatal("假接收端没有收到任何请求")
+		t.Fatal("가짜 수신 측이 받은 요청이 없음")
 	}
 	return f.body(t, f.count()-1)
 }
 
-// markdownText 从请求体里取出正文，兼容各家的字段名差异：
-// 钉钉 markdown 用 `text`、ActionCard 用 `text`、企业微信 markdown 用 `content`。
+// markdownText 는 요청 본문에서 메시지 본문을 꺼낸다. 플랫폼마다 다른 필드 이름을 모두 받는다.
+// DingTalk markdown은 `text`, ActionCard는 `text`, WeCom markdown은 `content`를 쓴다.
 func markdownText(t *testing.T, body map[string]any) string {
 	t.Helper()
 	for _, key := range []string{"markdown", "actionCard"} {
@@ -213,11 +213,11 @@ func markdownText(t *testing.T, body map[string]any) string {
 			}
 		}
 	}
-	t.Fatalf("请求体里没有可识别的正文: %v", body)
+	t.Fatalf("요청 본문에 알아볼 수 있는 메시지 본문이 없음: %v", body)
 	return ""
 }
 
-// agePendingBatch 把该渠道的待发投递催老，用于测试汇总批次到期。
+// agePendingBatch 는 이 알림 채널의 발송 대기 전달을 오래된 것으로 만든다. 다이제스트 배치의 기한이 지나는 경우를 테스트할 때 쓴다.
 func (f *notifyFixture) agePendingBatch(t *testing.T, chID int64) {
 	t.Helper()
 	if _, err := f.pg.Exec(`UPDATE notification_deliveries SET created_at = now() - interval '2 hours'
@@ -230,47 +230,47 @@ func TestNotifyEndToEndRealtimeDelivery(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "实时推送",
+		"name":   "실시간 알림 발송",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 	})
-	f.record(t, "SQL注入", "high")
+	f.record(t, "SQL 인젝션", "high")
 	f.deliver(t, chID, "")
 
 	if hook.count() != 1 {
-		t.Fatalf("应发出 1 条消息，实际 %d", hook.count())
+		t.Fatalf("보낸 메시지 수 = %d, 기대값 1", hook.count())
 	}
 	text := markdownText(t, hook.last(t))
-	for _, want := range []string{"SQL注入", "높음", "요약"} {
+	for _, want := range []string{"SQL 인젝션", "높음", "요약"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("消息正文缺少 %q:\n%s", want, text)
+			t.Fatalf("메시지 본문에 %q이(가) 없음:\n%s", want, text)
 		}
 	}
-	// 投递应流转为 sent。
+	// 전달은 sent로 넘어가야 한다.
 	var pending int
 	if err := f.pg.QueryRow(`SELECT count(*) FROM notification_deliveries WHERE channel_id=$1 AND state <> $2`,
 		chID, db.NotifyStateSent).Scan(&pending); err != nil {
 		t.Fatal(err)
 	}
 	if pending != 0 {
-		t.Fatalf("投递后仍有 %d 条未标记 sent", pending)
+		t.Fatalf("전달 뒤 sent로 표시되지 않은 건수 = %d, 기대값 0", pending)
 	}
 }
 
 func TestNotifyChannelAPIMasksSecretsAndPreservesOnUpdate(t *testing.T) {
 	f := newNotifyFixture(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "掩码用例",
+		"name":   "마스킹 테스트 케이스",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": "https://oapi.dingtalk.com/robot/send?access_token=abc123456", "secret": "SECabcdef123456"},
 	})
 
 	r := f.request("GET", "/api/notify/channels", "")
 	if r.Code != 200 {
-		t.Fatalf("列渠道失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("알림 채널 목록 조회 실패 %d: %s", r.Code, r.Body)
 	}
 	if strings.Contains(r.Body.String(), "abc123456") || strings.Contains(r.Body.String(), "SECabcdef123456") {
-		t.Fatalf("接口回显泄露了凭据: %s", r.Body)
+		t.Fatalf("API 응답에 자격 증명이 드러남: %s", r.Body)
 	}
 	var listed struct {
 		Channels []struct {
@@ -293,41 +293,41 @@ func TestNotifyChannelAPIMasksSecretsAndPreservesOnUpdate(t *testing.T) {
 		}
 	}
 	if mine == nil {
-		t.Fatal("新建的渠道未出现在列表里")
+		t.Fatal("새로 만든 알림 채널이 목록에 없음")
 	}
 	if !notify.IsMasked(fmt.Sprint(mine.Config["webhook"])) || !notify.IsMasked(fmt.Sprint(mine.Config["secret"])) {
-		t.Fatalf("凭据字段应为掩码值: %v", mine.Config)
+		t.Fatalf("자격 증명 필드는 마스킹된 값이어야 함: %v", mine.Config)
 	}
 	if len(mine.SecretKeys) == 0 {
-		t.Fatal("接口应告知前端哪些字段是凭据")
+		t.Fatal("API는 어느 필드가 자격 증명인지 프런트에 알려야 함")
 	}
 
-	// PATCH 只改名 + 回传掩码凭据：真凭据必须原样保留。
+	// PATCH로 이름만 바꾸고 마스킹된 자격 증명을 되돌려 보낸다. 진짜 자격 증명은 그대로 유지돼야 한다.
 	body, _ := json.Marshal(map[string]any{
-		"name":   "改名后",
+		"name":   "바꾼 이름",
 		"config": map[string]any{"webhook": fmt.Sprint(mine.Config["webhook"]), "secret": fmt.Sprint(mine.Config["secret"])},
 	})
 	if r := f.request("PATCH", fmt.Sprintf("/api/notify/channels/%d", chID), string(body)); r.Code != 200 {
-		t.Fatalf("更新失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("갱신 실패 %d: %s", r.Code, r.Body)
 	}
 	cfg := f.channelConfig(t, chID)
 	if cfg["webhook"] != "https://oapi.dingtalk.com/robot/send?access_token=abc123456" {
-		t.Fatalf("掩码回传把真凭据覆盖了: %v", cfg["webhook"])
+		t.Fatalf("마스킹된 값을 되돌려 보냈더니 진짜 자격 증명을 덮어씀: %v", cfg["webhook"])
 	}
 	if cfg["secret"] != "SECabcdef123456" {
-		t.Fatalf("掩码回传把 secret 覆盖了: %v", cfg["secret"])
+		t.Fatalf("마스킹된 값을 되돌려 보냈더니 secret을 덮어씀: %v", cfg["secret"])
 	}
-	if f.channel(t, chID).Name != "改名后" {
-		t.Fatal("名字未更新")
+	if f.channel(t, chID).Name != "바꾼 이름" {
+		t.Fatal("이름이 갱신되지 않음")
 	}
 
-	// 显式清空 secret 应生效（区别于「回传掩码=保持不变」）。
+	// secret을 명시적으로 비우면 적용돼야 한다('마스킹된 값을 되돌려 보냄 = 그대로 유지'와 구분한다).
 	body, _ = json.Marshal(map[string]any{"config": map[string]any{"secret": ""}})
 	if r := f.request("PATCH", fmt.Sprintf("/api/notify/channels/%d", chID), string(body)); r.Code != 200 {
-		t.Fatalf("清空 secret 失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("secret 비우기 실패 %d: %s", r.Code, r.Body)
 	}
 	if _, still := f.channelConfig(t, chID)["secret"]; still {
-		t.Fatal("空串应清空 secret")
+		t.Fatal("빈 문자열이면 secret을 비워야 함")
 	}
 }
 
@@ -347,26 +347,26 @@ func TestNotifyChannelAPICreateValidation(t *testing.T) {
 		payload map[string]any
 		wantSub string
 	}{
-		{"类型非法", map[string]any{"name": "x", "kind": "nope", "config": map[string]any{}}, "渠道类型无效"},
-		{"缺名称", map[string]any{"kind": notify.KindDingTalk, "config": map[string]any{"webhook": "https://e.com/h"}}, "缺少渠道名称"},
-		{"缺 webhook", map[string]any{"name": "x", "kind": notify.KindDingTalk, "config": map[string]any{}}, "Webhook"},
-		{"webhook 协议非法", map[string]any{"name": "x", "kind": notify.KindDingTalk, "config": map[string]any{"webhook": "file:///etc/passwd"}}, "잘못된 Webhook 주소입니다"},
-		{"模式非法", map[string]any{"name": "x", "kind": notify.KindDingTalk, "mode": "sometimes", "config": map[string]any{"webhook": "https://e.com/h"}}, "推送模式无效"},
+		{"잘못된 유형", map[string]any{"name": "x", "kind": "nope", "config": map[string]any{}}, "잘못된 알림 채널 유형입니다"},
+		{"이름 없음", map[string]any{"kind": notify.KindDingTalk, "config": map[string]any{"webhook": "https://e.com/h"}}, "알림 채널 이름을 입력하세요"},
+		{"webhook 없음", map[string]any{"name": "x", "kind": notify.KindDingTalk, "config": map[string]any{}}, "Webhook"},
+		{"webhook 프로토콜 잘못됨", map[string]any{"name": "x", "kind": notify.KindDingTalk, "config": map[string]any{"webhook": "file:///etc/passwd"}}, "잘못된 Webhook 주소입니다"},
+		{"모드 잘못됨", map[string]any{"name": "x", "kind": notify.KindDingTalk, "mode": "sometimes", "config": map[string]any{"webhook": "https://e.com/h"}}, "잘못된 알림 발송 모드입니다"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			raw, _ := json.Marshal(tc.payload)
 			r := f.request("POST", "/api/notify/channels", string(raw))
 			if r.Code != 400 {
-				t.Fatalf("应返回 400，得到 %d: %s", r.Code, r.Body)
+				t.Fatalf("상태 코드 = %d, 기대값 400: %s", r.Code, r.Body)
 			}
 			if !strings.Contains(r.Body.String(), tc.wantSub) {
-				t.Fatalf("错误信息应提到 %q，得到 %s", tc.wantSub, r.Body)
+				t.Fatalf("오류 메시지 = %s, 기대값 %q 포함", r.Body, tc.wantSub)
 			}
 		})
 	}
 	if r := f.request("DELETE", "/api/notify/channels/99999999", ""); r.Code != 404 {
-		t.Fatalf("删除不存在的渠道应 404，得到 %d", r.Code)
+		t.Fatalf("없는 알림 채널 삭제의 상태 코드 = %d, 기대값 404", r.Code)
 	}
 }
 
@@ -374,12 +374,12 @@ func TestNotifyFilterBlocksBelowThreshold(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "仅严重",
+		"name":   "치명만",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 		"filter": map[string]any{"min_severity": "critical"},
 	})
-	f.record(t, "低危问题", "low")
+	f.record(t, "낮은 심각도 문제", "low")
 	if _, _, err := f.pg.FanOutPendingEvents(context.Background(), 500); err != nil {
 		t.Fatal(err)
 	}
@@ -388,11 +388,11 @@ func TestNotifyFilterBlocksBelowThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatalf("低于阈值的漏洞不该产生投递，得到 %d 条", n)
+		t.Fatalf("기준 미만 취약점의 전달 수 = %d, 기대값 0", n)
 	}
 	f.n.stepRealtime(context.Background(), f.channel(t, chID), 50, "")
 	if hook.count() != 0 {
-		t.Fatal("被过滤的漏洞不应发出消息")
+		t.Fatal("걸러진 취약점은 메시지를 보내면 안 됨")
 	}
 }
 
@@ -400,13 +400,13 @@ func TestNotifyDigestBatchesMultipleFindingsIntoOneMessage(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "汇总推送",
+		"name":   "다이제스트 알림 발송",
 		"kind":   notify.KindDingTalk,
 		"mode":   db.NotifyModeDigest,
 		"config": map[string]any{"webhook": hook.URL},
 	})
 	for i := 0; i < 3; i++ {
-		f.record(t, fmt.Sprintf("汇总漏洞%d", i+1), "high")
+		f.record(t, fmt.Sprintf("다이제스트 취약점%d", i+1), "high")
 	}
 	ctx := context.Background()
 	if _, _, err := f.pg.FanOutPendingEvents(ctx, 500); err != nil {
@@ -414,34 +414,34 @@ func TestNotifyDigestBatchesMultipleFindingsIntoOneMessage(t *testing.T) {
 	}
 	ch := f.channel(t, chID)
 
-	// 未到期：不发。
+	// 기한 전: 보내지 않는다.
 	f.n.stepDigest(ctx, ch, 50, "")
 	if hook.count() != 0 {
-		t.Fatal("汇总批次未到期就发了")
+		t.Fatal("다이제스트 배치를 기한 전에 보냄")
 	}
 
-	// 催老批次后：三条合成一条消息。
+	// 배치를 오래된 것으로 만든 뒤: 세 건이 메시지 하나로 합쳐진다.
 	f.agePendingBatch(t, chID)
 	f.n.stepDigest(ctx, ch, 50, "")
 	if got := hook.count(); got != 1 {
-		t.Fatalf("三条应汇总成一条消息，实际发了 %d 条", got)
+		t.Fatalf("보낸 메시지 수 = %d, 기대값 1(세 건을 다이제스트 하나로)", got)
 	}
 	text := markdownText(t, hook.last(t))
 	if !strings.Contains(text, "최근") || !strings.Contains(text, "새 취약점 3건") {
-		t.Fatalf("汇总消息缺少条数/时间窗文案:\n%s", text)
+		t.Fatalf("다이제스트 메시지에 건수·시간 범위 문구가 없음:\n%s", text)
 	}
 	for i := 1; i <= 3; i++ {
-		if !strings.Contains(text, fmt.Sprintf("汇总漏洞%d", i)) {
-			t.Fatalf("汇总消息缺少第 %d 条:\n%s", i, text)
+		if !strings.Contains(text, fmt.Sprintf("다이제스트 취약점%d", i)) {
+			t.Fatalf("다이제스트 메시지에 %d번째 항목이 없음:\n%s", i, text)
 		}
 	}
-	// 同一批次应共享 batch_id。
+	// 같은 배치는 batch_id를 함께 써야 한다.
 	var distinct, total int
 	if err := f.pg.QueryRow(`SELECT count(DISTINCT batch_id), count(*) FROM notification_deliveries WHERE channel_id=$1`, chID).Scan(&distinct, &total); err != nil {
 		t.Fatal(err)
 	}
 	if total != 3 || distinct != 1 {
-		t.Fatalf("三条投递应共享一个 batch_id，得到 distinct=%d total=%d", distinct, total)
+		t.Fatalf("batch_id 수 = %d, 전달 수 = %d, 기대값 batch_id 1개에 전달 3건", distinct, total)
 	}
 }
 
@@ -449,12 +449,12 @@ func TestNotifyDisabledChannelDoesNotSend(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":    "停用渠道",
+		"name":    "사용 안 함 알림 채널",
 		"kind":    notify.KindDingTalk,
 		"enabled": false,
 		"config":  map[string]any{"webhook": hook.URL},
 	})
-	f.record(t, "停用期间的漏洞", "critical")
+	f.record(t, "꺼져 있는 동안의 취약점", "critical")
 	if _, _, err := f.pg.FanOutPendingEvents(context.Background(), 500); err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestNotifyDisabledChannelDoesNotSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatalf("停用渠道不该产生投递，得到 %d 条", n)
+		t.Fatalf("사용 안 함 알림 채널의 전달 수 = %d, 기대값 0", n)
 	}
 }
 
@@ -471,20 +471,20 @@ func TestNotifyStatusChangeDelivery(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "状态变更订阅",
+		"name":   "상태 변경 구독",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 		"filter": map[string]any{"on_status_change": true},
 	})
-	finding := f.record(t, "状态变更用例", "high")
+	finding := f.record(t, "상태 변경 테스트 케이스", "high")
 	r := f.request("PATCH", fmt.Sprintf("/api/exploration/findings/%d", finding), `{"status":"fixed"}`)
 	if r.Code != 200 {
-		t.Fatalf("改状态失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("상태 변경 실패 %d: %s", r.Code, r.Body)
 	}
 	f.deliver(t, chID, "")
 
-	// 应有两条：fixed 那一条是状态变更；finding_created 那条也可能在同一轮发出。
-	// 状态变更的实际上更晚创建，但不依赖顺序，全量找。
+	// 두 건이 있어야 한다. fixed 건이 상태 변경이고, finding_created 건도 같은 차례에 나갈 수 있다.
+	// 상태 변경 건이 실제로는 더 늦게 만들어지지만, 순서에 기대지 않고 전부 찾는다.
 	found := false
 	for i := 0; i < hook.count(); i++ {
 		text := markdownText(t, hook.body(t, i))
@@ -501,13 +501,13 @@ func TestNotifyStatusChangeSuppressedByDefault(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "不订阅状态变更",
+		"name":   "상태 변경 구독 안 함",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 	})
-	finding := f.record(t, "不订阅变更", "high")
+	finding := f.record(t, "변경 구독 안 함", "high")
 	if r := f.request("PATCH", fmt.Sprintf("/api/exploration/findings/%d", finding), `{"status":"false_positive"}`); r.Code != 200 {
-		t.Fatalf("改状态失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("상태 변경 실패 %d: %s", r.Code, r.Body)
 	}
 	if _, _, err := f.pg.FanOutPendingEvents(context.Background(), 500); err != nil {
 		t.Fatal(err)
@@ -519,7 +519,7 @@ WHERE d.channel_id=$1 AND e.kind=$2`, chID, notify.EventFindingStatusChanged).Sc
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatalf("未订阅状态变更的渠道不该收到状态变更投递，得到 %d 条", n)
+		t.Fatalf("상태 변경을 구독하지 않은 알림 채널의 상태 변경 전달 수 = %d, 기대값 0", n)
 	}
 }
 
@@ -527,46 +527,46 @@ func TestNotifyTestMessageEndpoint(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "测试发送",
+		"name":   "테스트 발송",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 	})
 	if r := f.request("POST", fmt.Sprintf("/api/notify/channels/%d/test", chID), ""); r.Code != 200 {
-		t.Fatalf("测试发送失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("테스트 발송 실패 %d: %s", r.Code, r.Body)
 	}
 	if hook.count() != 1 {
-		t.Fatalf("假接收端应收到 1 条测试消息，得到 %d", hook.count())
+		t.Fatalf("가짜 수신 측이 받은 테스트 메시지 수 = %d, 기대값 1", hook.count())
 	}
-	// 测试消息必须一眼能看出是测试，不能被误当成真实漏洞。
-	if text := markdownText(t, hook.last(t)); !strings.Contains(text, "测试") {
-		t.Fatalf("测试消息应标明是测试: %s", text)
+	// 테스트 메시지는 한눈에 테스트임을 알 수 있어야 한다. 실제 취약점으로 오해받으면 안 된다.
+	if text := markdownText(t, hook.last(t)); !strings.Contains(text, "테스트") {
+		t.Fatalf("테스트 메시지에 테스트라는 표시가 있어야 함: %s", text)
 	}
-	// 配置坏掉时应把渠道的原始错误如实回给用户。
+	// 설정이 잘못됐으면 알림 채널의 원래 오류를 그대로 사용자에게 돌려줘야 한다.
 	badID := f.createChannel(t, map[string]any{
-		"name":   "坏地址",
+		"name":   "잘못된 주소",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": "http://127.0.0.1:1/hook"},
 	})
 	if r := f.request("POST", fmt.Sprintf("/api/notify/channels/%d/test", badID), ""); r.Code != 502 {
-		t.Fatalf("投递失败应回 502，得到 %d: %s", r.Code, r.Body)
+		t.Fatalf("전달 실패 시 상태 코드 = %d, 기대값 502: %s", r.Code, r.Body)
 	}
 }
 
 func TestNotifyDeliveriesHistoryAndRetry(t *testing.T) {
 	f := newNotifyFixture(t)
-	// 指向必然失败的地址，制造 failed 投递。
+	// 반드시 실패하는 주소를 가리켜 failed 전달을 만든다.
 	chID := f.createChannel(t, map[string]any{
-		"name":   "失败重试",
+		"name":   "실패 재시도",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": "http://127.0.0.1:1/hook"},
 	})
-	f.record(t, "会失败的推送", "high")
+	f.record(t, "실패할 알림 발송", "high")
 	ctx := context.Background()
 	if _, _, err := f.pg.FanOutPendingEvents(ctx, 500); err != nil {
 		t.Fatal(err)
 	}
 	ch := f.channel(t, chID)
-	// 连投到耗尽重试预算。
+	// 재시도 한도를 다 쓸 때까지 계속 전달한다.
 	for i := 0; i < db.MaxNotifyAttempts; i++ {
 		f.n.stepRealtime(ctx, ch, 50, "")
 		if _, err := f.pg.Exec(`UPDATE notification_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE channel_id=$1`, chID); err != nil {
@@ -578,12 +578,12 @@ func TestNotifyDeliveriesHistoryAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if state != db.NotifyStateFailed {
-		t.Fatalf("重试耗尽后应为 failed，得到 %s", state)
+		t.Fatalf("재시도를 다 쓴 뒤 상태 = %s, 기대값 failed", state)
 	}
 
 	r := f.request("GET", fmt.Sprintf("/api/notify/deliveries?channel_id=%d&state=failed", chID), "")
 	if r.Code != 200 {
-		t.Fatalf("查历史失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("전달 기록 조회 실패 %d: %s", r.Code, r.Body)
 	}
 	var hist struct {
 		Deliveries []struct {
@@ -599,28 +599,28 @@ func TestNotifyDeliveriesHistoryAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if hist.Total != 1 || len(hist.Deliveries) != 1 {
-		t.Fatalf("应查到 1 条失败投递，得到 total=%d len=%d", hist.Total, len(hist.Deliveries))
+		t.Fatalf("실패한 전달 수 = total=%d len=%d, 기대값 1", hist.Total, len(hist.Deliveries))
 	}
 	if hist.Deliveries[0].LastError == "" {
-		t.Fatal("历史里应带上失败原因，否则用户无法排查")
+		t.Fatal("전달 기록에 실패 원인이 있어야 함. 없으면 사용자가 원인을 찾을 수 없음")
 	}
 	if hist.Deliveries[0].Attempts < db.MaxNotifyAttempts {
-		t.Fatalf("尝试次数应被记录，得到 %d", hist.Deliveries[0].Attempts)
+		t.Fatalf("기록된 시도 횟수 = %d, 기대값 최대 시도 횟수 이상", hist.Deliveries[0].Attempts)
 	}
-	if hist.Deliveries[0].Title != "会失败的推送" {
-		t.Fatalf("历史应带出漏洞标题，得到 %q", hist.Deliveries[0].Title)
+	if hist.Deliveries[0].Title != "실패할 알림 발송" {
+		t.Fatalf("전달 기록의 취약점 제목 = %q, 기대값 \"실패할 알림 발송\"", hist.Deliveries[0].Title)
 	}
 
-	// 手动重发：应回到 pending 且清零计数。
+	// 수동 재발송: pending으로 돌아가고 횟수가 0이 돼야 한다.
 	if r := f.request("POST", fmt.Sprintf("/api/notify/deliveries/%d/retry", hist.Deliveries[0].ID), ""); r.Code != 200 {
-		t.Fatalf("重发失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("재발송 실패 %d: %s", r.Code, r.Body)
 	}
 	var attempts int
 	if err := f.pg.QueryRow(`SELECT state, attempts FROM notification_deliveries WHERE id=$1`, hist.Deliveries[0].ID).Scan(&state, &attempts); err != nil {
 		t.Fatal(err)
 	}
 	if state != db.NotifyStatePending || attempts != 0 {
-		t.Fatalf("重发后应为 pending 且 attempts=0，得到 %s/%d", state, attempts)
+		t.Fatalf("재발송 뒤 상태/attempts = %s/%d, 기대값 pending/0", state, attempts)
 	}
 }
 
@@ -628,7 +628,7 @@ func TestNotifyMetaAndSettingsRoundTrip(t *testing.T) {
 	f := newNotifyFixture(t)
 	r := f.request("GET", "/api/notify/meta", "")
 	if r.Code != 200 {
-		t.Fatalf("meta 失败: %s", r.Body)
+		t.Fatalf("meta 조회 실패: %s", r.Body)
 	}
 	var meta struct {
 		Kinds []struct {
@@ -640,109 +640,109 @@ func TestNotifyMetaAndSettingsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(meta.Kinds) != len(notify.Kinds()) {
-		t.Fatalf("meta 应列出全部 %d 个渠道，得到 %d", len(notify.Kinds()), len(meta.Kinds))
+		t.Fatalf("meta의 알림 채널 수 = %d, 기대값 %d", len(meta.Kinds), len(notify.Kinds()))
 	}
 	for _, k := range meta.Kinds {
 		if len(k.SecretKeys) == 0 {
-			t.Errorf("渠道 %s 未上报凭据字段", k.Kind)
+			t.Errorf("알림 채널 %s이(가) 자격 증명 필드를 알리지 않음", k.Kind)
 		}
 	}
 
-	// 三项全局设置往返。尾部斜杠应被规范化掉，否则回链会拼出 "//function/..."。
+	// 전역 설정 세 가지를 쓰고 다시 읽는다. 끝의 슬래시는 정규화로 없애야 한다. 그러지 않으면 상세 링크가 "//function/..."이 된다.
 	if r := f.request("PUT", "/api/settings", `{"notify_public_base_url":"https://artex.example.com/","notify_digest_interval_min":15,"notify_enabled":true}`); r.Code != 200 {
-		t.Fatalf("写设置失败 %d: %s", r.Code, r.Body)
+		t.Fatalf("설정 쓰기 실패 %d: %s", r.Code, r.Body)
 	}
 	t.Cleanup(func() {
 		f.pg.Exec(`DELETE FROM settings WHERE key IN ($1,$2)`, settingNotifyPublicBaseURL, settingNotifyDigestMinutes)
 	})
 	payload := f.s.settingsPayload()
 	if payload["notify_public_base_url"] != "https://artex.example.com" {
-		t.Fatalf("回链地址未规范化: %v", payload["notify_public_base_url"])
+		t.Fatalf("링크 기본 주소가 정규화되지 않음: %v", payload["notify_public_base_url"])
 	}
 	if payload["notify_digest_interval_min"] != 15 {
-		t.Fatalf("汇总周期未生效: %v", payload["notify_digest_interval_min"])
+		t.Fatalf("다이제스트 주기가 적용되지 않음: %v", payload["notify_digest_interval_min"])
 	}
 
-	// 非法值应被拒。
+	// 잘못된 값은 거부돼야 한다.
 	for _, body := range []string{
 		`{"notify_public_base_url":"ftp://x"}`,
 		`{"notify_digest_interval_min":0}`,
 		`{"notify_digest_interval_min":99999}`,
 	} {
 		if r := f.request("PUT", "/api/settings", body); r.Code != 400 {
-			t.Errorf("%s 应返回 400，得到 %d", body, r.Code)
+			t.Errorf("%s 상태 코드 = %d, 기대값 400", body, r.Code)
 		}
 	}
 }
 
-// TestNotifyDeepLinkUsesPublicBaseURL 覆盖回链拼接：配了 public_base_url 时
-// 单条消息必须用带按钮的 ActionCard，且链接指向漏洞详情页。
+// TestNotifyDeepLinkUsesPublicBaseURL 는 상세 링크 조립을 검사한다. public_base_url을 설정하면
+// 단건 메시지는 버튼이 있는 ActionCard를 써야 하고, 링크는 취약점 상세 페이지를 가리켜야 한다.
 func TestNotifyDeepLinkUsesPublicBaseURL(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "回链",
+		"name":   "상세 링크",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 	})
-	finding := f.record(t, "带回链的漏洞", "high")
+	finding := f.record(t, "상세 링크가 있는 취약점", "high")
 	f.deliver(t, chID, "https://artex.example.com")
 
 	body := hook.last(t)
 	card, _ := body["actionCard"].(map[string]any)
 	if card == nil {
-		t.Fatalf("有回链时应用 ActionCard，得到 msgtype=%v", body["msgtype"])
+		t.Fatalf("상세 링크가 있을 때 msgtype = %v, 기대값 ActionCard", body["msgtype"])
 	}
 	want := fmt.Sprintf("https://artex.example.com/function/findings/detail?id=%d", finding)
 	if card["singleURL"] != want {
-		t.Fatalf("回链不对\n期望 %s\n得到 %v", want, card["singleURL"])
+		t.Fatalf("상세 링크 = %v, 기대값 %s", card["singleURL"], want)
 	}
 }
 
-// TestNotifyNoDeepLinkWithoutBaseURL 反向覆盖：没配外部地址时不该产生坏链接
-// （比如指向 localhost 或相对路径），应退回纯 markdown。
+// TestNotifyNoDeepLinkWithoutBaseURL 는 반대 경우를 검사한다. 외부 주소를 설정하지 않았으면 잘못된 링크
+// (localhost나 상대 경로를 가리키는 것 등)를 만들지 말고 일반 markdown으로 돌아가야 한다.
 func TestNotifyNoDeepLinkWithoutBaseURL(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
 	chID := f.createChannel(t, map[string]any{
-		"name":   "无回链",
+		"name":   "상세 링크 없음",
 		"kind":   notify.KindDingTalk,
 		"config": map[string]any{"webhook": hook.URL},
 	})
-	f.record(t, "无回链的漏洞", "high")
+	f.record(t, "상세 링크가 없는 취약점", "high")
 	f.deliver(t, chID, "")
 
 	body := hook.last(t)
 	if body["msgtype"] != "markdown" {
-		t.Fatalf("未配外部地址时应发 markdown，得到 %v", body["msgtype"])
+		t.Fatalf("외부 주소가 없을 때 msgtype = %v, 기대값 markdown", body["msgtype"])
 	}
 	if text := markdownText(t, body); strings.Contains(text, "상세 보기") {
-		t.Fatalf("未配外部地址时不该出现详情链接:\n%s", text)
+		t.Fatalf("외부 주소가 없는데 상세 링크가 나옴:\n%s", text)
 	}
 }
 
-// TestNotifyDigestSegmentsAndDefersRemainder 是「静默丢失」修复的端到端证据。
+// TestNotifyDigestSegmentsAndDefersRemainder 는 '알림 없이 사라짐' 수정을 끝에서 끝까지 보여 주는 증거다.
 //
-// 汇总消息受渠道长度上限约束（企微 4096 字节），一批装不下时必须**按整条**切分：
-// 装进本条的那些标记已送达，其余回到队列等下一条。曾经的实现是把整批标记
-// 成功——被截掉的那些既不在消息里、也不在失败列表里，投递历史还显示成功，
-// 漏洞就这么没了。
+// 다이제스트 메시지는 알림 채널의 길이 상한(WeCom 4096바이트)을 받는다. 배치 하나가 다 들어가지 않으면 **항목 단위로** 나눠야 한다.
+// 이번 메시지에 들어간 항목은 전달됨으로 표시하고, 나머지는 큐로 돌아가 다음 메시지를 기다린다. 예전 구현은 배치 전체를
+// 성공으로 표시했다. 잘린 항목은 메시지에도 실패 목록에도 없고 전달 기록에는 성공으로 나와,
+// 취약점이 그대로 사라졌다.
 //
-// 断言四件事：① 只标记了实际装下的条数 ② 其余仍是待发 ③ 被推迟的条目
-// **没有消耗重试次数** ④ 再跑一轮能把剩下的发出去（不会卡死）。
+// 네 가지를 검사한다: ① 실제로 들어간 건수만 표시했다 ② 나머지는 아직 발송 대기다 ③ 미룬 항목은
+// **재시도 횟수를 쓰지 않았다** ④ 한 번 더 돌리면 남은 것을 보낸다(멈춰 버리지 않는다).
 func TestNotifyDigestSegmentsAndDefersRemainder(t *testing.T) {
 	f := newNotifyFixture(t)
 	hook := newFakeWebhook(t)
-	// 用企业微信：markdown 上限 4096 字节，是六个渠道里最紧的。
+	// WeCom을 쓴다. markdown 상한이 4096바이트로 여섯 알림 채널 중 가장 빡빡하다.
 	chID := f.createChannel(t, map[string]any{
-		"name":   "分段汇总",
+		"name":   "나눠 보내는 다이제스트",
 		"kind":   notify.KindWeCom,
 		"mode":   db.NotifyModeDigest,
 		"config": map[string]any{"webhook": hook.URL},
 	})
 	const total = 60
-	// 标题取长一点，保证 60 条远超 4096 字节，必然分段。
-	longName := strings.Repeat("超长漏洞名称", 6)
+	// 제목을 길게 잡아 60건이 4096바이트를 훨씬 넘게 해 반드시 나뉘게 한다.
+	longName := strings.Repeat("매우 긴 취약점 이름", 6)
 	for i := 0; i < total; i++ {
 		f.record(t, longName+strconv.Itoa(i+1), "high")
 	}
@@ -755,7 +755,7 @@ func TestNotifyDigestSegmentsAndDefersRemainder(t *testing.T) {
 
 	f.n.stepDigest(ctx, ch, 50, "")
 	if hook.count() != 1 {
-		t.Fatalf("应只发出一条消息，得到 %d", hook.count())
+		t.Fatalf("보낸 메시지 수 = %d, 기대값 1", hook.count())
 	}
 
 	var sent, pending int
@@ -767,31 +767,31 @@ func TestNotifyDigestSegmentsAndDefersRemainder(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sent == 0 {
-		t.Fatal("应有条目被标记为已送达")
+		t.Fatal("전달됨으로 표시된 항목이 있어야 함")
 	}
 	if pending == 0 {
-		t.Fatalf("一批 %d 条不可能全装进 4096 字节，应有剩余待发；sent=%d", total, sent)
+		t.Fatalf("한 배치 %d건이 4096바이트에 다 들어갈 수 없으므로 발송 대기가 남아야 함. sent=%d", total, sent)
 	}
 	if sent+pending != total {
-		t.Fatalf("条目数对不上：sent=%d pending=%d total=%d（既没送达也没待发=丢失）", sent, pending, total)
+		t.Fatalf("항목 수가 맞지 않음: sent=%d pending=%d total=%d(전달되지도 발송 대기도 아니면 사라진 것)", sent, pending, total)
 	}
-	// 消息正文必须如实告知还有多少条没包含在本条里。
+	// 메시지 본문은 이번 메시지에 들어가지 않은 항목이 몇 건인지 그대로 알려야 한다.
 	if text := markdownText(t, hook.last(t)); !strings.Contains(text, "나머지") {
-		t.Fatalf("消息应说明还有条目未包含在本条:\n%.400s", text)
+		t.Fatalf("메시지에 이번에 포함하지 않은 항목이 있다는 안내가 있어야 함:\n%.400s", text)
 	}
 
-	// 被推迟的条目不得消耗重试预算：领取时 attempts 已乐观 +1，推迟时要减回去。
+	// 미룬 항목은 재시도 한도를 쓰면 안 된다. 가져갈 때 attempts를 낙관적으로 1 올렸으므로 미룰 때 다시 빼야 한다.
 	var maxAttempts int
 	if err := f.pg.QueryRow(`SELECT COALESCE(max(attempts),0) FROM notification_deliveries
 WHERE channel_id=$1 AND state=$2`, chID, db.NotifyStatePending).Scan(&maxAttempts); err != nil {
 		t.Fatal(err)
 	}
 	if maxAttempts > 0 {
-		t.Fatalf("被推迟的条目不该消耗重试次数（否则几条之后就会被判失败），得到 attempts=%d", maxAttempts)
+		t.Fatalf("미룬 항목의 attempts = %d, 기대값 0(재시도 횟수를 쓰면 몇 번 뒤에 실패로 판정됨)", maxAttempts)
 	}
 
-	// 反复跑直到收敛。断言的是**最终全部送达**且中途确实分了多轮——
-	// 这比「第二轮发完」更强：它证明分段不会卡死、也不会把剩余条目丢掉。
+	// 끝날 때까지 되풀이해 돌린다. **결국 모두 전달되고** 중간에 실제로 여러 번에 나뉘었는지를 검사한다.
+	// '두 번째에 다 보냄'보다 강한 검사다. 나눠 보내기가 멈추지 않고 남은 항목을 잃지도 않는다는 것을 보인다.
 	rounds := 0
 	for {
 		var undelivered int
@@ -805,147 +805,147 @@ WHERE channel_id=$1 AND state <> $2 AND state <> $3`, chID, db.NotifyStateSent, 
 		}
 		rounds++
 		if rounds > total+5 {
-			t.Fatalf("分段投递不收敛：跑了 %d 轮仍有 %d 条悬而未决", rounds, undelivered)
+			t.Fatalf("나눠 보내기가 끝나지 않음: %d번 돌렸는데 아직 %d건이 남음", rounds, undelivered)
 		}
 		before := hook.count()
 		f.n.stepDigest(ctx, ch, 50, "")
 		if hook.count() == before {
-			t.Fatalf("第 %d 轮没有任何进展，剩余 %d 条会永久卡住", rounds, undelivered)
+			t.Fatalf("%d번째 실행에서 진행이 없음. 남은 %d건이 영원히 멈춤", rounds, undelivered)
 		}
 	}
 	if rounds < 2 {
-		t.Fatalf("一条 4096 字节的消息装不下 %d 条长标题漏洞，应分多轮发出，实际只用了 %d 轮", total, rounds)
+		t.Fatalf("4096바이트 메시지 하나에 제목이 긴 취약점 %d건이 다 들어갈 수 없으므로 여러 번에 나눠 보내야 함. 실행 횟수 = %d, 기대값 2 이상", total, rounds)
 	}
-	// 首轮之后的每一轮都应是**纯续发**，不存在被渠道拒绝的条目。
+	// 첫 번째 뒤의 실행은 모두 **이어 보내기만** 해야 하고, 알림 채널이 거부한 항목은 없어야 한다.
 	var failed int
 	if err := f.pg.QueryRow(`SELECT count(*) FROM notification_deliveries WHERE channel_id=$1 AND state=$2`,
 		chID, db.NotifyStateFailed).Scan(&failed); err != nil {
 		t.Fatal(err)
 	}
 	if failed != 0 {
-		t.Fatalf("假接收端始终返回成功，不该有失败条目，得到 %d", failed)
+		t.Fatalf("실패 항목 수 = %d, 기대값 0(가짜 수신 측은 늘 성공을 돌려줌)", failed)
 	}
 }
 
-// TestNotifyBackoffTableMatchesAttemptBudget 是防漂移断言。
+// TestNotifyBackoffTableMatchesAttemptBudget 는 두 값이 서로 어긋나지 않게 막는 검사다.
 //
-// 重试预算（db.MaxNotifyAttempts）与退避序列表（notifyBackoff）分居两个包：
-// 前者是状态机的策略、后者是引擎的执行节拍。若只改其中一个——比如把预算提到 5
-// 次而忘了加退避档位——代码不会报错，只会让第 4、5 次重试沿用最后一档间隔，
-// 表现为「重试节奏莫名变慢」，排查时很难联想到是这里。
-// 断言两者长度一致，让这种漂移在 CI 里就暴露。
+// 재시도 한도(db.MaxNotifyAttempts)와 백오프 간격 표(notifyBackoff)는 서로 다른 패키지에 있다.
+// 앞의 것은 상태 기계의 정책이고 뒤의 것은 엔진의 실행 간격이다. 하나만 바꾸면(예: 한도를 5회로 올리고
+// 백오프 단계를 더하는 것을 잊으면) 코드는 오류를 내지 않고 4·5번째 재시도가 마지막 단계 간격을 그대로 쓴다.
+// 그러면 '재시도가 이유 없이 느려짐'으로 나타나, 원인을 찾을 때 여기를 떠올리기 어렵다.
+// 두 길이가 같은지 검사해 이런 어긋남이 테스트에서 바로 드러나게 한다.
 func TestNotifyBackoffTableMatchesAttemptBudget(t *testing.T) {
 	if len(notifyBackoff) != db.MaxNotifyAttempts {
-		t.Fatalf("退避档位数(%d)与最大尝试次数(%d)不一致——改一个必须同时改另一个",
+		t.Fatalf("백오프 단계 수(%d)가 최대 시도 횟수(%d)와 다름. 하나를 바꾸면 다른 하나도 함께 바꿔야 함",
 			len(notifyBackoff), db.MaxNotifyAttempts)
 	}
-	// 退避间隔必须单调不减，否则重试会越试越急，反而加剧限流。
+	// 백오프 간격은 줄어들면 안 된다. 줄어들면 재시도가 갈수록 잦아져 속도 제한을 오히려 악화시킨다.
 	for i := 1; i < len(notifyBackoff); i++ {
 		if notifyBackoff[i] < notifyBackoff[i-1] {
-			t.Fatalf("退避间隔必须单调不减：第 %d 档 %v < 第 %d 档 %v",
+			t.Fatalf("백오프 간격이 줄어듦: %d단계 %v < %d단계 %v",
 				i, notifyBackoff[i], i-1, notifyBackoff[i-1])
 		}
 	}
 }
 
-// TestNotifyRateLimitDoesNotConsumeRetryBudget 锁住「先取令牌再领取」的顺序。
-// 若反了（先领后弃），被限流挡下的投递已经计过一次 attempts，
-// 预算会被纯粹的等待耗光，最后落进 failed。
+// TestNotifyRateLimitDoesNotConsumeRetryBudget 는 '토큰을 먼저 얻고 나서 전달을 가져간다'는 순서를 고정한다.
+// 순서가 반대면(먼저 가져가고 나서 버리면) 속도 제한에 막힌 전달이 attempts를 이미 한 번 센 상태라,
+// 기다리기만 해도 한도를 다 써 결국 failed가 된다.
 func TestNotifyRateLimitDoesNotConsumeRetryBudget(t *testing.T) {
-	// 只测令牌桶本身，不需要 Server（也不该为它造一个）。
+	// 토큰 버킷 자체만 테스트하므로 Server가 필요 없다(이것 때문에 만들어서도 안 된다).
 	n := &Notifier{buckets: map[int64]*notifyBucket{}}
 	now := time.Now()
-	// 每分钟 1 条：满桶时最多 1 条。
+	// 분당 1건: 버킷이 가득 차도 최대 1건이다.
 	if got := n.takeTokens(1, 1, notifyMaxSendsPerChannelPerTick, now); got != 1 {
-		t.Fatalf("满桶时每分钟 1 条应取 1 个令牌，得到 %d", got)
+		t.Fatalf("분당 1건이고 버킷이 가득 찼을 때 얻은 토큰 수 = %d, 기대값 1", got)
 	}
 	if got := n.takeTokens(1, 1, notifyMaxSendsPerChannelPerTick, now.Add(time.Millisecond)); got != 0 {
-		t.Fatalf("令牌耗尽后应立即返回 0，得到 %d", got)
+		t.Fatalf("토큰을 다 쓴 직후 얻은 토큰 수 = %d, 기대값 0", got)
 	}
 	if got := n.takeTokens(1, 1, notifyMaxSendsPerChannelPerTick, now.Add(30*time.Second)); got != 0 {
-		t.Fatalf("半程不应补满一个令牌，得到 %d", got)
+		t.Fatalf("주기의 절반이 지났을 때 얻은 토큰 수 = %d, 기대값 0", got)
 	}
 	if got := n.takeTokens(1, 1, notifyMaxSendsPerChannelPerTick, now.Add(time.Minute)); got != 1 {
-		t.Fatalf("满一个周期应补回 1 个令牌，得到 %d", got)
+		t.Fatalf("한 주기가 지났을 때 얻은 토큰 수 = %d, 기대값 1", got)
 	}
-	// 不限流渠道走有限上限，避免单轮被无限积压拖住。
+	// 발송 속도 제한이 없는 알림 채널도 한 번에 처리하는 수에 상한을 둔다. 끝없이 밀린 알림에 한 번의 처리가 붙잡히지 않게 한다.
 	if got := n.takeTokens(2, 0, notifyUnlimitedBurstPerTick+10, now); got != notifyUnlimitedBurstPerTick {
-		t.Fatalf("不限流应返回每轮上限 %d，得到 %d", notifyUnlimitedBurstPerTick, got)
+		t.Fatalf("발송 속도 제한이 없을 때 얻은 토큰 수 = %d, 기대값 한 회차의 상한 %d", got, notifyUnlimitedBurstPerTick)
 	}
-	// 渠道之间的令牌桶互相独立。
+	// 알림 채널마다 토큰 버킷은 따로다.
 	if got := n.takeTokens(1, 1, notifyMaxSendsPerChannelPerTick, now.Add(time.Millisecond)); got != 0 {
-		t.Fatalf("渠道 1 的桶应仍然为空，得到 %d", got)
+		t.Fatalf("알림 채널 1의 버킷에서 얻은 토큰 수 = %d, 기대값 0(비어 있어야 함)", got)
 	}
 }
 
-// TestNotifyTakeTokensKeepsUnusedTokens 锁住「只取 want 个」的语义。
+// TestNotifyTakeTokensKeepsUnusedTokens 는 'want개만 얻는다'는 뜻을 고정한다.
 //
-// 曾经的实现把桶整个抽空后才由调用方截断，于是 rate=100/min 的渠道攒满桶、
-// 一轮只用 5 条，剩下 95 个令牌直接丢弃；渠道这一轮没有待发投递时同样照扣。
-// 结果是注释声称的「积压时可以一次性冲 rate_per_min 条」在任何情况下都做不到。
+// 예전 구현은 버킷을 통째로 비운 뒤에야 호출자가 잘라 냈다. 그래서 rate=100/min인 알림 채널이 버킷을 가득 채워도
+// 한 번에 5건만 쓰고 남은 토큰 95개를 그냥 버렸다. 그 차례에 발송 대기 전달이 없어도 똑같이 뺐다.
+// 그 결과 주석이 말하는 '밀린 알림이 있으면 rate_per_min건을 한 번에 보낼 수 있다'가 어떤 경우에도 되지 않았다.
 func TestNotifyTakeTokensKeepsUnusedTokens(t *testing.T) {
 	n := &Notifier{buckets: map[int64]*notifyBucket{}}
 	now := time.Now()
-	// 桶初始为满（100），本轮只要 5 个。
+	// 버킷은 처음에 가득 차 있고(100), 이번에는 5개만 원한다.
 	if got := n.takeTokens(1, 100, 5, now); got != 5 {
-		t.Fatalf("want=5 时应恰好取 5 个令牌，得到 %d", got)
+		t.Fatalf("want=5일 때 얻은 토큰 수 = %d, 기대값 5", got)
 	}
-	// 关键断言：余下的 95 个必须还在桶里，而不是被抽空丢弃。
-	// 不推进时间，确保取到的只可能来自存量而非补充。
+	// 핵심 검사: 남은 95개는 비워져 버려지지 않고 버킷에 그대로 있어야 한다.
+	// 시간을 진행하지 않아 얻은 토큰이 새로 채운 것이 아니라 남아 있던 것뿐이게 한다.
 	if got := n.takeTokens(1, 100, 95, now); got != 95 {
-		t.Fatalf("剩余令牌应仍可取用（期望 95），得到 %d——桶被整轮抽空了", got)
+		t.Fatalf("남은 토큰에서 얻은 수 = %d, 기대값 95(다르면 버킷이 한 번에 비워진 것)", got)
 	}
 	if got := n.takeTokens(1, 100, 1, now); got != 0 {
-		t.Fatalf("桶已取尽，应返回 0，得到 %d", got)
+		t.Fatalf("버킷을 다 쓴 뒤 얻은 토큰 수 = %d, 기대값 0", got)
 	}
-	// want<=0 不应扣减任何令牌（空轮不收费）。
+	// want<=0이면 토큰을 하나도 빼면 안 된다(보낼 것이 없는 차례는 비용이 없다).
 	n2 := &Notifier{buckets: map[int64]*notifyBucket{}}
 	if got := n2.takeTokens(1, 20, 0, now); got != 0 {
-		t.Fatalf("want=0 应返回 0，得到 %d", got)
+		t.Fatalf("want=0일 때 얻은 토큰 수 = %d, 기대값 0", got)
 	}
 	if got := n2.takeTokens(1, 20, 20, now); got != 20 {
-		t.Fatalf("want=0 的那次不该消耗令牌，应仍可取满 20，得到 %d", got)
+		t.Fatalf("want=0 다음에 얻은 토큰 수 = %d, 기대값 20(want=0은 토큰을 쓰면 안 됨)", got)
 	}
 }
 
-// TestDigestTickPlanDecouplesBatchSizeFromSendBudget 钉住汇总模式的两个量纲。
+// TestDigestTickPlanDecouplesBatchSizeFromSendBudget 는 다이제스트 모드의 서로 다른 두 단위를 고정한다.
 //
-// 汇总批次的大小一旦跟每轮请求预算挂上，rate_per_min=20 的渠道就只能在每个
-// 3 秒 tick 里补到 1 个令牌，于是每条汇总消息只装 1 个漏洞——功能上等于没有
-// 汇总，而消息头部还写着「近 30 分钟新增 1 个漏洞」。这个退化不会报错，
-// 现有的端到端用例也看不出来（它们手动给 stepDigest 传一个够大的 limit，
-// 绕过了 step 里的额度计算），所以在这里直接断言决策本身。
+// 다이제스트 배치 크기를 한 회차(tick)의 요청 한도에 묶으면, rate_per_min=20인 알림 채널은
+// 3초 회차마다 토큰 1개만 채워지고, 그래서 다이제스트 메시지 하나에 취약점이 1건만 들어간다. 기능으로는 다이제스트가
+// 없는 것과 같은데 메시지 머리에는 '최근 30분 동안 새 취약점 1건'이라고 나온다. 이 퇴행은 오류를 내지 않고,
+// 기존 끝에서 끝까지 테스트 케이스로도 보이지 않는다(그 케이스들은 stepDigest에 충분히 큰 limit를 직접 넘겨
+// step 안의 한도 계산을 건너뛴다). 그래서 여기서 결정 자체를 바로 검사한다.
 func TestDigestTickPlanDecouplesBatchSizeFromSendBudget(t *testing.T) {
 	tokens, claimLimit := digestTickPlan()
-	// 一批 = 一条消息 = 一次请求 = 一个令牌。令牌的单位是消息，不是漏洞。
+	// 배치 하나 = 메시지 하나 = 요청 한 번 = 토큰 하나. 토큰의 단위는 취약점이 아니라 메시지다.
 	if tokens != 1 {
-		t.Fatalf("汇总一批只发一条消息，应恰好消耗 1 个令牌，得到 %d", tokens)
+		t.Fatalf("다이제스트 배치 하나가 쓰는 토큰 수 = %d, 기대값 1(배치 하나는 메시지 하나만 보냄)", tokens)
 	}
 	if claimLimit != db.MaxDigestBatchSize {
-		t.Fatalf("汇总批次大小应为内存上界 db.MaxDigestBatchSize=%d，得到 %d",
-			db.MaxDigestBatchSize, claimLimit)
+		t.Fatalf("다이제스트 배치 크기 = %d, 기대값 메모리 상한 db.MaxDigestBatchSize=%d",
+			claimLimit, db.MaxDigestBatchSize)
 	}
-	// 关键关系：批次大小必须远大于每轮请求预算。两者一旦同量级，
-	// 说明又把「发几条消息」和「一批装几条漏洞」混成了一个数。
+	// 핵심 관계: 배치 크기는 한 회차의 요청 한도보다 훨씬 커야 한다. 둘이 같은 크기 수준이 되면
+	// '메시지를 몇 개 보내는가'와 '배치 하나에 취약점을 몇 건 넣는가'를 다시 한 숫자로 섞은 것이다.
 	if claimLimit <= notifyMaxSendsPerChannelPerTick {
-		t.Fatalf("汇总批次大小 %d 不应受每轮请求预算 %d 约束——"+
-			"请求预算是由租约倒推的「发几次请求」，与「一批装几条漏洞」是两个量纲",
+		t.Fatalf("다이제스트 배치 크기 %d이(가) 한 회차의 요청 한도 %d에 묶이면 안 됨. "+
+			"요청 한도는 선점 기한에서 거꾸로 계산한 '요청을 몇 번 보내는가'이고, '배치 하나에 취약점을 몇 건 넣는가'와 단위가 다름",
 			claimLimit, notifyMaxSendsPerChannelPerTick)
 	}
 }
 
-// TestNotifyTickBudgetFitsWithinLease 是又一条防漂移断言。
+// TestNotifyTickBudgetFitsWithinLease 도 값이 서로 어긋나지 않게 막는 검사다.
 //
-// 单渠道每轮的投递条数上限（notifyMaxSendsPerChannelPerTick）是从租约时长倒推的：
-// 一轮里串行投递的最坏耗时必须 < 租约，否则后几条还没发完租约就过期，
-// 多实例部署时对端会把它们重新领走、重复发送。这三个常量分处不同位置，
-// 改任意一个都可能打破关系而不会有任何报错——所以在这里钉死。
+// 알림 채널 하나가 한 회차에 전달하는 건수의 상한(notifyMaxSendsPerChannelPerTick)은 선점 기한에서 거꾸로 계산한다.
+// 한 회차 안에서 차례로 전달할 때 가장 오래 걸리는 시간은 선점 기한보다 짧아야 한다. 그렇지 않으면 뒤의 몇 건을 다 보내기 전에 기한이 지나,
+// 여러 인스턴스로 배포했을 때 다른 인스턴스가 그것을 다시 가져가 두 번 보낸다. 이 세 상수는 서로 다른 곳에 있어서
+// 어느 하나를 바꿔도 아무 오류 없이 관계가 깨질 수 있다. 그래서 여기서 고정한다.
 func TestNotifyTickBudgetFitsWithinLease(t *testing.T) {
 	worst := time.Duration(notifyMaxSendsPerChannelPerTick) * notifySendTimeout
 	if worst >= notifyLease {
-		t.Fatalf("单渠道一轮的最坏耗时 %v 不应达到或超过租约 %v"+
-			"（notifyMaxSendsPerChannelPerTick=%d × notifySendTimeout=%v）——"+
-			"改这三个常量中的任意一个都要同步检查另外两个",
+		t.Fatalf("알림 채널 하나의 한 회차 최악 소요 시간 %v이(가) 선점 기한 %v 이상임"+
+			"(notifyMaxSendsPerChannelPerTick=%d × notifySendTimeout=%v). "+
+			"세 상수 중 하나를 바꾸면 나머지 둘도 함께 확인해야 함",
 			worst, notifyLease, notifyMaxSendsPerChannelPerTick, notifySendTimeout)
 	}
 }
