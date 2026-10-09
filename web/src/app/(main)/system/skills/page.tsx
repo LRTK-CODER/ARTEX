@@ -40,6 +40,24 @@ import { api } from "@/lib/api";
 import type { Agent, MCPServer, MissingSkill, SkillCall, SkillItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+// 파일 트리 행을 클릭과 키보드(Enter·Space)로 조작하게 하는 속성.
+// 행 안에 작업 버튼이 있어 <button>으로 감쌀 수 없으므로 role="button"을 쓴다.
+// 안쪽 버튼에서 올라온 키 입력은 행 동작으로 처리하지 않는다.
+function rowActivation(activate: () => void) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: activate,
+    onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activate();
+      }
+    },
+  } as const;
+}
+
 function fmtTime(ts?: string) {
   if (!ts) return "从未调用";
   return new Date(ts).toLocaleString("zh-CN", {
@@ -697,11 +715,10 @@ export default function SkillsPage() {
         const open = expanded.has(key);
         return (
           <div key={node.path}>
-            {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: 기존 파일 트리 행은 마우스 클릭만 받는다. 키보드 조작 추가는 동작 변경이라 별도 이슈로 다룬다 */}
             <div
               className="group relative flex cursor-pointer select-none items-center gap-1 rounded py-0.5 pr-1 text-sm hover:bg-muted"
               style={{ paddingLeft: baseIndent }}
-              onClick={() => toggleExpanded(key)}
+              {...rowActivation(() => toggleExpanded(key))}
             >
               <ChevronRightIcon className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
               {open ? (
@@ -765,7 +782,6 @@ export default function SkillsPage() {
       // file node
       const isSelected = selected?.skill === skill && selected.path === node.path;
       return (
-        // biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: 기존 파일 트리 행은 마우스 클릭만 받는다. 키보드 조작 추가는 동작 변경이라 별도 이슈로 다룬다
         <div
           key={node.path}
           className={cn(
@@ -773,7 +789,7 @@ export default function SkillsPage() {
             isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted",
           )}
           style={{ paddingLeft: baseIndent + 16 }}
-          onClick={() => setSelected({ skill, path: node.path })}
+          {...rowActivation(() => setSelected({ skill, path: node.path }))}
         >
           <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate font-mono text-xs" title={node.path}>
@@ -879,16 +895,15 @@ export default function SkillsPage() {
                 return (
                   <div key={s.name}>
                     {/* skill 根节点 */}
-                    {/* biome-ignore lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: 기존 파일 트리 행은 마우스 클릭만 받는다. 키보드 조작 추가는 동작 변경이라 별도 이슈로 다룬다 */}
                     <div
                       className={cn(
                         "group relative flex cursor-pointer select-none items-center gap-1 rounded px-2 py-1 text-sm",
                         isSkillSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted",
                       )}
-                      onClick={() => {
+                      {...rowActivation(() => {
                         toggleExpanded(s.name);
                         setSelected({ skill: s.name, path: null });
-                      }}
+                      })}
                     >
                       <ChevronRightIcon
                         className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")}
