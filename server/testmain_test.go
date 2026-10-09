@@ -23,11 +23,11 @@ func TestMain(m *testing.M) {
 	if err != nil || conn.Ping() != nil {
 		os.Exit(m.Run())
 	}
-	defer conn.Close()
 	if _, err := conn.Exec(`SELECT pg_advisory_lock(7337741002)`); err != nil {
 		os.Exit(m.Run())
 	}
-	defer conn.Exec(`SELECT pg_advisory_unlock(7337741002)`) //nolint:errcheck
+	// 세션 advisory lock 은 그 연결이 끊기면 풀린다. os.Exit 는 defer 를 건너뛰므로
+	// 풀기·닫기를 defer 로 두어도 돌지 않는다. 프로세스가 끝나 연결이 끊길 때 풀린다.
 	os.Exit(m.Run())
 }
 

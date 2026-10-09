@@ -9,7 +9,9 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// testDB opens a DB connection, skipping if PG is unavailable.
+// testDB 는 DB 연결을 열고, PG 를 쓸 수 없으면 테스트를 건너뛴다.
+// 닫기를 t.Cleanup 으로 먼저 등록해 가장 나중에 돌게 한다. 호출자가 defer 로 닫으면
+// 함수가 끝날 때 먼저 닫혀, 뒤에 도는 t.Cleanup 의 데이터 정리가 닫힌 연결에서 실패한다.
 func testDB(t *testing.T) *db.DB {
 	t.Helper()
 	dsn, _, err := db.DSN()
@@ -20,6 +22,7 @@ func testDB(t *testing.T) *db.DB {
 	if err != nil {
 		t.Skipf("postgres unavailable (%v)", err)
 	}
+	t.Cleanup(func() { _ = d.Close() }) // 테스트 종료 시 닫기 실패는 결과에 영향이 없다
 	return d
 }
 
@@ -46,7 +49,6 @@ func callInsertAssets(t *testing.T, ts *ToolSet, payload any) map[string]any {
 // =====================================================================
 func TestInsertAssetsSubdomainSideEffects(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
@@ -115,7 +117,6 @@ func TestInsertAssetsSubdomainSideEffects(t *testing.T) {
 // =====================================================================
 func TestInsertAssetsMultiIPSubdomain(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
@@ -163,7 +164,6 @@ func TestInsertAssetsMultiIPSubdomain(t *testing.T) {
 // =====================================================================
 func TestInsertAssetsHTTPServiceTechnologies(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
@@ -246,7 +246,6 @@ func TestInsertAssetsHTTPServiceTechnologies(t *testing.T) {
 // =====================================================================
 func TestInsertAssetsOtherService(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
@@ -307,7 +306,6 @@ func TestInsertAssetsOtherService(t *testing.T) {
 // =====================================================================
 func TestInsertAssetsMixedBatch(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
@@ -365,7 +363,6 @@ func TestInsertAssetsMixedBatch(t *testing.T) {
 // =====================================================================
 func TestInsertAssetsDedup(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
@@ -403,7 +400,6 @@ func TestInsertAssetsDedup(t *testing.T) {
 // =====================================================================
 func TestInsertAssetsRejectsHostnameIPPerItem(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 
 	ts := NewToolSet(nil, "")
 	ts.SetAssetStore(d.Assets(), d.Companies())
