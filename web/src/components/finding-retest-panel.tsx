@@ -16,16 +16,17 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/u
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import type { FindingRetest } from "@/lib/types";
 
 const statusLabels = {
-  pending: "等待启动",
-  running: "复测中",
-  completed: "已完成",
-  failed: "复测失败",
-  stopped: "已停止",
+  pending: "시작 대기",
+  running: "재검사 중",
+  completed: "완료",
+  failed: "재검사 실패",
+  stopped: "중지됨",
 };
-const verdictLabels = { reproduced: "仍可复现", fixed: "已修复", inconclusive: "无法确认" };
+const verdictLabels = { reproduced: "여전히 재현됨", fixed: "수정됨", inconclusive: "확인 불가" };
 
 function active(r: FindingRetest) {
   return r.status === "pending" || r.status === "running";
@@ -84,21 +85,21 @@ export function FindingRetestPanel({
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1.5">
-          <CardTitle>漏洞复测</CardTitle>
-          <CardDescription>在独立会话中验证当前状态，保留每次复测的结论与证据。</CardDescription>
+          <CardTitle>취약점 재검사</CardTitle>
+          <CardDescription>별도 세션에서 현재 상태를 검증하고, 재검사마다 결론과 증거를 보존합니다.</CardDescription>
         </div>
         {running?.conversation_id != null ? (
           <Button asChild variant="outline" size="sm">
-            <Link href={`/chat?c=${running.conversation_id}`} title="查看正在进行的复测会话">
+            <Link href={`/chat?c=${running.conversation_id}`} title="진행 중인 재검사 세션 보기">
               <Spinner data-icon="inline-start" aria-hidden="true" />
-              复测中
+              재검사 중
             </Link>
           </Button>
         ) : null}
         {!running && !readOnly ? (
           <Button size="sm" onClick={() => setOpen(true)} disabled={items === null || !!error}>
             <RotateCcwIcon data-icon="inline-start" />
-            发起复测
+            재검사 시작
           </Button>
         ) : null}
       </CardHeader>
@@ -106,9 +107,9 @@ export function FindingRetestPanel({
         {error ? (
           <Alert variant="destructive">
             <AlertDescription>
-              加载复测记录失败：{error}
+              재검사 기록을 불러오지 못했습니다: {error}
               <Button variant="outline" size="sm" onClick={() => void load()}>
-                重试
+                재시도
               </Button>
             </AlertDescription>
           </Alert>
@@ -117,8 +118,10 @@ export function FindingRetestPanel({
         {!error && items?.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>暂无复测记录</EmptyTitle>
-              <EmptyDescription>修复部署完成后，可发起复测并比较新旧证据。</EmptyDescription>
+              <EmptyTitle>재검사 기록이 없습니다</EmptyTitle>
+              <EmptyDescription>
+                수정을 배포한 뒤 재검사를 시작해 이전 증거와 새 증거를 비교할 수 있습니다.
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : null}
@@ -134,14 +137,14 @@ export function FindingRetestPanel({
                       : statusLabels[item.status]}
                   </Badge>
                   <span className="text-muted-foreground text-xs">
-                    #{item.id} · {new Date(item.created_at).toLocaleString("zh-CN")}
+                    #{item.id} · {new Date(item.created_at).toLocaleString(DISPLAY_LOCALE)}
                   </span>
                   {item.conversation_id != null ? (
                     <Button asChild variant="ghost" size="sm" className="ml-auto">
-                      <Link href={`/chat?c=${item.conversation_id}`}>查看会话</Link>
+                      <Link href={`/chat?c=${item.conversation_id}`}>세션 보기</Link>
                     </Button>
                   ) : (
-                    <span className="text-muted-foreground text-xs">会话已删除</span>
+                    <span className="text-muted-foreground text-xs">삭제된 세션</span>
                   )}
                 </div>
                 {item.status === "completed" && item.summary ? (
@@ -152,12 +155,12 @@ export function FindingRetestPanel({
                 ) : null}
                 {item.notes ? (
                   <p className="whitespace-pre-wrap break-words text-muted-foreground text-xs">
-                    补充说明：{item.notes}
+                    추가 설명: {item.notes}
                   </p>
                 ) : null}
                 {item.status === "completed" && item.evidence ? (
                   <details className="min-w-0">
-                    <summary className="cursor-pointer text-sm">复测证据</summary>
+                    <summary className="cursor-pointer text-sm">재검사 증거</summary>
                     <div className="mt-3 overflow-x-auto">
                       <Markdown text={item.evidence} />
                     </div>
