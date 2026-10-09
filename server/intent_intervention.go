@@ -54,7 +54,7 @@ func (s *Server) sendWorkerMessage(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeErr(w, http.StatusRequestEntityTooLarge, "请求体过大")
+			writeErr(w, http.StatusRequestEntityTooLarge, "요청 본문이 너무 큽니다")
 			return
 		}
 		writeErr(w, http.StatusBadRequest, "bad json: "+err.Error())
@@ -63,15 +63,15 @@ func (s *Server) sendWorkerMessage(w http.ResponseWriter, r *http.Request) {
 	message := strings.TrimSpace(req.Message)
 	requestID := strings.TrimSpace(req.RequestID)
 	if message == "" {
-		writeErr(w, http.StatusBadRequest, "消息不能为空")
+		writeErr(w, http.StatusBadRequest, "메시지는 비워 둘 수 없습니다")
 		return
 	}
 	if len([]rune(message)) > 4000 {
-		writeErr(w, http.StatusBadRequest, "消息不能超过 4000 个字符")
+		writeErr(w, http.StatusBadRequest, "메시지는 최대 4000자입니다")
 		return
 	}
 	if !validWorkerMessageRequestID(requestID) {
-		writeErr(w, http.StatusBadRequest, "request_id 必须是 1-128 位字母、数字、-、_、. 或 :")
+		writeErr(w, http.StatusBadRequest, "request_id는 영문자, 숫자, -, _, ., :로 된 1~128자여야 합니다")
 		return
 	}
 
@@ -79,22 +79,22 @@ func (s *Server) sendWorkerMessage(w http.ResponseWriter, r *http.Request) {
 	// instead of a silent no-op. The intent itself must be paused: the UI flow is
 	// interrupt (pause) first, then send.
 	if s.engine.IsDeleting(t.ID) {
-		writeErr(w, http.StatusConflict, "任务正在删除，无法向 Worker 发送消息")
+		writeErr(w, http.StatusConflict, "작업을 삭제하는 중이라 워커에게 메시지를 보낼 수 없습니다")
 		return
 	}
 	lifecycle := t.lifecycleSnapshot()
 	switch {
 	case lifecycle.Paused || s.engine.IsPaused(t.ID):
-		writeErr(w, http.StatusConflict, "任务已暂停，请先恢复任务再向 Worker 发送消息")
+		writeErr(w, http.StatusConflict, "작업이 일시 중지되어 있습니다. 작업을 재개한 뒤 워커에게 메시지를 보내세요")
 		return
 	case lifecycle.Queued:
-		writeErr(w, http.StatusConflict, "排队中的任务无法向 Worker 发送消息")
+		writeErr(w, http.StatusConflict, "대기 중인 작업에서는 워커에게 메시지를 보낼 수 없습니다")
 		return
 	case isTerminalStatus(lifecycle.Status):
-		writeErr(w, http.StatusConflict, "终态任务无法向 Worker 发送消息")
+		writeErr(w, http.StatusConflict, "종료 상태의 작업에서는 워커에게 메시지를 보낼 수 없습니다")
 		return
 	case s.engine.isSettling(t.ID):
-		writeErr(w, http.StatusConflict, "任务正在收尾，无法向 Worker 发送消息")
+		writeErr(w, http.StatusConflict, "작업을 마무리하는 중이라 워커에게 메시지를 보낼 수 없습니다")
 		return
 	}
 
@@ -105,7 +105,7 @@ func (s *Server) sendWorkerMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if node == nil {
 		if inherited, sourceErr := t.Store.GetNodeWithSources(iid); sourceErr == nil && inherited != nil && inherited.Inherited {
-			writeErr(w, http.StatusConflict, "继承意图为只读，不能发送 Worker 消息")
+			writeErr(w, http.StatusConflict, "상속된 탐색 의도는 읽기 전용이라 워커에게 메시지를 보낼 수 없습니다")
 			return
 		}
 		writeErr(w, http.StatusNotFound, "intent not found")
@@ -116,7 +116,7 @@ func (s *Server) sendWorkerMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if node.State != "paused" {
-		writeErr(w, http.StatusConflict, "仅已暂停的 Worker 可以发送消息，请先暂停")
+		writeErr(w, http.StatusConflict, "일시 중지된 워커에게만 메시지를 보낼 수 있습니다. 먼저 일시 중지하세요")
 		return
 	}
 	agentMessage, ok := s.prepareChatMentionMessage(w, message)

@@ -17,14 +17,14 @@ type goalSpec struct {
 	VulnClass string
 }
 
-// launchTask runs the shared post-creation sequence for a task created via ANY
-// path (HTTP createTask 或 orchestration spawn_task),避免两处复制粘贴:
-//  1. seed 根资产,喂给事件驱动 loop;
-//  2. 可选种子意图,worker 免等首轮 planner 直接开跑;
-//  3. 后台异步做目标分解(发「第 0 轮目标拆解」round + LLM 分解步骤 + 逐条 goal,页面可见),
-//     分解完再 engine.Run —— 引擎在 goal 节点就绪后才启动,避免 planner 抢在 goal 之前跑的竞态。
+// launchTask 는 어느 경로(HTTP createTask 또는 orchestration spawn_task)로 만든 작업이든 생성 뒤 공통 순서를
+// 실행한다. 두 곳에 같은 코드를 복사하지 않으려는 것이다.
+//  1. 루트 자산을 seed해 이벤트 기반 loop에 넣는다.
+//  2. 선택적으로 시드 의도를 넣어, 워커가 첫 라운드 플래너를 기다리지 않고 바로 시작한다.
+//  3. 백그라운드에서 비동기로 목표를 분해한다('0번째 라운드: 목표 분해' round + LLM 분해 단계 + 목표별 goal, 화면에 보인다).
+//     분해가 끝난 뒤 engine.Run을 부른다. 엔진은 goal 노드가 준비된 뒤에 시작하므로 플래너가 goal보다 먼저 도는 경쟁 상태를 피한다.
 //
-// 异步(goroutine)所以调用方立即返回,两条路径行为一致:秒建任务、后台拆目标。
+// 비동기(goroutine)라 호출자는 바로 돌아온다. 두 경로의 동작이 같다. 작업은 바로 만들어지고 목표는 백그라운드에서 분해된다.
 func (s *Server) launchTask(t *Task, seedText string, seedFirstIntent bool) {
 	if !s.engine.beginTaskOperation(t.ID) {
 		return
@@ -35,7 +35,7 @@ func (s *Server) launchTask(t *Task, seedText string, seedFirstIntent bool) {
 	}
 	s.engine.decInflight(t.ID)
 	if _, err := s.admitTask(t, "bootstrap"); err != nil {
-		log.Printf("[concurrency] task %s 启动失败: %v", t.ID, err)
+		log.Printf("[concurrency] task %s 시작 실패: %v", t.ID, err)
 	}
 }
 
@@ -45,7 +45,7 @@ func (s *Server) startTaskEngine(t *Task) {
 		return
 	}
 	s.engine.emitActivity(t, db.Activity{Worker: "planner", Kind: "round",
-		Summary: "第 0 轮目标拆解"})
+		Summary: "0번째 라운드: 목표 분해"})
 	goals := s.createGoals(ctx, t, func(r db.Activity) {
 		s.engine.emitActivity(t, r)
 	})
@@ -130,10 +130,10 @@ func (s *Server) admitTaskWhen(t *Task, mode string, requirePaused bool) (queued
 	lifecycle := t.lifecycleSnapshot()
 	if requirePaused {
 		if isTerminalStatus(lifecycle.Status) {
-			return false, fmt.Errorf("终态任务不能执行继续")
+			return false, fmt.Errorf("종료된 작업은 계속할 수 없습니다")
 		}
 		if !lifecycle.Paused {
-			return false, fmt.Errorf("仅已暂停的任务可以继续")
+			return false, fmt.Errorf("일시 중지된 작업만 계속할 수 있습니다")
 		}
 		mode = s.resumeAdmissionMode(t)
 	}
@@ -177,8 +177,8 @@ func (s *Server) admitTaskWhen(t *Task, mode string, requirePaused bool) (queued
 	// this ordering, its already-running worker loops can claim the newly-opened
 	// intent in the gap between status=running and queued=true.
 	if shouldQueue || wasTerminal || wasPaused || wasQueued {
-		s.engine.Pause(t.ID, agent.Causef("queued_for_admission", "任务等待运行准入",
-			"任务正在等待并发队列或准入状态提交，本次执行已停止；只有获得运行槽后才会重新领取意图"))
+		s.engine.Pause(t.ID, agent.Causef("queued_for_admission", "작업이 실행 허가를 기다림",
+			"작업이 동시 실행 대기열이나 실행 허가 상태 반영을 기다리고 있어 이번 실행을 멈췄습니다. 실행 슬롯을 얻은 뒤에만 의도를 다시 할당받습니다"))
 	}
 
 	status := lifecycle.Status
@@ -199,12 +199,12 @@ func (s *Server) admitTaskWhen(t *Task, mode string, requirePaused bool) (queued
 	}
 	if shouldQueue {
 		if !wasQueued {
-			summary := fmt.Sprintf("已排队：达到并发上限 %d，等待空位后自动开始", limit)
+			summary := fmt.Sprintf("대기열에 넣음: 동시 실행 최대 %d개에 이르렀습니다. 자리가 나면 자동으로 시작합니다", limit)
 			switch {
 			case !ready:
-				summary = "已排队：当前没有可运行的 LLM 配置，配置恢复后自动开始"
+				summary = "대기열에 넣음: 지금 실행할 수 있는 LLM 설정이 없습니다. 설정이 복구되면 자동으로 시작합니다"
 			case readyBacklog:
-				summary = "已排队：已有更早的任务等待运行，将按 FIFO 顺序自动开始"
+				summary = "대기열에 넣음: 먼저 기다리는 작업이 있습니다. FIFO 순서대로 자동으로 시작합니다"
 			}
 			s.engine.emitActivity(t, db.Activity{Worker: "system", Kind: "text", Summary: summary})
 		}
@@ -266,15 +266,15 @@ func (s *Server) reconcileConcurrency() {
 				continue
 			}
 			mode := s.resumeAdmissionMode(task)
-			s.engine.Pause(task.ID, agent.Causef("llm_unavailable_queued", "LLM 不可用，任务进入等待队列",
-				"任务当前无法解析可运行的 Planner/Worker LLM，已释放并发槽；配置恢复后按队列顺序继续"))
+			s.engine.Pause(task.ID, agent.Causef("llm_unavailable_queued", "LLM을 쓸 수 없어 작업이 대기열에 들어감",
+				"작업이 지금 실행할 수 있는 플래너/워커 LLM을 찾지 못해 동시 실행 슬롯을 반환했습니다. 설정이 복구되면 대기열 순서대로 계속합니다"))
 			if err := s.m.EnqueueTask(task.ID, mode); err != nil {
 				s.engine.Resume(task)
-				log.Printf("[concurrency] task %s 因 LLM 不可用入队失败: %v", task.ID, err)
+				log.Printf("[concurrency] task %s LLM을 쓸 수 없어 대기열에 넣으려 했으나 실패: %v", task.ID, err)
 				continue
 			}
 			s.engine.emitActivity(task, db.Activity{Worker: "system", Kind: "text",
-				Summary: "已排队：当前没有可运行的 LLM 配置，配置恢复后自动开始"})
+				Summary: "대기열에 넣음: 지금 실행할 수 있는 LLM 설정이 없습니다. 설정이 복구되면 자동으로 시작합니다"})
 		}
 	}
 
@@ -346,18 +346,18 @@ func (s *Server) reconcileConcurrency() {
 	}
 }
 
-// reviveTask 让一个已停下的任务重新跑起来:把终态(done/failed/timeout)拉回 running、
-// 解除暂停,并(重)启动引擎循环 + 唤醒。已在 running 且未暂停的任务:只剩 Run 里的一次
-// Notify,近乎无副作用。用于「主 agent set_goals 新增目标」和「重跑 blocked 意图」两处。
+// reviveTask 는 멈춘 작업을 다시 돌린다. 종료 상태(done/failed/timeout)를 running으로 되돌리고
+// 일시 중지를 풀고, 엔진 루프를 (다시) 시작하고 깨운다. 이미 running이고 일시 중지되지 않은 작업이면
+// Run 안의 Notify 한 번만 남아 부작용이 거의 없다. '메인 에이전트가 set_goals로 목표 추가'와 'blocked 의도 다시 실행' 두 곳에서 쓴다.
 //
-// 为什么必须显式复活:planner/worker 循环的终态门(engine.go)会吞掉普通 notify——光改
-// 图 + Notify 唤不醒已判完成的任务;重启后终态任务的 goroutine 也可能已不在,故还要 Run。
+// 명시적으로 되살려야 하는 이유: 플래너/워커 루프의 종료 상태 관문(engine.go)이 보통 notify를 삼킨다.
+// 그래프를 고치고 Notify만 해서는 완료로 판정된 작업이 깨어나지 않는다. 재시작 뒤에는 종료된 작업의 goroutine이 없을 수도 있어 Run도 불러야 한다.
 func (s *Server) reviveTask(t *Task) {
 	if t == nil {
 		return
 	}
 	if _, err := s.admitTask(t, "resume"); err != nil {
-		log.Printf("[revive] task %s 恢复失败: %v", t.ID, err)
+		log.Printf("[revive] task %s 재개 실패: %v", t.ID, err)
 	}
 }
 
@@ -396,7 +396,7 @@ func (s *Server) createGoals(ctx context.Context, t *Task, emit func(db.Activity
 		// as a single goal so the task still has something to judge against. This is the
 		// only path that writes here — decomposed goals are already persisted by the tool.
 		if g := strings.TrimSpace(t.Goal); g != "" {
-			log.Printf("[goals] task %s: LLM 目标拆解无产出，回退为「原始目标作为单目标」", t.ID)
+			log.Printf("[goals] task %s: LLM 목표 분해 결과 없음, '원래 목표를 단일 목표로' 대체", t.ID)
 			origin, _ := t.Store.OriginFactID()
 			id, _ := t.Store.AddNode(db.KindGoal, map[string]any{"text": g}, 0, "open", "system", nil)
 			if origin > 0 && id > 0 {

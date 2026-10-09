@@ -899,11 +899,15 @@ function sendMockWorkerMessage(
   const intent = mockIntents.find((item) => item.id === id);
   if (!intent) return { ok: false, error: "意图不存在" };
   if (intent.inherited || intent.state !== "paused") {
-    return { ok: false, state: intent.state, error: "仅已暂停的 Worker 可以发送消息，请先暂停" };
+    return {
+      ok: false,
+      state: intent.state,
+      error: "일시 중지된 워커에게만 메시지를 보낼 수 있습니다. 먼저 일시 중지하세요",
+    };
   }
-  if (!normalizedMessage) return { ok: false, state: intent.state, error: "消息不能为空" };
+  if (!normalizedMessage) return { ok: false, state: intent.state, error: "메시지는 비워 둘 수 없습니다" };
   if (Array.from(normalizedMessage).length > 4000) {
-    return { ok: false, state: intent.state, error: "消息不能超过 4000 个字符" };
+    return { ok: false, state: intent.state, error: "메시지는 최대 4000자입니다" };
   }
 
   // The real endpoint transitions the intent paused->running, records the user turn,

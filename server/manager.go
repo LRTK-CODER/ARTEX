@@ -29,23 +29,23 @@ import (
 type Task struct {
 	ID           string `json:"id"`
 	ExpID        int64  `json:"exploration_id"`
-	Name         string `json:"name"` // 可选任务名称;空=未命名
+	Name         string `json:"name"` // 작업 이름(선택). 비어 있으면 이름 없음
 	CategoryID   *int64 `json:"category_id,omitempty"`
 	CategoryName string `json:"category_name,omitempty"`
 	PinnedAt     int64  `json:"pinned_at,omitempty"`
 	Description  string `json:"description"`
 	Goal         string `json:"goal"`
 	CreatedAt    int64  `json:"created_at"`
-	CompletedAt  int64  `json:"completed_at,omitempty"` // 进入终态的 unix 秒;0=未完成
+	CompletedAt  int64  `json:"completed_at,omitempty"` // 종료 상태가 된 시각(unix 초). 0=완료 전
 	Paused       bool   `json:"paused"`
-	Queued       bool   `json:"queued"` // 因并发上限被挂起、等待空位自动启动;true=尚未开跑
+	Queued       bool   `json:"queued"` // 동시 실행 최대치에 걸려 대기 중이며 자리가 나면 자동으로 시작한다. true=아직 시작 전
 	// QueuedAt is an internal Unix-nanosecond ordering key. It is deliberately
 	// finer than CreatedAt so several tasks enqueued in the same second retain
 	// their real FIFO order.
 	QueuedAt           int64   `json:"queued_at,omitempty"`
 	QueueMode          string  `json:"queue_mode,omitempty"`
-	ParentRef          string  `json:"parent_ref,omitempty"`     // 父任务 id(编排 spawn 记录)
-	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // 指定运行本任务 planner/worker 的 LLM 配置;nil=用全局激活配置
+	ParentRef          string  `json:"parent_ref,omitempty"`     // 부모 작업 id(오케스트레이션의 spawn 기록)
+	LLMProfileID       *int64  `json:"llm_profile_id,omitempty"` // 이 작업의 planner/worker를 돌릴 LLM 프로필. nil=전역 활성 프로필을 쓴다
 	LLMProfileIDs      []int64 `json:"llm_profile_ids,omitempty"`
 	ActiveLLMProfileID *int64  `json:"active_llm_profile_id,omitempty"`
 	LLMChainRevision   int64   `json:"-"`
@@ -53,11 +53,11 @@ type Task struct {
 	LLMFailoverReason  string  `json:"llm_failover_reason,omitempty"`
 	SourceTaskIDs      []int64 `json:"source_task_ids,omitempty"`
 	CompanyIDs         []int64 `json:"company_ids,omitempty"`
-	Status             string  `json:"status"` // persisted lifecycle status (done/failed/timeout 为终态；空/其它则由运行态推导)
-	// 任务级超时(见 docs/任务级超时与收尾设计.md)。DeadlineAt/FirstRunAt 为 unix 秒,0=未设/未运行。
+	Status             string  `json:"status"` // 저장된 수명 주기 상태(done/failed/timeout은 종료 상태. 비어 있거나 다른 값이면 실행 상태에서 추론한다)
+	// 작업 단위 시간 초과(docs/작업 단위 시간 초과와 마무리 설계.md 참고). DeadlineAt/FirstRunAt은 unix 초이고 0=설정 안 됨/실행 전.
 	TimeoutSeconds       int                    `json:"timeout_seconds"`
-	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner 心跳触发间隔(秒)
-	CoverageEnabled      bool                   `json:"coverage_enabled"`       // 资产覆盖度功能开关(创建时定,默认开)
+	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner 하트비트 실행 간격(초)
+	CoverageEnabled      bool                   `json:"coverage_enabled"`       // 자산 커버리지 기능 사용 여부(만들 때 정한다, 기본값 켜짐)
 	FirstRunAt           int64                  `json:"first_run_at,omitempty"`
 	DeadlineAt           int64                  `json:"deadline_at,omitempty"`
 	Store                *pgdb.ExplorationStore `json:"-"`
@@ -231,10 +231,10 @@ type Manager struct {
 	mu          sync.RWMutex
 	tasks       map[string]*Task
 	active      string
-	trafficOn   bool // 流量捕获开关（默认关；settings.traffic_capture）
-	llmRecOn    bool // LLM 录制开关（默认关；settings.llm_record）
-	// 联网搜索开关与来源（默认关；settings.web_search_*）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
-	// webSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关。
+	trafficOn   bool // 트래픽 캡처 사용 여부(기본값 꺼짐, settings.traffic_capture)
+	llmRecOn    bool // LLM 기록 사용 여부(기본값 꺼짐, settings.llm_record)
+	// 웹 검색 사용 여부와 검색 백엔드(기본값 꺼짐, settings.web_search_*). brave-free는 braveKey, tavily는 tavilyKey가 필요하다.
+	// webSearchProxy는 따로 쓰는 외부 연결 프록시(http/https/socks5)이고, 트래픽을 기록하는 MITM 프록시와 관계없다.
 	webSearchOn      bool
 	webSearchBackend string
 	braveKey         string
@@ -262,18 +262,18 @@ const (
 	settingGlobalProxy = "global_proxy"
 	settingWorkers     = "workers"
 	settingLLMRecord   = "llm_record"
-	// LLM 轮询(故障转移)。默认关闭——开启后走「全局激活配置」的 agent 在当前配置
-	// 不可用(余额不足/key 失效/限流/服务异常)时自动切到下一个配置。
-	// settingLLMPoolBindFallback 仅在轮询开启时有意义:默认关闭,即 agent/任务显式
-	// 绑定了某个配置就只用它、失败即失败;开启后绑定的配置失败也会回落到轮询链。
+	// LLM 장애 조치. 기본값 꺼짐. 켜면 '전역 활성 프로필'을 쓰는 에이전트는 현재 프로필을
+	// 쓸 수 없을 때(잔액 부족/키 만료/속도 제한/서비스 장애) 자동으로 다음 프로필로 넘어간다.
+	// settingLLMPoolBindFallback은 장애 조치가 켜져 있을 때만 의미가 있다. 기본값 꺼짐이면 에이전트/작업에
+	// 프로필을 명시적으로 바인딩했을 때 그 프로필만 쓰고 실패하면 그대로 실패한다. 켜면 바인딩한 프로필이 실패해도 장애 조치 체인으로 넘어간다.
 	settingLLMPoolOn           = "llm_pool_enabled"
 	settingLLMPoolBindFallback = "llm_pool_bind_fallback"
-	// 任务并发上限:开关 + 上限数。默认关闭;开启后默认上限 5(见 defaultConcurrencyLimit)。
+	// 작업 동시 실행 최대치: 사용 여부 + 최대 개수. 기본값 꺼짐. 켜면 기본 최대치는 5다(defaultConcurrencyLimit 참고).
 	settingConcurrencyOn    = "task_concurrency_enabled"
 	settingConcurrencyLimit = "task_concurrency_limit"
-	// 实验功能:noa 模型驱动上下文压缩(norma v0.4.0)。默认关闭——开启后平台接入的四类
-	// agent(planner/worker/主 agent/对话)由 noa 接管上下文压缩,取代内置 compaction。
-	// 每 run 读一次,切换只影响之后启动的 run。
+	// 실험 기능: noa 모델 기반 컨텍스트 압축(norma v0.4.0). 기본값 꺼짐. 켜면 플랫폼이 연결한 네 종류의
+	// 에이전트(planner/worker/메인 에이전트/대화)의 컨텍스트 압축을 noa가 맡아 내장 compaction을 대신한다.
+	// run마다 한 번 읽으므로 바꾸면 그 뒤에 시작하는 run에만 적용된다.
 	settingNoaCompaction = "noa_compaction"
 	// defaultWebSearchBackend is used when web search is on but no backend was picked.
 	defaultWebSearchBackend = "ddgs"
@@ -331,7 +331,7 @@ func (m *Manager) Workers() int {
 // SetWorkers persists the concurrent work-agent count. Values <=0 are rejected.
 func (m *Manager) SetWorkers(n int) error {
 	if n <= 0 {
-		return fmt.Errorf("workers 必须 >0")
+		return fmt.Errorf("workers는 0보다 커야 합니다")
 	}
 	return m.pg.SetSetting(settingWorkers, strconv.Itoa(n))
 }
@@ -358,7 +358,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[pg] 数据库配置来源: %s", source)
+	log.Printf("[pg] DB 설정 출처: %s", source)
 	pg, err := pgdb.Open(dsn)
 	if err != nil {
 		return nil, err
@@ -381,7 +381,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		} else {
 			err = tr.RecoverHostDeleteStages(func(_ int64, taskID int64) (bool, error) {
 				if taskID <= 0 {
-					return false, errors.New("归档流量暂存日志缺少任务 ID")
+					return false, errors.New("보관 트래픽 임시 로그에 작업 ID가 없습니다")
 				}
 				task, taskErr := pg.GetTask(taskID)
 				if taskErr != nil {
@@ -410,7 +410,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	// Asset auto-completion engine (§5): HTTP probes routed through the recording
 	// proxy (via m.ProxyAddr, which honors the traffic-capture toggle).
 	m.trafficOn = pg.GetBool(settingTrafficCapture, false)
-	// LLM 录制开关（默认关）。录制器每次调用时读取此标志。
+	// LLM 기록 사용 여부(기본값 꺼짐). 기록기가 호출할 때마다 이 값을 읽는다.
 	m.llmRecOn = pg.GetBool(settingLLMRecord, false)
 	// Load persisted web-search config (default: off, ddgs).
 	m.webSearchOn = pg.GetBool(settingWebSearchOn, false)
@@ -436,7 +436,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	}
 	if m.traffic != nil {
 		if err := m.traffic.SetUpstreamProxy(m.globalProxy); err != nil {
-			log.Printf("[proxy] 全局代理 %q 无效，已忽略: %v", m.globalProxy, err)
+			log.Printf("[proxy] 잘못된 전역 프록시 %q 무시: %v", m.globalProxy, err)
 		}
 	}
 	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
@@ -471,9 +471,8 @@ func (m *Manager) SetTrafficEnabled(on bool) error {
 	return nil
 }
 
-// LLMRecordEnabled reports whether LLM request/response recording is on
-// (默认关；settings.llm_record). The recorder consults this per call, so the
-// toggle takes effect immediately without rebuilding agents.
+// LLMRecordEnabled 는 LLM 요청/응답 기록이 켜져 있는지 알려 준다(기본값 꺼짐, settings.llm_record).
+// 기록기가 호출마다 이 값을 보므로 에이전트를 다시 만들지 않아도 바로 적용된다.
 func (m *Manager) LLMRecordEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -492,9 +491,8 @@ func (m *Manager) SetLLMRecordEnabled(on bool) error {
 	return nil
 }
 
-// NoaCompactionEnabled reports whether the experimental noa context-compression
-// mechanism is on (默认关；settings.noa_compaction). Read per agent run via the
-// injected resolver, so a toggle takes effect on the next run without rebuild.
+// NoaCompactionEnabled 는 실험 기능인 noa 컨텍스트 압축이 켜져 있는지 알려 준다(기본값 꺼짐, settings.noa_compaction).
+// 넣어 둔 resolver가 에이전트 run마다 읽으므로, 바꾸면 다시 만들지 않아도 다음 run부터 적용된다.
 func (m *Manager) NoaCompactionEnabled() bool {
 	return m.pg.GetBool(settingNoaCompaction, false)
 }
@@ -505,9 +503,8 @@ func (m *Manager) SetNoaCompaction(on bool) error {
 	return m.pg.SetBool(settingNoaCompaction, on)
 }
 
-// LLMPoolEnabled reports whether LLM failover ("轮询") is on (默认关；
-// settings.llm_pool_enabled). Read when the provider chain is built (applyLLM),
-// so a change requires a rebuild — putSettings does that.
+// LLMPoolEnabled 는 LLM 장애 조치가 켜져 있는지 알려 준다(기본값 꺼짐, settings.llm_pool_enabled).
+// 제공자 체인을 만들 때(applyLLM) 읽으므로 바꾸면 다시 만들어야 한다. putSettings가 그렇게 한다.
 func (m *Manager) LLMPoolEnabled() bool {
 	if m.pg == nil {
 		return false
@@ -519,9 +516,8 @@ func (m *Manager) LLMPoolEnabled() bool {
 // (applyLLM) afterwards so it takes effect.
 func (m *Manager) SetLLMPoolEnabled(on bool) error { return m.pg.SetBool(settingLLMPoolOn, on) }
 
-// LLMPoolBindFallback reports whether an agent/task that is BOUND to a specific
-// profile still falls back to the chain when that profile fails (默认关：绑定即
-// 独占，失败即失败). Only meaningful while LLMPoolEnabled.
+// LLMPoolBindFallback 은 특정 프로필에 바인딩한 에이전트/작업이 그 프로필이 실패했을 때도 체인으로
+// 넘어가는지 알려 준다(기본값 꺼짐: 바인딩하면 그 프로필만 쓰고, 실패하면 그대로 실패한다). LLMPoolEnabled일 때만 의미가 있다.
 func (m *Manager) LLMPoolBindFallback() bool {
 	if m.pg == nil {
 		return false
@@ -566,13 +562,11 @@ func (m *Manager) WebSearchOpts() agent.WebSearchOpts {
 	return o
 }
 
-// deepSeekSearchCreds resolves the credentials the "deepseek" search backend
-// borrows from the active LLM profile (it has no key of its own). Whether that
-// profile can actually drive server-side search — DeepSeek exposes it only on
-// the Anthropic-format endpoint — is deliberately NOT validated here: the UI
-// states the requirement and the user decides. A profile that can't serve it
-// simply fails at search time (or at the settings page's 测试 button), which is
-// the same feedback every other backend gives for a bad key.
+// deepSeekSearchCreds 는 "deepseek" 검색 백엔드가 활성 LLM 프로필에서 빌려 쓰는 자격 증명을 찾는다
+// (이 백엔드는 자기 키가 없다). 그 프로필이 서버 쪽 검색을 실제로 할 수 있는지(DeepSeek은 Anthropic 형식
+// 엔드포인트에서만 제공한다)는 여기서 일부러 검사하지 않는다. UI가 조건을 알리고 사용자가 정한다.
+// 검색을 못 하는 프로필은 검색할 때(또는 설정 화면의 '테스트' 버튼에서) 실패할 뿐이고,
+// 이는 다른 백엔드가 잘못된 키에 주는 것과 같은 피드백이다.
 func (m *Manager) deepSeekSearchCreds() (baseURL, apiKey, model string) {
 	p, err := m.pg.ActiveProfile()
 	if err != nil || p == nil {
@@ -636,7 +630,7 @@ func (m *Manager) SetWebSearch(on bool, backend string, braveKey, tavilyKey, pro
 func (m *Manager) syncBrowserMCPProxy() {
 	servers, err := m.pg.ListMCP()
 	if err != nil {
-		log.Printf("[mcp] browser 代理同步: 读取 MCP 列表失败: %v", err)
+		log.Printf("[mcp] browser 프록시 동기화: MCP 목록 읽기 실패: %v", err)
 		return
 	}
 	var srv *pgdb.MCPServer
@@ -665,13 +659,13 @@ func (m *Manager) syncBrowserMCPProxy() {
 	srv.Args = encodeJSON(args)
 	srv.Env = encodeJSON(env)
 	if _, err := m.pg.SaveMCP(srv); err != nil {
-		log.Printf("[mcp] browser 代理同步失败: %v", err)
+		log.Printf("[mcp] browser 프록시 동기화 실패: %v", err)
 		return
 	}
 	if proxy != "" {
-		log.Printf("[mcp] browser MCP 已挂捕获代理 %s (CA %s)", proxy, cert)
+		log.Printf("[mcp] browser MCP에 캡처 프록시 연결함 %s (CA %s)", proxy, cert)
 	} else {
-		log.Printf("[mcp] browser MCP 已移除捕获代理配置")
+		log.Printf("[mcp] browser MCP의 캡처 프록시 설정 제거함")
 	}
 }
 
@@ -853,8 +847,8 @@ func (m *Manager) UpdateTaskMetadata(taskID string, patch pgdb.TaskPatch) (*Task
 	return task, nil
 }
 
-// CreateTask creates a task + its exploration and makes it active.
-// timeoutSeconds is the task-level wall-clock budget (0 = 不限时).
+// CreateTask 는 작업과 그 탐색을 만들고 활성 작업으로 둔다.
+// timeoutSeconds는 작업 단위 실제 경과 시간 한도다(0 = 시간 제한 없음).
 func (m *Manager) CreateTask(description, goal string, llmProfileID *int64, timeoutSeconds, planHeartbeatSeconds int) (*Task, error) {
 	var ids []int64
 	if llmProfileID != nil {
@@ -1021,9 +1015,8 @@ func (m *Manager) DeleteCompanyWithAssets(id int64, deleteAssets bool) (int64, e
 	return assetsDeleted, nil
 }
 
-// ReplaceTaskLLMProfiles resets a task's ordered provider chain and mirrors the
-// committed state onto the live task handle. Terminal tasks are editable too —
-// their 主 Agent 对话 keeps running on the chain after the task finishes.
+// ReplaceTaskLLMProfiles 는 작업의 순서 있는 제공자 체인을 다시 정하고, 커밋한 상태를 실행 중인 작업 핸들에도
+// 반영한다. 종료 상태의 작업도 고칠 수 있다. 작업이 끝난 뒤에도 메인 에이전트 대화는 이 체인으로 계속 돈다.
 func (m *Manager) ReplaceTaskLLMProfiles(id string, profileIDs []int64, activeProfileID int64) (int64, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
@@ -1041,10 +1034,10 @@ func (m *Manager) ReplaceTaskLLMProfiles(id string, profileIDs []int64, activePr
 		task.setLLMState(pt.LLMProfileID, pt.ActiveLLMProfileID, pt.LLMProfileIDs, pt.LLMChainRevision, pt.LLMFailoverState, pt.LLMFailoverReason)
 	}
 	m.mu.Unlock()
-	// 终态任务不重开额度阻塞意图:任务已经没有 worker 在跑,重开只会把它们从
-	// blocked 挪到 open——那里既没人执行,也不再满足「重跑意图」的可重跑条件,
-	// 反而变成死状态。终态任务想接着跑,走重跑意图/新增目标,那条路会把任务重新
-	// admit 回运行态。
+	// 종료 상태의 작업에서는 한도 때문에 막힌 탐색 의도를 다시 열지 않는다. 작업에 도는 worker가 이미 없어서,
+	// 다시 열어도 blocked에서 open으로 옮겨질 뿐이다. 거기서는 아무도 실행하지 않고 '탐색 의도 재실행'의
+	// 재실행 조건도 더는 맞지 않아 움직이지 않는 상태가 된다. 종료 상태의 작업을 이어 돌리려면 탐색 의도 재실행이나
+	// 목표 추가를 쓴다. 그 경로가 작업을 다시 실행 상태로 admit한다.
 	if pgdb.IsTerminal(pt.Status) {
 		return 0, nil
 	}
@@ -1317,8 +1310,8 @@ func (m *Manager) TaskStatus(id string) string {
 	return ""
 }
 
-// StampTaskFirstRun stamps first_run_at + deadline_at on the first real run (idempotent
-// in DB) and mirrors deadline_at on the live handle. Returns the deadline unix (0 = 不限).
+// StampTaskFirstRun 은 첫 실제 실행 때 first_run_at과 deadline_at을 기록하고(DB에서 멱등)
+// deadline_at을 실행 중인 핸들에도 반영한다. 마감 시각을 unix로 돌려준다(0 = 제한 없음).
 func (m *Manager) StampTaskFirstRun(id string) (int64, error) {
 	m.taskStateMu.Lock()
 	defer m.taskStateMu.Unlock()
@@ -1705,8 +1698,8 @@ func (m *Manager) List() []*Task {
 	for _, t := range m.tasks {
 		out = append(out, t)
 	}
-	// 置顶任务优先，组内按置顶时间倒序；普通任务按 id 倒序。m.tasks 是 map，
-	// 每次轮询都必须重排，id 则为同刻创建任务提供稳定且唯一的兜底顺序。
+	// 고정한 작업이 먼저이고 그 안에서는 고정한 시각의 역순이다. 일반 작업은 id 역순이다. m.tasks는 map이라
+	// 폴링할 때마다 다시 정렬해야 하고, id는 같은 시각에 만든 작업에도 안정적이고 유일한 마지막 기준 순서를 준다.
 	sort.Slice(out, func(i, j int) bool {
 		iState := out[i].lifecycleSnapshot()
 		jState := out[j].lifecycleSnapshot()
@@ -1754,12 +1747,12 @@ func (t *Task) NotifyFinding(intentID int64, summary string) {
 	t.Notify()
 }
 
-// NotifyGoal records that one OR MORE goals were added in a single set_goals call —
-// by the human via the main agent — then wakes the planner, so the next round spells
-// out "人新增了 N 个目标：…" instead of the planner having to spot new open goals in
-// the overview. One call → one trigger event (set_goals 的一次批量算一条，不逐条刷屏).
-// The event survives an early-returning terminal round (drain happens after the gate),
-// so a set_goals that revives a done task still surfaces it once the task is running.
+// NotifyGoal 은 사람이 메인 에이전트를 통해 set_goals 호출 한 번으로 목표를 하나 이상 추가했다고 기록하고
+// planner를 깨운다. 그래서 planner가 개요에서 새 open 목표를 스스로 찾지 않아도 다음 라운드에
+// "The human (main agent) added N goals: …"가 그대로 적힌다. 호출 한 번이 트리거 이벤트 하나다
+// (set_goals 일괄 호출은 한 건으로 세고, 목표마다 메시지를 쏟아 내지 않는다).
+// 이벤트는 일찍 돌아가는 종료 상태 라운드에서도 남으므로(drain은 게이트 뒤에 한다),
+// 완료된 작업을 되살린 set_goals도 작업이 실행되면 드러난다.
 func (t *Task) NotifyGoal(texts []string) {
 	if len(texts) == 0 {
 		return
@@ -1770,11 +1763,10 @@ func (t *Task) NotifyGoal(texts []string) {
 	t.Notify()
 }
 
-// NotifyHint records that one OR MORE hints were added in a single add_hint call —
-// by the human via the main agent, or by cross-task orchestration — then wakes the
-// planner, so the next round is told "人新增了 N 条战略提示：…" and looks at them
-// directly instead of having to spot the new hint folded into the graph overview.
-// One call → one trigger event (a batched add_hint counts as one, not one per hint).
+// NotifyHint 는 사람이 메인 에이전트를 통해, 또는 작업 간 오케스트레이션이 add_hint 호출 한 번으로 힌트를
+// 하나 이상 추가했다고 기록하고 planner를 깨운다. 그래서 다음 라운드는 그래프 개요에 접혀 들어간 새 힌트를
+// 찾지 않고 "The human (main agent) added N strategic hints: …"를 듣고 바로 본다.
+// 호출 한 번이 트리거 이벤트 하나다(add_hint 일괄 호출은 힌트마다가 아니라 한 건으로 센다).
 func (t *Task) NotifyHint(texts []string) {
 	if len(texts) == 0 {
 		return
@@ -1785,9 +1777,9 @@ func (t *Task) NotifyHint(texts []string) {
 	t.Notify()
 }
 
-// NotifyGoalDeleted records that the human deleted a goal (via 总览的目标管理), then
-// wakes the planner so the next round spells out which goal was removed. The event
-// survives an early-returning terminal round (drain happens after the gate).
+// NotifyGoalDeleted 는 사람이 (개요 탭의 '목표 관리'에서) 목표를 삭제했다고 기록하고 planner를 깨워,
+// 다음 라운드에 어떤 목표가 지워졌는지 적히게 한다. 이벤트는 일찍 돌아가는 종료 상태 라운드에서도
+// 남는다(drain은 게이트 뒤에 한다).
 func (t *Task) NotifyGoalDeleted(text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -1799,9 +1791,9 @@ func (t *Task) NotifyGoalDeleted(text string) {
 	t.Notify()
 }
 
-// NotifyGoalEdited records that the human edited a goal (via 总览的目标管理), then wakes
-// the planner so the next round spells out the old→new change. The event survives an
-// early-returning terminal round (drain happens after the gate).
+// NotifyGoalEdited 는 사람이 (개요 탭의 '목표 관리'에서) 목표를 고쳤다고 기록하고 planner를 깨워,
+// 다음 라운드에 이전→새 변경이 적히게 한다. 이벤트는 일찍 돌아가는 종료 상태 라운드에서도
+// 남는다(drain은 게이트 뒤에 한다).
 func (t *Task) NotifyGoalEdited(oldText, newText string) {
 	oldText, newText = strings.TrimSpace(oldText), strings.TrimSpace(newText)
 	if newText == "" {
@@ -1813,11 +1805,10 @@ func (t *Task) NotifyGoalEdited(oldText, newText string) {
 	t.Notify()
 }
 
-// NotifyCancelled records that the human deleted intentID (reason = 删除原因), then
-// wakes the planner so the next round spells out which intent was removed and why.
-// summary is the intent's text captured before deletion — needed for hard delete,
-// where the node is gone by the time the planner reads the trigger. Applies to both
-// soft (state='deleted') and hard (physical cascade) delete.
+// NotifyCancelled 는 사람이 intentID를 삭제했다고 기록하고(reason = 삭제 이유) planner를 깨워,
+// 다음 라운드에 어떤 탐색 의도가 왜 지워졌는지 적히게 한다. summary는 삭제 전에 받아 둔 탐색 의도의 텍스트다.
+// planner가 트리거를 읽을 때 노드가 이미 없는 영구 삭제에 필요하다. 소프트 삭제(state='deleted')와
+// 영구 삭제(물리적 연쇄 삭제) 모두에 쓴다.
 func (t *Task) NotifyCancelled(intentID int64, summary, reason string) {
 	if intentID > 0 {
 		t.trigMu.Lock()
