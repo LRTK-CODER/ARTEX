@@ -23,12 +23,12 @@ ARTEX는 Go 백엔드와 Next.js 프런트엔드(`web/`)로 된 AI 자율 보안
 
 모듈은 `github.com/Autumn-27/artex`다. 패키지는 저장소 루트의 디렉터리 하나씩이다. 실제 의존 그래프(비테스트, 저장소 내부 import만):
 
-    config, llmpool, mcphttp, selfupdate, notify, sidequestion   잎 패키지(저장소 내부 의존 없음)
+    config, llmauth, llmpool, mcphttp, selfupdate, notify, sidequestion   잎 패키지(저장소 내부 의존 없음)
     db            → config, notify, sidequestion          영속 계층의 중심(PostgreSQL)
     llmrec, enrich, intercept, report, traffic → db
     evidence      → db, traffic
     guard         → intercept
-    agent         → db, guard, intercept, llmrec, sidequestion   (테스트에서만 evidence도 import한다)
+    agent         → db, guard, intercept, llmauth, llmrec, sidequestion   (테스트에서만 evidence도 import한다)
     server        → 위의 거의 모두 + mcphttp, llmpool, notify, report, selfupdate
     cmd           → agent, config, selfupdate, server
 
@@ -68,6 +68,7 @@ ARTEX는 자율 보안 테스트 도구라서 **LLM이 도구를 골라 명령�
 - 도구 호출 중 패닉은 복구(recover)로 가둔다(`agent`의 가드). 한 도구가 죽어도 에이전트 루프가 멈추지 않는다.
 - LLM이 준 값으로 명령을 조립할 때는 셸 인용(`shellQuote`)으로 감싸고, DB 질의는 자리표(`$1`)로 파라미터화한다. 문자열 이어 붙이기로 질의·경로·명령을 만들지 않는다.
 - LLM 요청·응답은 `llmrec` 장식자가 PG에 기록한다.
+- 구독 OAuth(ChatGPT 구독)의 토큰 획득·갱신은 `llmauth`가 맡는다. `agent`의 인증 transport가 이 토큰을 붙여 `llm.Config.HTTPClient`에 끼워 쓰고, 로그인 API와 토큰 저장은 `server`가 배선한다.
 
 ## 외부 도구와 프로세스
 
