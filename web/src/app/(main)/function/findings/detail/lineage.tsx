@@ -23,7 +23,9 @@ export function FindingLineageView({ findingId }: { findingId: string }) {
         setNodes(g.nodes ?? []);
         setEdges(g.edges ?? []);
       })
-      .catch(() => {})
+      .catch(() => {
+        // 불러오지 못하면 이전 상태를 그대로 둔다(기존 동작). 오류 알림은 띄우지 않는다.
+      })
       .finally(() => {
         if (alive) setLoaded(true);
       });
@@ -34,18 +36,11 @@ export function FindingLineageView({ findingId }: { findingId: string }) {
 
   if (loaded && nodes.length === 0) {
     return (
-      <p className="text-muted-foreground p-6 text-sm">
-        无链路可展示（该漏洞未关联探索节点，或所属任务已删除）。
-      </p>
+      <p className="text-muted-foreground p-6 text-sm">无链路可展示（该漏洞未关联探索节点，或所属任务已删除）。</p>
     );
   }
 
   return (
-    <ExplorationGraph
-      nodes={nodes}
-      edges={edges}
-      className="h-[68vh]"
-      emptyHint={loaded ? "无链路" : "加载中…"}
-    />
+    <ExplorationGraph nodes={nodes} edges={edges} className="h-[68vh]" emptyHint={loaded ? "无链路" : "加载中…"} />
   );
 }

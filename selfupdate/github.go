@@ -10,9 +10,11 @@ import (
 	"time"
 )
 
-// Repo 是发布源。写死而不是做成配置项：更新源可配等于给任何能改配置的人一条
-// 远程代码执行通道，对一个渗透测试平台来说这个口子开不得。
-const Repo = "Autumn-27/artex"
+// Repo 는 업데이트를 받는 GitHub 릴리스 출처로, 이 포크다. 원 저자 채널을 바라보면
+// 그쪽 계정이 탈취되거나 악성 버전이 올라올 때 검토 없이 우리 배포에 들어오므로 옮겼다.
+// 설정으로 바꿀 수 있게 하지 않는다. 출처를 바꿀 수 있으면 설정을 고칠 수 있는 누구에게나
+// 원격 코드 실행 통로가 열린다.
+const Repo = "LRTK-CODER/ARTEX"
 
 // latestURL 是 GitHub 的"最新正式版"接口。它会自动跳过 prerelease 和 draft。
 const latestURL = "https://api.github.com/repos/" + Repo + "/releases/latest"

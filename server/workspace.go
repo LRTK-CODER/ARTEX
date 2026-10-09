@@ -2,7 +2,10 @@ package server
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -14,27 +17,62 @@ import (
 )
 
 // Workspace file manager — browse / view / edit / download / upload / delete the
-// shared work dir (s.m.dir), where all agents write their artifacts. Every path is
-// confined to the work dir root (traversal via ".." is neutralised). All routes sit
+// shared work dir (s.m.dir), where all agents write their artifacts. All routes sit
 // behind requireAuth (see Handler()).
+// 모든 경로는 wsResolve 로 작업 공간 안에 묶는다. 에이전트가 작업 공간에 만든 심볼릭 링크는 신뢰하지 않으므로
+// 문자열이 아니라 링크를 푼 실제 경로로 판정한다.
 
 const (
 	maxWorkspaceRead   = 2 << 20   // 2 MiB: files bigger than this aren't inlined for view/edit (download instead)
 	maxWorkspaceUpload = 512 << 20 // 512 MiB per upload request
 )
 
-// wsResolve maps a user-supplied relative path to an absolute path INSIDE the work
-// dir. It returns ok=false if the path would escape the root. filepath.Clean on a
-// rooted copy collapses any ".." so nothing can climb above the root.
+// wsResolve 는 사용자가 준 상대 경로를 작업 공간 안의 절대 경로로 바꾼다. 작업 공간 밖이면 ok=false 다.
+// ".." 는 루트에 묶어 접고, 심볼릭 링크는 풀어서 실제 경로가 작업 공간(역시 링크를 푼 루트) 안일 때만 허용한다.
+// 돌려주는 경로는 링크를 풀기 전 경로라서 응답의 상대 경로(wsRel)가 사용자가 본 이름을 유지한다.
+// 판정과 실제 열기 사이에 링크가 바뀌는 경쟁은 막지 않는다.
 func (s *Server) wsResolve(rel string) (string, bool) {
 	base := filepath.Clean(s.m.dir)
 	rel = strings.TrimPrefix(strings.TrimSpace(rel), "/")
 	clean := filepath.Clean("/" + rel) // e.g. "/a/../../etc" → "/etc" (still rooted at "/")
 	abs := filepath.Clean(filepath.Join(base, clean))
-	if abs != base && !strings.HasPrefix(abs, base+string(os.PathSeparator)) {
+	realBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return "", false
+	}
+	real, err := evalWorkspacePath(abs)
+	if err != nil {
+		return "", false
+	}
+	inside, err := filepath.Rel(realBase, real)
+	if err != nil || inside == ".." || strings.HasPrefix(inside, ".."+string(os.PathSeparator)) {
 		return "", false
 	}
 	return abs, true
+}
+
+// evalWorkspacePath 는 abs 의 심볼릭 링크를 푼 실제 경로를 돌려준다. 아직 없는 경로(쓰기·새 디렉터리)는
+// 실제로 있는 가장 깊은 조상을 풀어 남은 이름을 붙인다. 이름은 있는데 풀리지 않는 끊긴 링크는 오류다.
+// 끊긴 링크를 없는 경로로 보고 조상만 판정하면, 그 경로에 쓸 때 링크가 가리키는 밖의 파일이 만들어진다.
+func evalWorkspacePath(abs string) (string, error) {
+	var missing []string
+	for dir := abs; ; dir = filepath.Dir(dir) {
+		real, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			return filepath.Join(append([]string{real}, missing...)...), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		if _, lerr := os.Lstat(dir); lerr == nil {
+			return "", fmt.Errorf("dangling symlink: %w", err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", err
+		}
+		missing = append([]string{filepath.Base(dir)}, missing...)
+	}
 }
 
 // wsRel renders an absolute path back as a workspace-relative path (forward slashes).

@@ -1,0 +1,51 @@
+# 고정한 버전·digest·SHA의 갱신 PR을 Dependabot이 주마다 연다(#71).
+# 보안 업데이트 설정과 자동 병합은 다루지 않는다.
+# PR 제목은 Conventional Commits를 따른다. Dependabot이 prefix 뒤에 콜론을 붙여
+# "chore(deps): ..."·"ci(deps): ..." 형태가 된다. type은 .claude/hooks/branch-types.txt 목록 안에서 고른다.
+# open-pull-requests-limit은 리뷰가 밀리지 않도록 생태계마다 기본값(5)보다 낮춘다.
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"

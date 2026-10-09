@@ -807,11 +807,16 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 
 	// runRound 跑一轮规划(含 debounce 合并 + 各 guard)。src 仅用于日志区分触发来源。
 	runRound := func(src string) {
-		// debounce: coalesce a burst of changes into one planning round
+		// debounce: 잇따른 변경을 planner 한 라운드로 묶는다
 		timer := time.NewTimer(e.debounce)
 	drain:
 		for {
 			select {
+			case <-ctx.Done():
+				// 작업을 멈추거나 지울 때 StopTask가 이 루프의 반환을 기다리므로
+				// debounce를 다 채우지 않고 바로 끝낸다(#81).
+				timer.Stop()
+				return
 			case <-t.notify:
 			case <-timer.C:
 				break drain
