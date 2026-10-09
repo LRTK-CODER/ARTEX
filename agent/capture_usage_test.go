@@ -33,7 +33,7 @@ func (p captureUsageProvider) Complete(ctx context.Context, req llm.CompletionRe
 func TestCaptureRunPersistsUsageOnProviderFailure(t *testing.T) {
 	wantErr := errors.New("provider failed after reporting usage")
 	provider := captureUsageProvider{stream: func(_ context.Context, yield func(llm.StreamEvent, error) bool) {
-		// 遵守迭代器协议:yield 返回 false 后立即停止,不再调用它。
+		// 반복자 규약을 지킨다: yield가 false를 반환하면 바로 멈추고 다시 부르지 않는다.
 		if !yield(llm.StreamEvent{Type: llm.SEMessageStart, Usage: llm.Usage{InputTokens: 11, CacheReadTokens: 3}}, nil) {
 			return
 		}
@@ -59,7 +59,7 @@ func TestCaptureRunPersistsUsageOnProviderFailure(t *testing.T) {
 func TestCaptureRunPersistsUsageOnCancellation(t *testing.T) {
 	started := make(chan struct{})
 	provider := captureUsageProvider{stream: func(ctx context.Context, yield func(llm.StreamEvent, error) bool) {
-		// 遵守迭代器协议:yield 返回 false 后立即停止,不再调用它。
+		// 반복자 규약을 지킨다: yield가 false를 반환하면 바로 멈추고 다시 부르지 않는다.
 		if !yield(llm.StreamEvent{Type: llm.SEMessageStart, Usage: llm.Usage{InputTokens: 13, CacheReadTokens: 5}}, nil) {
 			return
 		}

@@ -370,6 +370,30 @@ web 기능 화면(`web/src/app/(main)/function/**`)을 옮기며 정한 말이�
 | 概览 | 개요 | overview | |
 | 不可撤销 | 되돌릴 수 없습니다 | cannot be undone | "이 작업"은 task로 읽히므로 대상을 쓴다 |
 
+### db 패키지(#108에서 더함)
+
+`db/*.go`와 `db/schema.sql`을 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| [内置] (seed 이름 머리말) | [내장] | [built-in] | 내장 차단 규칙 이름과 메모. `architecture.md`의 표기 |
+| 目标拆解 | 목표 분해 | goal decomposition | 내장 agent `goals`의 표시 이름 |
+| 侦察 | 정보 수집 | reconnaissance | "被动侦察 → 수동적 정보 수집"과 맞춘다 |
+| 误报 | 오탐 | false positive | 보안 업계 표준 |
+| 风险接受 | 위험 수용 | risk accepted | 위험 관리 표준 용어 |
+| 未关联资产 | 자산 없음 | no asset | 자산이 연결되지 않은 발견 사항 묶음. 기업 소속이 없는 "소속 없음"과 구분한다 |
+| 熔断 | 회로 차단기 | circuit breaker | `architecture.md`의 표기 |
+| 指数退避 | 지수 백오프 | exponential backoff | 업계 표준 원어 |
+| 限流 | 속도 제한 | rate limit | 알림 채널 설정은 "발송 속도 제한" |
+| 墙钟 | 실제 경과 시간 | wall-clock time | |
+| 事务 / 保存点 | 트랜잭션 / 세이브포인트 | transaction / savepoint | PostgreSQL 한국어 문서 표기 |
+| 待发 / 重发 | 발송 대기 / 재발송 | pending / resend | 알림 전달 상태 |
+| 批次 | 배치 | batch | digest 모드의 묶음 |
+| 分派 (fan-out) | 분배 | fan-out | 이벤트를 알림 채널별 전달로 나누는 것 |
+| 爆炸半径 | 영향 범위 | blast radius | |
+| 掩码 | 마스킹 | mask | `secure-coding.md`의 표기 |
+| 裸 TLD | 최상위 도메인(TLD)만 | bare TLD | |
+
 ### 화면 시스템(#112에서 더함)
 
 web 시스템 화면(`web/src/app/(main)/system/**`)을 옮기며 정한 말이다.
@@ -461,9 +485,39 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 | 弹层 / 遮罩 | 팝업 / 오버레이 | popover / overlay | 주석에서 Radix 레이어를 가리킬 때 |
 | 力导向 | 포스 기반(force-directed) | force-directed | 그래프 배치. #111 화면 표기 |
 
+### notify 패키지(#109에서 더함)
+
+`notify/*.go`(알림 채널 어댑터와 메시지 템플릿)를 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| 漏洞汇总 / 近 N 分钟新增 N 个漏洞 | 취약점 다이제스트 / 최근 N분 동안 새 취약점 N건 | vulnerability digest | 다이제스트 메시지 제목. "汇总 → 다이제스트"를 따른다 |
+| 漏洞通知 | 취약점 알림 | vulnerability notification | 단건 메시지 제목 |
+| 查看详情 / 回链 | 상세 보기 / 상세 링크 | view details / detail link | 메시지의 취약점 상세 링크 |
+| 在平台中查看全部 | 플랫폼에서 전체 보기 | view all in the platform | |
+| 处理中 / 已处理 / 重复 | 처리 중 / 처리됨 / 중복 | in progress / resolved / duplicate | 취약점 처리 상태(`in_progress`/`resolved`/`duplicate`) |
+| 自定义机器人 / 群机器人 | 사용자 지정 봇 / 그룹 봇 | custom bot / group bot | DingTalk·Feishu / WeCom의 공식 기능 이름 |
+| 加签 | 서명 | signature | DingTalk·Feishu 보안 설정. 화면 '서명 키'와 맞춘다 |
+| Webhook 地址 | Webhook 주소 | webhook URL | 화면 입력 칸 이름과 맞춘다. 주석에서는 "웹훅"도 쓴다 |
+| 发件人 / 收件人 | 보낸 사람 / 받는 사람 | sender / recipient | 화면 입력 칸 이름과 맞춘다 |
+| 隐式 TLS | 암시적 TLS | implicit TLS | 화면 라벨 |
+| 握手 / 信封 / 中继 | 핸드셰이크 / 봉투 / 릴레이 | handshake / envelope / relay | SMTP 표준 용어 |
+| 灰名单 | 그레이리스트 | greylisting | 메일 서버 표준 용어 |
+| 环回 / 链路本地 | 루프백 / 링크 로컬 | loopback / link-local | 네트워크 표준 용어 |
+| 重定向 / 跨主机重定向 | 리다이렉트 / 다른 호스트로의 리다이렉트 | redirect / cross-host redirect | |
+| DNS 重绑定 | DNS 리바인딩 | DNS rebinding | 보안 업계 표준 음차 |
+| 脱敏 | 민감 정보 가리기 | redact | 동사는 "가리다". "탈민"으로 옮기지 않는다 |
+| 反代 | 리버스 프록시 | reverse proxy | |
+| 最低级别门槛 | 최저 심각도 | minimum severity | 화면 라벨과 맞춘다. 문장에서는 "심각도 기준"도 쓴다 |
+| 永久失败 / 可重试 | 영구 실패 / 재시도 가능 | permanent failure / retryable | |
+| 哨兵 | 센티넬 | sentinel | `secure-coding.md`의 표기 |
+
 ## 고친 기록
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
 - 2026-10-10: web 기능 화면 번역(#111)에서 정한 용어를 "화면 기능" 표로 더한다.
+- 2026-10-10: db 패키지 번역(#108)에서 정한 용어를 "db 패키지" 표로 더한다.
 - 2026-10-10: web 시스템 화면 번역(#112)에서 정한 용어를 "화면 시스템" 표로 더한다.
 - 2026-10-10: web 공통 컴포넌트·라이브러리·나머지 화면 번역(#113)에서 정한 용어를 "화면 공통" 표로 더한다.
+
+- 2026-10-10: notify 패키지 번역(#109)에서 정한 용어를 "notify 패키지" 표로 더한다.

@@ -16,7 +16,7 @@ type LLMProfile struct {
 	Name          string  `json:"name"`
 	Format        string  `json:"format"`
 	BaseURL       string  `json:"base_url,omitempty"`
-	Proxy         string  `json:"proxy,omitempty"` // LLM 出站代理(http/https/socks5);空=用环境变量
+	Proxy         string  `json:"proxy,omitempty"` // LLM 외부 연결 프록시(http/https/socks5). 비우면 환경 변수를 쓴다
 	Model         string  `json:"model"`
 	APIKey        string  `json:"-"` // never serialized to UI
 	APIKeyHint    string  `json:"api_key_hint,omitempty"`
@@ -25,11 +25,11 @@ type LLMProfile struct {
 	// ContextWindowK is the model's context window in K tokens, used to size
 	// compaction thresholds. 0 = use a 200K default; capped at 1000 (1M).
 	ContextWindowK int `json:"context_window_k"`
-	// ThinkingType 独立控制思考「开关」(thinking.type):"" = 不发送(默认);
-	// "disabled" = 显式关闭; "enabled" = 开启. 与 ReasoningEffort 解耦.
+	// ThinkingType은 사고 「켜기·끄기」(thinking.type)를 따로 정한다: "" = 보내지 않음(기본값),
+	// "disabled" = 명시적으로 끔, "enabled" = 켬. ReasoningEffort와 독립이다.
 	ThinkingType string `json:"thinking_type"`
-	// ReasoningEffort 独立控制思考「强度」:"" = 不发送(默认);
-	// "low"/"medium"/"high"/"xhigh"/"max" = 对应强度. 见 agent.Config.NewProvider.
+	// ReasoningEffort는 사고 「강도」를 따로 정한다: "" = 보내지 않음(기본값),
+	// "low"/"medium"/"high"/"xhigh"/"max" = 해당 강도. agent.Config.NewProvider 참고.
 	ReasoningEffort string `json:"reasoning_effort"`
 	IsDefault       bool   `json:"is_default"`
 	// Priority orders the failover chain: higher goes first. The ACTIVE profile
@@ -95,10 +95,9 @@ type OAuthStatus struct {
 	PlanType string `json:"plan,omitempty"`
 }
 
-// RetryOverride is one profile's optional override of the three retry layers
-// that are per-endpoint: 建连(connect) / 空响应(empty) / 同 provider 安全窗口
-// (stream). Each rule's zero value means "inherit the global policy"; see
-// RetryRule for the -1 / 0 / >0 semantics.
+// RetryOverride는 엔드포인트별인 재시도 세 계층을 프로필 하나가 선택적으로 덮어쓰는 값이다:
+// 연결(connect) / 빈 응답(empty) / 같은 제공자 안전 구간(stream). 각 규칙의 0 값은
+// "전역 정책을 따른다"는 뜻이다. -1 / 0 / >0의 의미는 RetryRule을 참고한다.
 type RetryOverride struct {
 	Connect RetryRule `json:"connect"`
 	Empty   RetryRule `json:"empty"`
@@ -530,20 +529,20 @@ type Agent struct {
 	Role             string `json:"role"`
 	Builtin          bool   `json:"builtin"`
 	Enabled          bool   `json:"enabled"`
-	LLMProfileID     *int64 `json:"llm_profile_id"`    // 绑定的 LLM 配置;nil=跟随任务/会话 pin,再回退全局激活
-	MaxTurns         int    `json:"max_turns"`         // 单次运行最大轮次;0=不限制
-	RunSecs          int    `json:"run_seconds"`       // worker 单次运行墙钟上限(秒);0=不限制
-	WebSearch        bool   `json:"web_search"`        // 是否启用网络搜索(受系统全局开关门控)
-	InteractiveShell bool   `json:"interactive_shell"` // 是否启用交互式 shell(持久 PTY 会话工具族)
-	WrapupPrompt     string `json:"wrapup_prompt"`     // 收尾提示词(超时/步数耗尽时的 settlement 提示);空=用代码内置默认
-	WrapupMaxTurns   int    `json:"wrapup_max_turns"`  // 收尾阶段自身的轮数预算;0=用代码内置默认(按 agent)
-	// 任务级超时收尾词(与 per-run 两套;仅 worker/planner 用);空/0=用代码内置默认。
+	LLMProfileID     *int64 `json:"llm_profile_id"`    // 연결한 LLM 프로필. nil이면 작업·세션 고정을 따르고, 없으면 전역 활성 프로필로 돌아간다
+	MaxTurns         int    `json:"max_turns"`         // 한 번 실행의 최대 턴 수. 0=제한 없음
+	RunSecs          int    `json:"run_seconds"`       // worker 한 번 실행의 실제 경과 시간 상한(초). 0=제한 없음
+	WebSearch        bool   `json:"web_search"`        // 웹 검색 사용 여부(시스템 전역 스위치가 켜져 있어야 적용)
+	InteractiveShell bool   `json:"interactive_shell"` // 대화형 shell 사용 여부(지속 PTY 세션 도구 묶음)
+	WrapupPrompt     string `json:"wrapup_prompt"`     // 마무리 프롬프트(시간 초과·단계 한도 소진 때의 settlement 안내). 비우면 코드의 내장 기본값
+	WrapupMaxTurns   int    `json:"wrapup_max_turns"`  // 마무리 단계 자체의 턴 한도. 0이면 코드의 내장 기본값(agent별)
+	// 작업 단위 시간 초과 마무리 프롬프트(실행 단위 설정과 별개, worker/planner만 사용). 비었거나 0이면 코드의 내장 기본값.
 	TaskTimeoutWrapupPrompt   string `json:"task_timeout_wrapup_prompt"`
 	TaskTimeoutWrapupMaxTurns int    `json:"task_timeout_wrapup_max_turns"`
-	// P3 触发后处理策略(仅自定义 agent 有意义):
-	// TriggerRunMode  serial|parallel — 串行排队 / 每次触发各自并发一个会话
-	// TriggerMergeMode by_task|all|none — 仅 serial 用:同任务合并 / 全部合并 / 不合并
-	// TriggerMaxParallel — 仅 parallel 用的每 agent 并发上限;0=不限
+	// 트리거 후처리 정책(사용자 지정 agent에만 의미가 있다):
+	// TriggerRunMode  serial|parallel — 차례로 대기 / 트리거마다 세션 하나씩 동시 실행
+	// TriggerMergeMode by_task|all|none — serial에서만 사용: 같은 작업끼리 합침 / 모두 합침 / 합치지 않음
+	// TriggerMaxParallel — parallel에서만 쓰는 agent별 동시 실행 상한. 0=제한 없음
 	TriggerRunMode     string `json:"trigger_run_mode"`
 	TriggerMergeMode   string `json:"trigger_merge_mode"`
 	TriggerMaxParallel int    `json:"trigger_max_parallel"`
@@ -553,7 +552,7 @@ const agentCols = `id,key,name,COALESCE(description,''),role,builtin,enabled,COA
 
 func scanAgent(sc interface{ Scan(...any) error }) (*Agent, error) {
 	var a Agent
-	var prof sql.NullInt64 // llm_profile_id 可空:未绑定时为 NULL
+	var prof sql.NullInt64 // llm_profile_id는 NULL일 수 있다: 연결하지 않으면 NULL
 	err := sc.Scan(&a.ID, &a.Key, &a.Name, &a.Description, &a.Role, &a.Builtin, &a.Enabled, &a.MaxTurns, &a.RunSecs, &a.WebSearch, &a.InteractiveShell, &a.WrapupPrompt, &a.WrapupMaxTurns, &a.TaskTimeoutWrapupPrompt, &a.TaskTimeoutWrapupMaxTurns, &a.TriggerRunMode, &a.TriggerMergeMode, &a.TriggerMaxParallel, &prof)
 	if err == nil && prof.Valid {
 		v := prof.Int64
@@ -590,10 +589,9 @@ func (d *DB) GetAgentByKey(key string) (*Agent, error) {
 	return a, nil
 }
 
-// AgentBindingCounts returns per-agent binding counts in a few grouped queries
-// (NO N+1): visible MCP servers and skills keyed by agent id, and bound tools
-// keyed by agent key (tools.agents is a JSONB array of agent keys). Missing keys
-// mean zero. Used to show "MCP N · Skill N · 工具 N" on the agent cards.
+// AgentBindingCounts는 agent별 연결 수를 묶음 쿼리 몇 개로 돌려준다(N+1 없음): 보이는
+// MCP 서버와 스킬은 agent id로, 연결한 도구는 agent key로 센다(tools.agents는 agent key의
+// JSONB 배열). 없는 키는 0이다. agent 카드에 "MCP N · Skill N · 도구 N"을 보일 때 쓴다.
 func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools map[string]int, err error) {
 	mcp, skill, tools = map[int64]int{}, map[int64]int{}, map[string]int{}
 	byID := func(q string, into map[int64]int) error {
@@ -727,8 +725,8 @@ func (d *DB) SetAgentWebSearch(key string, on bool) error {
 	return err
 }
 
-// SetAgentInteractiveShell toggles whether an agent gets the interactive shell
-// (持久 PTY 会话) tool family + Bash 提示词联动(见 docs/交互式shell设计.md §14.2).
+// SetAgentInteractiveShell은 agent에 대화형 shell(지속 PTY 세션) 도구 묶음과 그에 맞춘
+// Bash 프롬프트 안내를 줄지 켜고 끈다(docs/交互式shell设计.md §14.2 참고).
 func (d *DB) SetAgentInteractiveShell(key string, on bool) error {
 	_, err := d.Exec(`UPDATE agents SET interactive_shell=$1 WHERE key=$2`, on, key)
 	return err
@@ -765,9 +763,10 @@ func (d *DB) SetAgentRunSeconds(key string, runSecs int) error {
 	return err
 }
 
-// SetAgentTriggerBehavior stores an agent's P3 trigger post-processing策略:
-// runMode(serial|parallel) / mergeMode(by_task|all|none) / maxParallel(parallel 用,0=不限)。
-// 枚举做白名单校验,非法值回落默认,避免脏数据把调度 pump 带偏。
+// SetAgentTriggerBehavior는 agent의 트리거 후처리 정책을 저장한다:
+// runMode(serial|parallel) / mergeMode(by_task|all|none) / maxParallel(parallel에서 사용, 0=제한 없음).
+// 열거 값은 허용 목록으로 검사하고 잘못된 값은 기본값으로 돌린다. 잘못된 데이터가 스케줄 pump를
+// 엉뚱하게 움직이지 않게 하려는 것이다.
 func (d *DB) SetAgentTriggerBehavior(key, runMode, mergeMode string, maxParallel int) error {
 	switch runMode {
 	case "serial", "parallel":
@@ -833,14 +832,14 @@ func (d *DB) SeedPromptIfEmpty(agentID int64, tmpl string) error {
 	if cur.Valid {
 		return nil // already seeded or user-edited → leave it
 	}
-	_, err := d.SavePrompt(agentID, tmpl, "内置默认", "system")
+	_, err := d.SavePrompt(agentID, tmpl, "내장 기본값", "system")
 	return err
 }
 
-// ResetPromptToDefault appends the code-default template as a new version and
-// points current at it — the explicit "恢复为内置默认" action.
+// ResetPromptToDefault 는 코드 기본 템플릿을 새 버전으로 덧붙이고 current 가 그것을 가리키게 한다.
+// 사용자가 명시적으로 고르는 "내장 기본값으로 복원" 동작이다.
 func (d *DB) ResetPromptToDefault(agentID int64, tmpl string) (int, error) {
-	return d.SavePrompt(agentID, tmpl, "恢复为内置默认", "system")
+	return d.SavePrompt(agentID, tmpl, "내장 기본값으로 복원", "system")
 }
 
 // SavePrompt appends a new version and points current_prompt_id at it.
