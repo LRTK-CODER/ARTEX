@@ -137,7 +137,7 @@ type Engine struct {
 
 	plannerRound sync.Map // taskID -> int, planner round counter (for UI round separators)
 
-	// 작업 단위 시간 초과(docs/任务级超时与收尾设计.md 참고):
+	// 작업 단위 시간 초과:
 	settling     sync.Map // taskID -> bool, 작업이 마무리 단계에 들어갔다(새 탐색 의도를 나눠 주거나 할당받지 않는다)
 	deadline     sync.Map // taskID -> int64 unix, 절대 마감 시각(처음 실행할 때 기록한다. 0이나 없음 = 제한 없음)
 	stamped      sync.Map // taskID -> bool, first_run_at 을 기록했는지(이 프로세스에서 한 번만 기록한다)

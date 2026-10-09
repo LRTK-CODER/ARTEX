@@ -375,7 +375,7 @@ CREATE TABLE IF NOT EXISTS llm_profiles (
     reasoning_effort TEXT NOT NULL DEFAULT '',
     thinking_type    TEXT NOT NULL DEFAULT '',
     is_default       BOOLEAN NOT NULL DEFAULT false,
-    -- 장애 조치 파라미터(docs/LLM轮询设计.md 참고):
+    -- 장애 조치 파라미터:
     --   priority     순서. 클수록 먼저 고른다. 활성 프로필(is_default)은 이 값과 상관없이 늘 체인 맨 앞이다.
     --   pool_exclude true=장애 조치 대상으로 쓰지 않는다(agent/작업에 명시적으로 연결하면 여전히 쓴다).
     priority         INTEGER NOT NULL DEFAULT 0,
@@ -434,7 +434,7 @@ ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_max_tokens_check
 -- 사용자 지정 세션 헤더 이름. 이전 DB 에도 채운다. 기본값 '' = 보내지 않으므로 이전 프로필의 동작은 그대로다.
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS session_header_key TEXT NOT NULL DEFAULT '';
 
--- 프로필별 재시도 덮어쓰기(docs/LLM重试设计.md 참고). 세 묶음마다 "횟수 + 고정 간격" 한 쌍이고
+-- 프로필별 재시도 덮어쓰기. 세 묶음마다 "횟수 + 고정 간격" 한 쌍이고
 -- 뜻은 같다: 횟수 0=전역 기본값, -1=이 단계 재시도 끄기, >0=그 값. 간격 0=이 단계의
 -- 기본 지수 백오프, >0=그 고정 밀리초. 모두 기본값 0 이라 이전 DB·이전 프로필의 동작은 그대로다.
 --   connect = 연결 재시도(SDK doStream: 연결 재설정/시간 초과/429/5xx, 스트림 시작 전)
@@ -558,7 +558,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)          WHERE dele
 DROP TRIGGER IF EXISTS trg_tasks_upd ON tasks;
 CREATE TRIGGER trg_tasks_upd BEFORE UPDATE ON tasks
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
--- planner 하트비트 트리거 간격(초). 이전 DB 에도 채운다. 기본값 300초(5분). docs/planner-trigger-impl-plan.md 참고
+-- planner 하트비트 트리거 간격(초). 이전 DB 에도 채운다. 기본값 300초(5분).
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS plan_heartbeat_seconds INTEGER NOT NULL DEFAULT 300;
 -- 동시 실행 제한 대기 상태. 이전 DB 에도 채운다. true=동시 실행 제한 때문에 대기 중이며 자리가 나면 자동으로 시작한다.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS queued BOOLEAN NOT NULL DEFAULT false;

@@ -38,13 +38,13 @@ type Task struct {
 	ParentRef          string     `json:"parent_ref,omitempty"` // 부모 작업 id(오케스트레이션 spawn 기록. 비면 최상위)
 	CreatedAt          time.Time  `json:"created_at"`
 	CompletedAt        *time.Time `json:"completed_at,omitempty"` // 종료 상태(done/failed/timeout)가 된 시각. 종료 상태가 아니면 nil
-	// 작업 단위 시간 제한(docs/任务级超时与收尾设计.md 참고).
+	// 작업 단위 시간 제한.
 	TimeoutSeconds int        `json:"timeout_seconds"`        // 0=제한 없음
 	FirstRunAt     *time.Time `json:"first_run_at,omitempty"` // 처음 실제로 실행을 시작한 시각(created_at 아님). nil=아직 실행 안 함
 	DeadlineAt     *time.Time `json:"deadline_at,omitempty"`  // = first_run_at + timeout_seconds. nil=제한 없음 또는 아직 실행 안 함
 	// planner 하트비트 트리거 간격(초): 지난 plan이 끝나거나 작업이 시작된 뒤 이 시간이 지나도록
 	// 트리거가 없으면 한 번 트리거한다. 최소값=기본값=300(5분)이고, 더 작으면 300으로 올린다
-	// (CreateTask에서 정규화). docs/planner-trigger-impl-plan.md 참고
+	// (CreateTask에서 정규화).
 	PlanHeartbeatSeconds int `json:"plan_heartbeat_seconds"`
 	// CoverageEnabled는 "자산 커버리지 기능"의 전체 스위치다(기본 true). false면 테스트
 	// 커버리지를 계산·표시하지 않고, task_scope(source=auto)를 자동으로 쌓지 않고, 에이전트에

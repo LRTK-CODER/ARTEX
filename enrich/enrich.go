@@ -1,4 +1,4 @@
-// Package enrich 는 엔진 쪽(AI가 아닌) 자산 자동 보완 계층이다(docs/资产模型与自动关联设计.md §5).
+// Package enrich 는 엔진 쪽(AI가 아닌) 자산 자동 보완 계층이다.
 // 비동기 워커 풀이 도메인을 조회하고(dnsx) 웹 자산을 확인한 뒤(HTTP, 기록 프록시 경유) 결과를
 // 자산 그래프에 다시 쓴다. IP·포트 노드와 resolves/exposes 간선을 만들고 attrs.dns / attrs.http를
 // 채운다. DNS 조회에는 제한이 없고, HTTP 확인은 RoE로 제한한다(§5.2).

@@ -726,7 +726,7 @@ func (d *DB) SetAgentWebSearch(key string, on bool) error {
 }
 
 // SetAgentInteractiveShell은 agent에 대화형 shell(지속 PTY 세션) 도구 묶음과 그에 맞춘
-// Bash 프롬프트 안내를 줄지 켜고 끈다(docs/交互式shell设计.md §14.2 참고).
+// Bash 프롬프트 안내를 줄지 켜고 끈다.
 func (d *DB) SetAgentInteractiveShell(key string, on bool) error {
 	_, err := d.Exec(`UPDATE agents SET interactive_shell=$1 WHERE key=$2`, on, key)
 	return err

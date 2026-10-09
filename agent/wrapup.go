@@ -101,7 +101,7 @@ func wrapupSettlement(agentKey string, disabledTools []string) *harness.Settleme
 	}
 }
 
-// ---------- 작업 단위 시간 초과 마무리 문구(docs/작업 단위 시간 초과와 마무리 설계.md 참고)----------
+// ---------- 작업 단위 시간 초과 마무리 문구 ----------
 //
 // per-run 마무리 문구와는 [두 벌]이다: per-run 은 "이번 run 의 예산이 다 찼다"이고, 작업 시간 초과는
 // "작업 전체가 시간에 다다라 곧 끝난다"이다. 의미가 종종 반대다(특히 planner: per-run 은 "멈추지 말고 계속

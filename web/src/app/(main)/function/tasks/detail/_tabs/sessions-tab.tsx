@@ -84,7 +84,7 @@ function fmtBytes(n: number): string {
   return `${n} B`;
 }
 
-// ── Reliability model (see docs/task-session-history-sse-remediation.md) ──────────
+// ── Reliability model ──────────
 // The task's activity is NO LONGER one unbounded `allActivity` array replayed from
 // SSE since=0. Instead:
 //   • Each UI session (main | plan | intent:<id>) has its own lazily-loaded, reverse-

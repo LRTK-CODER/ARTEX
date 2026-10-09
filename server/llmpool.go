@@ -10,7 +10,7 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// LLM 장애 조치의 서버 쪽 배선이다. 설계는 docs/LLM 장애 조치 설계.md 참고.
+// LLM 장애 조치의 서버 쪽 배선이다.
 //   - 전역 활성 프로필 경로(에이전트에 바인딩이 없고 작업에 pin이 없을 때)에서만 장애 조치한다.
 //   - 바인딩·pin 경로는 기본적으로 그 프로필만 쓰고, 실패하면 그대로 실패한다(llm_pool_bind_fallback으로 대체 경로를 켤 수 있다).
 //   - 체인 순서 = 활성 프로필 → 나머지는 priority 내림차순, pool_exclude인 것은 뺀다.

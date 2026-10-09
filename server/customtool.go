@@ -22,7 +22,7 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// 이 파일은 사용자 지정 도구 실행기다(docs/自定义工具设计.md).
+// 이 파일은 사용자 지정 도구 실행기다.
 // system=false 인 tools 행을 kind 로 나눈다. command(명령을 렌더링해 Bash 바탕의 run 을 재사용),
 // script(Python만. 임시 파일에 쓰고 stdin=파라미터 JSON + env TOOL_*, 설정한 인터프리터 사용),
 // http(직접 요청, 프록시 설정 가능). 이 도구들은 트래픽·오케스트레이션 도구처럼 seed 가 필요 없다

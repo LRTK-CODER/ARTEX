@@ -54,7 +54,7 @@ type Task struct {
 	SourceTaskIDs      []int64 `json:"source_task_ids,omitempty"`
 	CompanyIDs         []int64 `json:"company_ids,omitempty"`
 	Status             string  `json:"status"` // 저장된 수명 주기 상태(done/failed/timeout은 종료 상태. 비어 있거나 다른 값이면 실행 상태에서 추론한다)
-	// 작업 단위 시간 초과(docs/작업 단위 시간 초과와 마무리 설계.md 참고). DeadlineAt/FirstRunAt은 unix 초이고 0=설정 안 됨/실행 전.
+	// 작업 단위 시간 초과. DeadlineAt/FirstRunAt은 unix 초이고 0=설정 안 됨/실행 전.
 	TimeoutSeconds       int                    `json:"timeout_seconds"`
 	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner 하트비트 실행 간격(초)
 	CoverageEnabled      bool                   `json:"coverage_enabled"`       // 자산 커버리지 기능 사용 여부(만들 때 정한다, 기본값 켜짐)
