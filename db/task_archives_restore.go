@@ -677,7 +677,8 @@ func restoreInterceptRows(tx *sql.Tx, raw json.RawMessage) error {
 			source = "unknown"
 			if row["rule_id"] != nil {
 				source = "rule"
-			} else if reason, _ := row["reason"].(string); strings.HasPrefix(reason, "[模型]") {
+			} else if reason, _ := row["reason"].(string); strings.HasPrefix(reason, "[모델]") || strings.HasPrefix(reason, "[模型]") {
+				// intercept는 [모델]을 붙인다. [模型]은 #110 이전 보관본의 옛 접두사다.
 				source = "model"
 			}
 			row["decision_source"] = source

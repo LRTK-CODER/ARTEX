@@ -1,9 +1,7 @@
-// Package enrich is the engine-side (non-AI) asset auto-completion layer described
-// in docs/资产模型与自动关联设计.md §5: an async worker pool that resolves domains
-// (dnsx) and probes web assets (HTTP, through the recording proxy) and writes the
-// results back into the asset graph — creating IP/port nodes, resolves/exposes
-// edges, and filling attrs.dns / attrs.http. DNS is ungated; HTTP probing is gated
-// by RoE (§5.2).
+// Package enrich 는 엔진 쪽(AI가 아닌) 자산 자동 보완 계층이다(docs/资产模型与自动关联设计.md §5).
+// 비동기 워커 풀이 도메인을 조회하고(dnsx) 웹 자산을 확인한 뒤(HTTP, 기록 프록시 경유) 결과를
+// 자산 그래프에 다시 쓴다. IP·포트 노드와 resolves/exposes 간선을 만들고 attrs.dns / attrs.http를
+// 채운다. DNS 조회에는 제한이 없고, HTTP 확인은 RoE로 제한한다(§5.2).
 package enrich
 
 import (
@@ -71,7 +69,7 @@ func New(as *db.AssetStore, proxy func() string, workers int) *Engine {
 		Timeout:       4 * time.Second,
 	})
 	if err != nil {
-		log.Printf("[enrich] dnsx 初始化失败，DNS 解析停用：%v", err)
+		log.Printf("[enrich] dnsx 초기화 실패, DNS 조회 사용 안 함: %v", err)
 		resolv = nil
 	}
 	e := &Engine{
@@ -128,7 +126,7 @@ func (e *Engine) enqueue(j job) {
 	select {
 	case e.jobs <- j:
 	default: // queue full → drop (best-effort enrichment)
-		log.Printf("[enrich] 队列已满，丢弃任务 kind=%d id=%d", j.kind, j.id)
+		log.Printf("[enrich] 대기열 가득 참, 작업 버림 kind=%d id=%d", j.kind, j.id)
 	}
 }
 

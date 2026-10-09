@@ -16,7 +16,7 @@ func TestInterceptDetails(t *testing.T) {
 	t.Cleanup(func() { _ = d.Close() })
 	create := func(t *testing.T, audit *InterceptAudit) int64 {
 		t.Helper()
-		id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{"path":"report.md"}`), "[模型] 확인 필요", audit)
+		id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{"path":"report.md"}`), "[모델] 확인 필요", audit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -112,8 +112,37 @@ func TestInterceptDetails(t *testing.T) {
 			t.Fatal("timeout action lost")
 		}
 	})
+	t.Run("decision source from reason prefix", func(t *testing.T) {
+		// 규칙이 없는 행의 출처는 이유 접두사로 정한다. [模型]은 #110 이전 옛 접두사다.
+		for _, tc := range []struct{ name, reason, want string }{
+			{"current prefix", "[모델] 확인 필요", "model"},
+			{"pre-110 prefix", "[模型] 需要确认", "model"},
+			{"no prefix", "확인 필요", "unknown"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{}`), tc.reason)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _, _ = d.Exec(`DELETE FROM intercept_pending WHERE id=$1`, id) })
+				var stored string
+				if err := d.QueryRow(`SELECT decision_source FROM intercept_pending WHERE id=$1`, id).Scan(&stored); err != nil {
+					t.Fatal(err)
+				}
+				if stored != tc.want {
+					t.Fatalf("decision_source = %q, 기대값 %q", stored, tc.want)
+				}
+			})
+		}
+	})
 	t.Run("archive compatibility", func(t *testing.T) {
-		for _, legacy := range []bool{true, false} {
+		// legacyReason 이 비어 있지 않으면 decision_source 와 audit 가 없는 옛 보관본 행을 만든다.
+		for _, tc := range []struct{ name, legacyReason string }{
+			{"legacy current prefix", "[모델] 확인 필요"},
+			{"legacy pre-110 prefix", "[模型] 需要确认"},
+			{"current", ""},
+		} {
+			legacy := tc.legacyReason != ""
 			id := create(t, &InterceptAudit{InitialAction: "ask", ExecutionStatus: "not_started"})
 			var raw []byte
 			if err := d.QueryRow(`SELECT row_to_json(ip) FROM intercept_pending ip WHERE id=$1`, id).Scan(&raw); err != nil {
@@ -126,6 +155,7 @@ func TestInterceptDetails(t *testing.T) {
 			if legacy {
 				delete(row, "audit")
 				delete(row, "decision_source")
+				row["reason"] = tc.legacyReason
 			}
 			archived, _ := json.Marshal([]map[string]any{row})
 			tx, err := d.Begin()
@@ -137,7 +167,7 @@ func TestInterceptDetails(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := restoreInterceptRows(tx, archived); err != nil {
-				t.Fatalf("legacy=%t: %v", legacy, err)
+				t.Fatalf("%s: %v", tc.name, err)
 			}
 			var status, source string
 			var auditJSON []byte
@@ -145,7 +175,7 @@ func TestInterceptDetails(t *testing.T) {
 				t.Fatal(err)
 			}
 			if status != "timeout" || source != "model" {
-				t.Fatalf("restored %s/%s", status, source)
+				t.Fatalf("%s: 복원 결과 = %s/%s, 기대값 timeout/model", tc.name, status, source)
 			}
 			if legacy && len(auditJSON) > 0 {
 				t.Fatal("fabricated legacy audit")
