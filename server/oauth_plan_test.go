@@ -49,7 +49,7 @@ func listedOAuth(t *testing.T, f *oauthFixture) *LLMProfileOAuthDTO {
 	return nil
 }
 
-// TestOAuthRefreshStoresPlanAndListShowsIt 는 갱신으로 받은 플랜이 저장되고 목록 DTO 에 보이며,
+// TestOAuthRefreshStoresPlanAndListShowsIt 는 갱신으로 받은 플랜이 저장되고 목록 DTO에 보이며,
 // 레지스트리가 없으면 플랜도 빠지는지 본다.
 func TestOAuthRefreshStoresPlanAndListShowsIt(t *testing.T) {
 	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +72,7 @@ func TestOAuthRefreshStoresPlanAndListShowsIt(t *testing.T) {
 		t.Fatalf("oauth state before refresh = %+v, want plan plus", state)
 	}
 
-	// 만료가 5분 안이라 Token 이 곧바로 갱신한다.
+	// 만료가 5분 안이라 Token이 곧바로 갱신한다.
 	if _, _, err := f.reg.source(f.profile.ID).Token(context.Background()); err != nil {
 		t.Fatalf("Token: %v", err)
 	}
@@ -87,15 +87,15 @@ func TestOAuthRefreshStoresPlanAndListShowsIt(t *testing.T) {
 		t.Fatalf("oauth state after refresh = %+v, want plan pro", state)
 	}
 
-	f.s.oauth = nil // oauth.key 를 쓰지 못해 레지스트리가 없는 서버
+	f.s.oauth = nil // oauth.key를 쓰지 못해 레지스트리가 없는 서버
 	if state := listedOAuth(t, f); state == nil || state.Connected || state.Plan != "" {
 		t.Fatalf("oauth state without registry = %+v, want disconnected without plan", state)
 	}
 	assertNoTokens(t, "logs", logs.String(), "rotated-refresh-token-issue48")
 }
 
-// TestSaveProfileOAuthSwitchSurvivesCanceledRequest 는 요청 ctx 가 끊겨도 API 키 프로필을 OAuth 로
-// 바꾸는 저장이 키를 남기지 않고 끝나는지 본다. 예전에는 키 지우기만 요청 ctx 를 써서 500 과 함께
+// TestSaveProfileOAuthSwitchSurvivesCanceledRequest 는 요청 ctx가 끊겨도 API 키 프로필을 OAuth로
+// 바꾸는 저장이 키를 남기지 않고 끝나는지 본다. 예전에는 키 지우기만 요청 ctx를 써서 500과 함께
 // 키가 남았다.
 func TestSaveProfileOAuthSwitchSurvivesCanceledRequest(t *testing.T) {
 	f := newOAuthFixture(t, nil)
@@ -128,8 +128,8 @@ func TestSaveProfileOAuthSwitchSurvivesCanceledRequest(t *testing.T) {
 	}
 }
 
-// TestLegacySetLLMRejectsOAuthDefaultProfile 는 레거시 POST /api/llm 이 chatgpt_oauth 인 "default"
-// 프로필을 API 키 설정으로 덮지 않고 400 을 돌려주는지 본다.
+// TestLegacySetLLMRejectsOAuthDefaultProfile 는 레거시 POST /api/llm이 chatgpt_oauth 인 "default"
+// 프로필을 API 키 설정으로 덮지 않고 400을 돌려주는지 본다.
 func TestLegacySetLLMRejectsOAuthDefaultProfile(t *testing.T) {
 	f := newOAuthFixture(t, nil)
 	var others int
@@ -163,7 +163,7 @@ func TestLegacySetLLMRejectsOAuthDefaultProfile(t *testing.T) {
 func TestPoolMemberShowsOAuthFormat(t *testing.T) {
 	f := newOAuthFixture(t, nil)
 	f.connect(t, time.Now().Add(time.Hour))
-	// 픽스처는 형식을 일부러 anthropic 으로 저장한다.
+	// 픽스처는 형식을 일부러 anthropic으로 저장한다.
 	m := f.s.poolMember(f.profile, 0)
 	if m == nil {
 		t.Fatal("connected OAuth profile did not become a pool member")

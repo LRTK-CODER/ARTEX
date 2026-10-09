@@ -9,9 +9,9 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// testDB 는 DB 연결을 열고, PG 를 쓸 수 없으면 테스트를 건너뛴다.
-// 닫기를 t.Cleanup 으로 먼저 등록해 가장 나중에 돌게 한다. 호출자가 defer 로 닫으면
-// 함수가 끝날 때 먼저 닫혀, 뒤에 도는 t.Cleanup 의 데이터 정리가 닫힌 연결에서 실패한다.
+// testDB 는 DB 연결을 열고, PG를 쓸 수 없으면 테스트를 건너뛴다.
+// 닫기를 t.Cleanup으로 먼저 등록해 가장 나중에 돌게 한다. 호출자가 defer로 닫으면
+// 함수가 끝날 때 먼저 닫혀, 뒤에 도는 t.Cleanup의 데이터 정리가 닫힌 연결에서 실패한다.
 func testDB(t *testing.T) *db.DB {
 	t.Helper()
 	dsn, _, err := db.DSN()

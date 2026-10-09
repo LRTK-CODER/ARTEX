@@ -110,7 +110,7 @@ import type {
   WorkspaceListing,
 } from "@/lib/types";
 
-// ApiError 는 서버 오류 응답이다. 화면 문구를 서버 문구 대신 code로 고르는 곳(ChatGPT 로그인)이 쓴다.
+// ApiError는 서버 오류 응답이다. 화면 문구를 서버 문구 대신 code로 고르는 곳(ChatGPT 로그인)이 쓴다.
 // code가 없는 오류(예: DB 미연결 503)도 있으므로 code는 선택이다.
 export class ApiError extends Error {
   constructor(
@@ -1197,8 +1197,8 @@ export const api = {
     mcps?: string[];
     instructions?: string;
   }) => post<{ name: string }>("/skills", s),
-  // uploadSkill installs a skill from a .zip (multipart). Surfaces the backend
-  // error text (e.g. 已存在 / 缺少 SKILL.md) so the UI can show a precise message.
+  // uploadSkill은 .zip(multipart)으로 스킬을 설치한다. 백엔드 오류 문구(예: '압축 파일에 SKILL.md가
+  // 없습니다')를 그대로 올려 화면이 정확한 메시지를 보이게 한다.
   uploadSkill: async (file: File, overwrite = false): Promise<{ name: string; files: number }> => {
     if (MOCK) return { name: file.name.replace(/\.zip$/i, ""), files: 1 };
     const fd = new FormData();

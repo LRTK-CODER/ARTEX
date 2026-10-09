@@ -14,7 +14,7 @@ import (
 )
 
 func TestPKCE(t *testing.T) {
-	// RFC 7636 부록 B 의 예시 난수와 결과.
+	// RFC 7636 부록 B의 예시 난수와 결과.
 	octets := []byte{116, 24, 223, 180, 151, 153, 224, 37, 79, 250, 96, 125, 216, 173, 187, 186,
 		22, 212, 37, 77, 105, 214, 191, 240, 91, 88, 5, 88, 83, 132, 141, 121}
 	tests := []struct {
@@ -161,10 +161,10 @@ func TestTokenErrorHidesSecrets(t *testing.T) {
 	}{
 		{"error 문자열", http.StatusBadRequest, `{"error":"invalid_grant","error_description":"token ` + secret + ` bad","refresh_token":"` + secret + `"}`, ErrorCodeInvalidGrant},
 		{"error 객체", http.StatusUnauthorized, `{"error":{"code":"refresh_token_reused","message":"` + secret + `"}}`, ErrorCodeRefreshTokenReused},
-		{"error 가 null 이고 최상위 code", http.StatusUnauthorized, `{"error":null,"code":"refresh_token_reused","detail":"` + secret + `"}`, ErrorCodeRefreshTokenReused},
+		{"error가 null 이고 최상위 code", http.StatusUnauthorized, `{"error":null,"code":"refresh_token_reused","detail":"` + secret + `"}`, ErrorCodeRefreshTokenReused},
 		{"최상위 code", http.StatusUnauthorized, `{"code":"refresh_token_expired","detail":"` + secret + `"}`, ErrorCodeRefreshTokenExpired},
 		{"코드 자리에 비밀값", http.StatusBadRequest, `{"error":"` + secret + ` leaked here"}`, ""},
-		{"JSON 이 아닌 본문", http.StatusBadGateway, `<html>` + secret + `</html>`, ""},
+		{"JSON이 아닌 본문", http.StatusBadGateway, `<html>` + secret + `</html>`, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -205,7 +205,7 @@ func TestTokenResponseErrorsHideSecrets(t *testing.T) {
 		body string
 	}{
 		{"깨진 JSON", `{"access_token":"` + secret},
-		{"JWT 가 아닌 access token", `{"access_token":"` + secret + `","refresh_token":"r"}`},
+		{"JWT가 아닌 access token", `{"access_token":"` + secret + `","refresh_token":"r"}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -226,7 +226,7 @@ func TestStringHidesSecrets(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	tokens := Tokens{IDToken: "id-SECRET", AccessToken: "access-SECRET", RefreshToken: "refresh-SECRET", AccountID: "acct-1", ExpiresAt: now.Add(time.Hour)}
 	store := &memoryStore{tokens: tokens, hasTokens: true}
-	// 만료 전 토큰이라 갱신하지 않는다. Issuer 는 닿지 않는 주소로 두어 실제 서버를 부를 일이 없게 한다.
+	// 만료 전 토큰이라 갱신하지 않는다. Issuer는 닿지 않는 주소로 두어 실제 서버를 부를 일이 없게 한다.
 	src := NewTokenSource(&Client{Issuer: "http://127.0.0.1:1"}, store, func() time.Time { return now })
 	if _, _, err := src.Token(context.Background()); err != nil {
 		t.Fatalf("Token: %v", err)
@@ -256,7 +256,7 @@ func TestRedirectIsNotFollowed(t *testing.T) {
 	}))
 	t.Cleanup(issuer.Close)
 
-	// 기본 HTTP 클라이언트를 쓰는 경로다(HTTPClient 를 넘기지 않는다).
+	// 기본 HTTP 클라이언트를 쓰는 경로다(HTTPClient를 넘기지 않는다).
 	c := &Client{Issuer: issuer.URL}
 	_, err := c.Refresh(context.Background(), "refresh-SECRET")
 	var tokenErr *TokenError
@@ -281,7 +281,7 @@ func TestResponseSizeLimit(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// 공백은 JSON 으로 유효해서, 상한이 없으면 큰 응답도 정상으로 읽힌다.
+				// 공백은 JSON으로 유효해서, 상한이 없으면 큰 응답도 정상으로 읽힌다.
 				fmt.Fprintf(w, `{"access_token":%q}%s`, access, strings.Repeat(" ", tc.padding))
 			}))
 			t.Cleanup(srv.Close)

@@ -9,7 +9,7 @@ import (
 var ErrInterceptTaskDeleted = errors.New("작업이 삭제됐거나 보관됐습니다")
 var ErrInterceptSessionDeleted = errors.New("해당 세션이나 실행 기록이 삭제됐거나 없습니다")
 
-var ErrInterceptExecutionUnavailable = errors.New("하나로 특정할 수 있는 원래 도구 호출을 찾지 못했습니다. 기록이 삭제됐거나, 이전 승인 심사가 연결 ID를 저장하지 않았을 수 있습니다")
+var ErrInterceptExecutionUnavailable = errors.New("하나로 특정할 수 있는 원래 도구 호출을 찾지 못했습니다. 기록이 삭제됐거나, 이전 승인 심사가 연결 ID를 저장하지 않았을 수 있습니다.")
 
 // InterceptExecution is a navigation target read from original activity rows.
 // It is not model context and never falls back to matching command text.

@@ -51,7 +51,7 @@ function ErrorText({ message }: { message: string }) {
   );
 }
 
-// DeviceLogin 은 디바이스 코드를 받아 보여 주고, 끝날 때까지 상태를 폴링한다.
+// DeviceLogin은 디바이스 코드를 받아 보여 주고, 끝날 때까지 상태를 폴링한다.
 // 탭을 바꿔도 마운트된 채 폴링을 이어 간다. 대화 상자가 닫히면 언마운트되며 폴링도 멈춘다.
 // 만료는 브라우저 시계로 판정하지 않고 서버의 expired 상태를 따른다.
 function DeviceLogin({ profileId, onConnected }: { profileId: number; onConnected: () => void }) {
@@ -142,7 +142,7 @@ function DeviceLogin({ profileId, onConnected }: { profileId: number; onConnecte
   );
 }
 
-// PasteLogin 은 로그인 주소를 새 탭으로 열게 하고, 로그인 뒤 브라우저가 연결하지 못한
+// PasteLogin은 로그인 주소를 새 탭으로 열게 하고, 로그인 뒤 브라우저가 연결하지 못한
 // localhost 콜백 주소를 붙여넣어 받는다.
 function PasteLogin({
   profileId,
@@ -177,7 +177,7 @@ function PasteLogin({
     // 복사할 때 붙은 앞뒤 공백 때문에 callback_url_mismatch가 나지 않게 다듬는다.
     const url = callbackUrl.trim();
     if (!url) {
-      setError("콜백 주소를 붙여넣으세요.");
+      setError("콜백 주소를 붙여넣으세요");
       return;
     }
     // 주소에 일회용 code·state가 들어 있으므로 보내는 즉시 입력란에서 지운다.
@@ -249,7 +249,7 @@ function PasteLogin({
   );
 }
 
-// SubscriptionAccount 는 구독 프로필의 연결 상태를 보이고 제공자별 로그인·연결 해제를 연다.
+// SubscriptionAccount는 구독 프로필의 연결 상태를 보이고 제공자별 로그인·연결 해제를 연다.
 // 로그인 API가 저장된 프로필 id를 받으므로, 아직 그 방식으로 저장되지 않았으면 안내만 한다.
 export function SubscriptionAccount({
   profile,

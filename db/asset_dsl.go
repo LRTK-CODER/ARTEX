@@ -549,7 +549,7 @@ func (s *AssetStore) QueryDSL(dsl, typ string, taskID int64, limit, offset int) 
 	return assets, nil
 }
 
-// QueryDSLInScope는 QueryDSL을 taskID 작업(과 그 직접 출처 작업)이 선언한 범위에
+// QueryDSLInScope 는 QueryDSL을 taskID 작업(과 그 직접 출처 작업)이 선언한 범위에
 // 속하는 자산으로 제한한다. 값이 글자대로 같은지가 아니라 소속으로 판단한다. 즉
 // root_domain 범위는 그 아래의 하위 도메인·서비스·엔드포인트를 모두 돌려준다.
 // 에이전트가 쓰는 list_assets 경로라서, 에이전트는 공유 자산 저장소 전체가 아니라

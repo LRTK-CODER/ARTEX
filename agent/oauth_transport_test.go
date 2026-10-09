@@ -21,7 +21,7 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// *llmauth.TokenSource 가 agent 의 좁은 인터페이스를 만족하는지 컴파일 시점에 확인한다.
+// *llmauth.TokenSource가 agent의 좁은 인터페이스를 만족하는지 컴파일 시점에 확인한다.
 var _ OAuthTokenSource = (*llmauth.TokenSource)(nil)
 
 const (
@@ -61,8 +61,8 @@ func (f *fakeTokens) Invalidate(staleAccessToken string) {
 	}
 }
 
-// codexServer 는 Codex 백엔드처럼 받은 요청을 기록하고, statuses 의 상태를 차례로 돌려준다.
-// statuses 가 다 떨어지면 200 과 sseBody 를 준다.
+// codexServer 는 Codex 백엔드처럼 받은 요청을 기록하고, statuses의 상태를 차례로 돌려준다.
+// statuses가 다 떨어지면 200과 sseBody를 준다.
 type codexServer struct {
 	mu       sync.Mutex
 	statuses []int
@@ -114,7 +114,7 @@ func newOAuthProvider(t *testing.T, baseURL string, tokens OAuthTokenSource) llm
 	c := ConfigFrom("openai-responses", "gpt-5-codex", baseURL, "", "")
 	c.AuthType = db.AuthChatGPTOAuth
 	c.OAuthTokens = tokens
-	c.Retry.ConnectAttempts = -1 // Norma 재시도를 끄고 이 transport 의 재시도만 센다
+	c.Retry.ConnectAttempts = -1 // Norma 재시도를 끄고 이 transport의 재시도만 센다
 	prov, err := c.NewProvider()
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
@@ -135,7 +135,7 @@ func streamAll(ctx context.Context, prov llm.Provider, req llm.CompletionRequest
 }
 
 // TestOAuthProviderStreamsTextAndToolCall 은 Norma 실제 provider(FormatOpenAIResponses)를
-// 인증 transport 와 함께 SSE 서버에 붙여, 헤더·본문·스트리밍 결과를 확인한다.
+// 인증 transport와 함께 SSE 서버에 붙여, 헤더·본문·스트리밍 결과를 확인한다.
 func TestOAuthProviderStreamsTextAndToolCall(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", fakeEnvAPIKey)
 	cases := []struct {
@@ -202,7 +202,7 @@ func TestOAuthProviderStreamsTextAndToolCall(t *testing.T) {
 	}
 }
 
-// TestOAuthTransportRewritesCloneOnly 는 거부 필드를 빼고 stream:true 를 넣되 원본 요청은
+// TestOAuthTransportRewritesCloneOnly 는 거부 필드를 빼고 stream:true를 넣되 원본 요청은
 // 그대로 두는지 확인한다.
 func TestOAuthTransportRewritesCloneOnly(t *testing.T) {
 	const original = `{"model":"m","input":[],"stream":false,"store":true,"max_output_tokens":64,"max_tokens":64,"metadata":{"k":"v"}}`
@@ -300,7 +300,7 @@ func requestBodyJSON(t *testing.T, body map[string]any) string {
 }
 
 // TestOAuthLoginRequiredIsHardFailure 는 다시 로그인해야 하는 토큰 오류가 서버를 부르지 않고
-// 401 로 올라가, Norma 가 재시도하지 않고 llmpool 이 hard failure 로 보는지 확인한다.
+// 401로 올라가, Norma가 재시도하지 않고 llmpool이 hard failure로 보는지 확인한다.
 func TestOAuthLoginRequiredIsHardFailure(t *testing.T) {
 	cases := []struct {
 		name string
@@ -348,7 +348,7 @@ func TestOAuthLoginRequiredIsHardFailure(t *testing.T) {
 }
 
 // TestOAuthTransientTokenErrorIsReturned 는 갱신 서버 장애처럼 로그인과 무관한 토큰 오류는
-// 서버를 부르지 않고 오류로 올리는지 확인한다(Norma 의 일시 오류 재시도에 맡긴다).
+// 서버를 부르지 않고 오류로 올리는지 확인한다(Norma의 일시 오류 재시도에 맡긴다).
 func TestOAuthTransientTokenErrorIsReturned(t *testing.T) {
 	refreshFailed := &llmauth.TokenError{Op: "refresh", StatusCode: http.StatusBadGateway}
 	base := &fakeRT{}
@@ -439,8 +439,8 @@ func TestNewProviderRejectsInvalidOAuthConfig(t *testing.T) {
 	}
 }
 
-// TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv 는 BaseURL 이 빈 OAuth 프로필이 OPENAI_BASE_URL
-// 환경 변수의 주소로 토큰을 보내지 않는지 확인한다. Norma 는 빈 BaseURL 을 그 변수로 채운다.
+// TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv 는 BaseURL이 빈 OAuth 프로필이 OPENAI_BASE_URL
+// 환경 변수의 주소로 토큰을 보내지 않는지 확인한다. Norma는 빈 BaseURL을 그 변수로 채운다.
 // 모든 요청을 테스트 프록시로 보내 실제 서버에는 닿지 않게 하고, 프록시가 본 대상과 헤더를 검사한다.
 func TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "http://relay.example.test/v1")
@@ -454,7 +454,7 @@ func TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv(t *testing.T) {
 			authorizations = append(authorizations, a)
 		}
 		mu.Unlock()
-		// CONNECT 를 거절해 TLS 와 그 안의 헤더가 나가지 않게 한다.
+		// CONNECT를 거절해 TLS와 그 안의 헤더가 나가지 않게 한다.
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer proxy.Close()
@@ -481,8 +481,8 @@ func TestOAuthEmptyBaseURLIgnoresOpenAIBaseURLEnv(t *testing.T) {
 	}
 }
 
-// TestAPIKeyEmptyBaseURLFollowsOpenAIBaseURLEnv 는 빈 BaseURL 을 Codex 주소로 채우는 규칙이 OAuth
-// 프로필에만 적용되는지 확인한다. API 키 프로필까지 채우면 API 키가 chatgpt.com 으로 나간다.
+// TestAPIKeyEmptyBaseURLFollowsOpenAIBaseURLEnv 는 빈 BaseURL을 Codex 주소로 채우는 규칙이 OAuth
+// 프로필에만 적용되는지 확인한다. API 키 프로필까지 채우면 API 키가 chatgpt.com으로 나간다.
 // 평문 HTTP 중계 주소를 써서 테스트 프록시가 대상과 헤더를 그대로 보게 하고, 실제 서버에는 닿지 않는다.
 func TestAPIKeyEmptyBaseURLFollowsOpenAIBaseURLEnv(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "http://relay.example.test/v1")

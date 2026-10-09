@@ -282,7 +282,7 @@ function TaskDetailInner() {
     try {
       await api.controlTask(id, next ? "pause" : "resume");
       setPaused(next);
-      toast.success(next ? "탐색을 일시 중지했습니다." : "탐색을 재개했습니다.");
+      toast.success(next ? "탐색을 일시 중지했습니다" : "탐색을 재개했습니다");
     } catch (e) {
       toast.error("작업 상태를 바꾸지 못했습니다: " + (e as Error).message);
     }
@@ -293,7 +293,7 @@ function TaskDetailInner() {
     setArchiving(true);
     try {
       await api.archiveTask(task.id);
-      toast.success("작업을 보관 대기열에 넣었습니다.");
+      toast.success("작업을 보관 대기열에 넣었습니다");
       router.push("/function/tasks");
     } catch (error) {
       toast.error(`작업을 보관하지 못했습니다: ${(error as Error).message}`);

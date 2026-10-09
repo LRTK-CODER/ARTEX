@@ -37,7 +37,7 @@ func gone(t *testing.T, es *ExplorationStore, id int64) bool {
 	return n == nil
 }
 
-// TestSoftDeleteIntent는 소프트 삭제가 deleted와 delete_reason을 설정하고 노드는 남기는지 확인한다.
+// TestSoftDeleteIntent 는 소프트 삭제가 deleted와 delete_reason을 설정하고 노드는 남기는지 확인한다.
 func TestSoftDeleteIntent(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
@@ -84,7 +84,7 @@ func TestSoftDeleteIntent(t *testing.T) {
 	}
 }
 
-// TestHardDeleteCascadesExclusiveDescendants는 영구 삭제가 경로를 따라 독점 자손을 잎까지 연쇄 삭제하는지 확인한다.
+// TestHardDeleteCascadesExclusiveDescendants 는 영구 삭제가 경로를 따라 독점 자손을 잎까지 연쇄 삭제하는지 확인한다.
 func TestHardDeleteCascadesExclusiveDescendants(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
@@ -121,7 +121,7 @@ func TestHardDeleteCascadesExclusiveDescendants(t *testing.T) {
 	}
 }
 
-// TestHardDeletePreservesSharedAndGoal은 영구 삭제가 공유 자손(다른 부모가 있음)과 목표를 남기는지 확인한다.
+// TestHardDeletePreservesSharedAndGoal 은 영구 삭제가 공유 자손(다른 부모가 있음)과 목표를 남기는지 확인한다.
 func TestHardDeletePreservesSharedAndGoal(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {

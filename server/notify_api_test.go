@@ -52,7 +52,7 @@ func newNotifyFixture(t *testing.T) *notifyFixture {
 	s, _, request := trafficEvidenceServer(t)
 	pg := s.m.pg
 
-	// task를 직접 만든다. 공용 픽스처 trafficEvidenceServer가 만든 task로는 exploration id를 얻을 수 없는데,
+	// task 를 직접 만든다. 공용 픽스처 trafficEvidenceServer가 만든 task로는 exploration id를 얻을 수 없는데,
 	// 취약점을 기록하려면 그 값이 있어야 한다.
 	task, err := s.m.CreateTask("알림 발송 테스트", "알림 발송 동작 검증", nil, 0, 0)
 	if err != nil {

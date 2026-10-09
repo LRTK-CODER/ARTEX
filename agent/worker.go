@@ -34,9 +34,9 @@ import (
 // independent of the traffic-recording MITM proxy — set it when the search endpoint
 // is only reachable via a VPN/SOCKS proxy. Empty = direct.
 //
-// deepseek 백엔드는 나머지 셋과 성질이 다르다: DeepSeek 에는 바로 호출할 수 있는 검색 API 가
+// deepseek 백엔드는 나머지 셋과 성질이 다르다: DeepSeek 에는 바로 호출할 수 있는 검색 API가
 // 없고, 검색은 그 Anthropic 호환 messages API 안에만 있다(web_search_20250305 server tool).
-// 그래서 검색 한 번이 모델 호출 한 번을 쓰고, 검색 요청은 DeepSeek 서버가 보낸다 — 로컬 Proxy 를
+// 그래서 검색 한 번이 모델 호출 한 번을 쓰고, 검색 요청은 DeepSeek 서버가 보낸다 — 로컬 Proxy를
 // 거치지 않고 트래픽에도 남지 않는다.
 type WebSearchOpts struct {
 	Enabled   bool
@@ -223,9 +223,9 @@ func proxyEnv(proxyAddr, caCert string) []string {
 	return env
 }
 
-// workerDefaultTmpl 은 worker 시스템 프롬프트의 내장 편집 가능 본문(섹션 [A])이며 agent_prompts 에
+// workerDefaultTmpl 은 worker 시스템 프롬프트의 내장 편집 가능 본문(섹션 [A])이며 agent_prompts에
 // 씨앗으로 들어간다. trafficTool 블록과 중간 산출물 출력 규약은 여기에 없다 — 코드 소유라
-// workerSystem 이 렌더링 뒤에 붙인다(섹션 [B]/[C]). 그래서 DB 본문을 편집해도 그 둘을 떼어낼 수 없다.
+// workerSystem이 렌더링 뒤에 붙인다(섹션 [B]/[C]). 그래서 DB 본문을 편집해도 그 둘을 떼어낼 수 없다.
 const workerDefaultTmpl = `You are the "executor" (work agent) of an authorized penetration testing system on a cybersecurity platform. You are assigned [one intent] (a one-sentence exploration direction); your sole responsibility: **complete this one intent, write the findings back into the knowledge graph, then stop and return.**
 
 **Boundaries (red lines)**:
@@ -322,9 +322,9 @@ func renderIntentTask(intent *db.Node) string {
 // purpose is letting the worker read context (existing facts/assets/hints)
 // so it avoids redundant work and doesn't re-derive what others already found.
 func renderWorkerGraphOverview(data map[string]any) string {
-	// coverage 는 규획자가 "어떤 유형이 덜 테스트됐나 / 범위를 넓힐까"를 판단하는 신호로,
-	// "받은 의도만 하고 미커버 지점을 쫓지 말라"는 worker 의 직무 경계와 어긋난다 → worker 뷰에서 뺀다.
-	// data 는 이번 worker 전용의 새 map 이라 키를 지워도 planner 에 영향이 없다.
+	// coverage는 규획자가 "어떤 유형이 덜 테스트됐나 / 범위를 넓힐까"를 판단하는 신호로,
+	// "받은 의도만 하고 미커버 지점을 쫓지 말라"는 worker의 직무 경계와 어긋난다 → worker 뷰에서 뺀다.
+	// data는 이번 worker 전용의 새 map 이라 키를 지워도 planner에 영향이 없다.
 	delete(data, "coverage")
 	b, err := json.Marshal(data)
 	if err != nil {
@@ -368,12 +368,12 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	}
 	tsx.SetOwnerNode(intent.ID)         // assets this worker discovers anchor to its intent → visible to the task
 	tsx.SetEnrich(enr)                  // async DNS/HTTP auto-completion for assets this worker writes
-	tsx.SetNotifyFinding(notifyFinding) // report_finding 가 저장될 때 그 자리에서 planner 를 깨운다. "어느 의도 + finding"을 함께 전한다
+	tsx.SetNotifyFinding(notifyFinding) // report_finding가 저장될 때 그 자리에서 planner를 깨운다. "어느 의도 + finding"을 함께 전한다
 	// base = built-in worker tools ∪ host tools (traffic) ∪ default tools (incl. Bash);
 	// then augment with the agent's visible skills/MCP. During the SDK settlement
 	// phase, Bash is hidden via Settlement.DisabledTools (no local gating needed).
 	base := append(tsx.WorkerTools(), w.extraTools...)
-	// worker 에는 일부러 MultiEdit/Glob/Grep 을 주지 않는다: 파일 정밀 수정은 Edit 로, 검색은
+	// worker 에는 일부러 MultiEdit/Glob/Grep을 주지 않는다: 파일 정밀 수정은 Edit로, 검색은
 	// Bash(grep/find)로 한다. 도구 면을 좁혀 가치 낮은 호출을 줄인다. 나머지 SDK 기본 도구
 	// (Read/Write/Edit/LS/Bash/Sleep)는 그대로 둔다.
 	base = append(base, defaultToolsExcept("MultiEdit", "Glob", "Grep")...)
@@ -381,14 +381,14 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	tools, def, cleanup := AugmentTools(ctx, "worker", base)
 	defer cleanup()
 
-	// 의도는 worker 의 [유일한 직무이자 run 전체를 관통하는 불변식]이다 → 시작 지시, 의도가 지정한
-	// 목표 자산 원본 데이터와 함께 system prompt 에 넣는다: system 은 run 마다 다시 조립되어 절대
-	// compaction 에 눌리지 않으므로, 긴 run 에서도 의도가 늘 있고, 이어서 돌 때도 transcript 역사가
-	// 그 첫 메시지를 보존했는지에 기대지 않는다. 대가는 system 에 의도별 가변 데이터가 섞여 의도 간
+	// 의도는 worker의 [유일한 직무이자 run 전체를 관통하는 불변식]이다 → 시작 지시, 의도가 지정한
+	// 목표 자산 원본 데이터와 함께 system prompt에 넣는다: system은 run 마다 다시 조립되어 절대
+	// compaction에 눌리지 않으므로, 긴 run 에서도 의도가 늘 있고, 이어서 돌 때도 transcript 역사가
+	// 그 첫 메시지를 보존했는지에 기대지 않는다. 대가는 system에 의도별 가변 데이터가 섞여 의도 간
 	// 캐시 재사용을 잃는 것이다. 의도적인 맞바꿈이다(의도를 잃는 쪽이 토큰을 아끼는 것보다 훨씬 심각하다).
-	// planner 가 "태세 블록을 user turn 에 둔 것"과 갈라지는 것도 의도적이다: planner 는 의도를 만드는
-	// 쪽이라 단일 mandate 가 없고, worker 는 있다. [전역 태세 overview]만 시작 user 메시지에 남긴다 —
-	// 그것은 격하 가능하고 stale 를 견디며 눌려도 무방하다.
+	// planner가 "태세 블록을 user turn에 둔 것"과 갈라지는 것도 의도적이다: planner는 의도를 만드는
+	// 쪽이라 단일 mandate가 없고, worker는 있다. [전역 태세 overview]만 시작 user 메시지에 남긴다 —
+	// 그것은 격하 가능하고 stale를 견디며 눌려도 무방하다.
 	// 이번 의도의 전용 작업 디렉터리 <workDir>/tasks/<taskID>/i<intentID> 는 엔진 쪽에서 먼저 만든다.
 	runDir := ensureRunDir(w.workDir, taskID, intent.ID)
 	// The run-wide intent is not the current tool action. Do not forward it or
@@ -397,9 +397,9 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	overview := renderWorkerGraphOverview(tsx.graphOverviewData())
 	sysBody := workerSystem(w.proxyAddr, w.proxyCACert, w.workDir, runDir)
 	if w.wantConstraints() {
-		sysBody += constraintBlock(ts) // 작업 제약 조건(있으면)을 시스템 프롬프트에 주입한다. worker 는 실행 때 엄격히 지킨다
+		sysBody += constraintBlock(ts) // 작업 제약 조건(있으면)을 시스템 프롬프트에 주입한다. worker는 실행 때 엄격히 지킨다
 	}
-	// 의도 블록 → 의도가 지정한 자산 블록 → 시작 지시 순으로 system 끝에 이어 붙인다(constraintBlock 과 같은 방식).
+	// 의도 블록 → 의도가 지정한 자산 블록 → 시작 지시 순으로 system 끝에 이어 붙인다(constraintBlock과 같은 방식).
 	sysBody += renderIntentTask(intent)
 	if as != nil {
 		if ids := intentAssetIDs(intent); len(ids) > 0 {
@@ -407,8 +407,8 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 				if b, err := json.Marshal(assets); err == nil {
 					sysBody += "\n\nTarget assets corresponding to this intent's asset_ids:\n" + string(b)
 				}
-				// 이 의도가 분명히 겨냥하는 자산들 → 작업 테스트 범위에 자동 편입한다(insertAssets 와 같은
-				// 보수적 세분화 수준). upsertTaskScope 의 ON CONFLICT DO NOTHING + uq_task_scope 유니크 인덱스가
+				// 이 의도가 분명히 겨냥하는 자산들 → 작업 테스트 범위에 자동 편입한다(insertAssets와 같은
+				// 보수적 세분화 수준). upsertTaskScope의 ON CONFLICT DO NOTHING + uq_task_scope 유니크 인덱스가
 				// 중복 추가를 막는다. 재실행/재시도도 똑같이 멱등 no-op 이다.
 				// 자산 커버리지 기능이 꺼져 있으면 테스트 범위(분모)를 더 쌓지 않는다.
 				if coverageEnabled {
@@ -421,7 +421,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	}
 	sysBody += "\n\nBegin executing the intent above: do only it, produce only facts, assets, and findings, and stop when done."
 	system, boundary := deferredSystem(sysBody, def)
-	// 작업 단위 deadline(ctx 로 주입)이 이 run 의 벽시계 예산을 좁히고 마무리 문구를 정한다(taskclock.go 참고).
+	// 작업 단위 deadline(ctx로 주입)이 이 run의 벽시계 예산을 좁히고 마무리 문구를 정한다(taskclock.go 참고).
 	tc := taskClockFrom(ctx)
 	maxDur, clamped := clampMaxDuration(tc.DeadlineUnix, w.runTimeout)
 	settle := wrapupSettlement("worker", []string{"Bash"})
@@ -436,13 +436,13 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		// WebFetch 는 기록 프록시를 타므로 그 HTTP 가 curl 과 똑같이 흔적으로 남는다. 프록시 CA 를
-		// 실어 MITM 이 재서명한 HTTPS 인증서가 [정상적으로 검증을 통과]하게 한다(검증을 끄는 게 아니다). 프록시가 비면 직접 연결한다.
+		// WebFetch는 기록 프록시를 타므로 그 HTTP가 curl과 똑같이 흔적으로 남는다. 프록시 CA를
+		// 실어 MITM이 재서명한 HTTPS 인증서가 [정상적으로 검증을 통과]하게 한다(검증을 끄는 게 아니다). 프록시가 비면 직접 연결한다.
 		EnableWebFetch: true,
 		WebFetchProxy:  w.proxyAddr,
 		WebFetchCACert: w.proxyCACert,
-		// 웹 검색(선택). ddgs 는 키가 필요 없다. brave-free 는 BraveKey, tavily 는 TavilyKey 가 필요하다.
-		// WebSearchProxy 는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
+		// 웹 검색(선택). ddgs는 키가 필요 없다. brave-free는 BraveKey, tavily는 TavilyKey가 필요하다.
+		// WebSearchProxy는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
 		EnableWebSearch:       w.webSearch.Enabled,
 		WebSearchBackend:      w.webSearch.Backend,
 		BraveSearchAPIKey:     w.webSearch.BraveKey,
@@ -451,23 +451,23 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		DeepSeekSearchAPIKey:  w.webSearch.DeepSeekAPIKey,
 		DeepSeekSearchModel:   w.webSearch.DeepSeekModel,
 		WebSearchProxy:        w.webSearch.Proxy,
-		// Bash 하위 명령의 HTTP 는 기본으로 기록 프록시를 타고 그 CA 를 신뢰한다(도구에 -x/-k 가 필요 없다).
+		// Bash 하위 명령의 HTTP는 기본으로 기록 프록시를 타고 그 CA를 신뢰한다(도구에 -x/-k가 필요 없다).
 		BashEnv:    proxyEnv(w.proxyAddr, w.proxyCACert),
 		WorkingDir: runDir,
 		MaxTurns:   w.maxTurns, // 0 = unlimited (configurable in agent management)
-		// 벽시계 예산. 회합 경계에서 판정하며 중간에 끊지 않는다. 0 = 제한 없음. 작업 단위 deadline 이 있으면
-		// min(자체 예산, deadline 까지 남은 시간)으로 좁혀, 작업이 시간에 다다랐을 때 이 run 이 자연히 마무리로 들어가게 한다(taskclock.go 참고).
+		// 벽시계 예산. 회합 경계에서 판정하며 중간에 끊지 않는다. 0 = 제한 없음. 작업 단위 deadline이 있으면
+		// min(자체 예산, deadline 까지 남은 시간)으로 좁혀, 작업이 시간에 다다랐을 때 이 run이 자연히 마무리로 들어가게 한다(taskclock.go 참고).
 		MaxDuration: maxDur,
-		// 예산(회합 또는 시간)에 걸리면 → SDK 가 마무리 라운드를 한 번 돈다(Bash 를 숨김). 이미 식별한 것을 써 넣어 어중간한 끝을 막는다.
-		// clamped(작업 deadline 에 좁혀짐)일 때는 PromptByReason 을 쓴다: 시간 초과=작업 시간에 다다름→작업 시간 초과 문구,
-		// 단계=좁혀진 창 안에서 단계가 먼저 소진→per-run 문구로 되돌린다. 비 clamped 면 순수 per-run 을 유지한다.
+		// 예산(회합 또는 시간)에 걸리면 → SDK가 마무리 라운드를 한 번 돈다(Bash를 숨김). 이미 식별한 것을 써 넣어 어중간한 끝을 막는다.
+		// clamped(작업 deadline에 좁혀짐)일 때는 PromptByReason을 쓴다: 시간 초과=작업 시간에 다다름→작업 시간 초과 문구,
+		// 단계=좁혀진 창 안에서 단계가 먼저 소진→per-run 문구로 되돌린다. 비 clamped 면 순수 per-run을 유지한다.
 		Settlement: settle,
 		// large tool output spills to cmd-output/ with a head + pointer (SDK tool.Capture);
 		// full output preserved on disk. 잘림 상한은 SDK 기본값(30000자)을 쓴다.
 		ToolOutputDir: cmdOutDir(runDir),
 		Compaction:    compactionConfig(w.compactionWindow()), // long tool-heavy runs stay within the window
 		Todos:         actool.NewTodoStore(),                  // 세션 단위 임시 할 일(TodoWrite). 순수 계획용이며 나가면 버려진다
-		NonStreaming:  w.nonStreaming(),                       // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		NonStreaming:  w.nonStreaming(),                       // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다
 		MaxTokens:     w.maxTokens(),                          // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}
 	if hooks != nil { // typed-nil guard: only set when concrete (avoids harness panic)
@@ -484,15 +484,15 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 			emit(r)
 		}
 	}
-	// 의도 / 시작 지시 / 의도가 지정한 자산은 이미 system prompt 로 내려갔다(위 sysBody 조립 참고).
+	// 의도 / 시작 지시 / 의도가 지정한 자산은 이미 system prompt로 내려갔다(위 sysBody 조립 참고).
 	// 이 시작 user 메시지는 [전역 태세 overview]만 나른다 — 격하 가능한, 대국을 파악하는 정보라 눌려도 무방하다.
-	// overview 가 드물게 marshal 실패로 비면, 첫 라운드에 빈 user 메시지가 나오지 않도록 시작 문구로 되돌린다.
+	// overview가 드물게 marshal 실패로 비면, 첫 라운드에 빈 user 메시지가 나오지 않도록 시작 문구로 되돌린다.
 	input := overview
 	if strings.TrimSpace(input) == "" {
 		input = "Begin executing the intent assigned in the system prompt: do only it, produce only facts, assets, and findings, and stop when done."
 	}
 
-	// 실험 기능: 켜면 noa 가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
+	// 실험 기능: 켜면 noa가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
 	noaSession := WorkerSessionID(ts.ID(), intent.ID)
 	enableNoa(&opts, w.noaEnabledFn, w.workDir, noaSession, noaWarn(noaSession))
 	ctx = attachSideCapture(ctx, &opts)

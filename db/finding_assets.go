@@ -19,16 +19,16 @@ import (
 // 대조해 다른 쪽도 고친다.
 // ---------------------------------------------------------------------------
 
-// FindingUnassignedAsset은 "자산 없음" 노드의 key이자 목록 API의 필터 표식이다.
+// FindingUnassignedAsset 은 "자산 없음" 노드의 key이자 목록 API의 필터 표식이다.
 // asset_ids가 비어 있거나 가리키는 자산이 삭제된 발견 사항과 일치한다.
 const FindingUnassignedAsset = "__none__"
 
-// findingAssetTreeMaxNodes는 프런트엔드에 돌려주는 노드 수의 최대값이다. 넘으면 아래
+// findingAssetTreeMaxNodes 는 프런트엔드에 돌려주는 노드 수의 최대값이다. 넘으면 아래
 // 층부터 한 층씩 통째로 버린다(endpoint 먼저, 그다음 service). 그 수는 이미 부모
 // 노드에 더해져 있으므로 노드를 버려도 숫자는 잃지 않는다.
 const findingAssetTreeMaxNodes = 3000
 
-// FindingAssetNode는 자산 트리의 노드 하나다. Key 형식은 커버리지 그래프와 같다.
+// FindingAssetNode 는 자산 트리의 노드 하나다. Key 형식은 커버리지 그래프와 같다.
 // 자산 행은 "a:<id>", 기업은 "c:<id>", 자산 행이 없는 루트 도메인은 합성한 "r:<domain>",
 // 자산 없음 묶음은 "__none__"이다.
 type FindingAssetNode struct {
@@ -38,7 +38,7 @@ type FindingAssetNode struct {
 	Label     string `json:"label"`
 	AssetID   int64  `json:"asset_id,omitempty"`
 	CompanyID int64  `json:"company_id,omitempty"`
-	// Self는 이 자산에 직접 걸린 발견 사항 수다. Total은 모든 자손을 포함하고 발견
+	// Self 는 이 자산에 직접 걸린 발견 사항 수다. Total은 모든 자손을 포함하고 발견
 	// 사항 단위로 중복을 없앤다(발견 사항 하나가 여러 자산에 걸리면 공통 조상에서 한 번만 센다).
 	Self        int       `json:"self"`
 	Total       int       `json:"total"`
@@ -49,7 +49,7 @@ type FindingAssetNode struct {
 	LastFoundAt time.Time `json:"last_found_at"`
 }
 
-// FindingAssetTree는 트리 전체의 일회성 스냅숏이다. Nodes는 정렬돼 있다. 같은 부모
+// FindingAssetTree 는 트리 전체의 일회성 스냅숏이다. Nodes는 정렬돼 있다. 같은 부모
 // 아래에서 발견 사항 수 내림차순, 라벨 오름차순이고 "자산 없음"은 항상 마지막이다.
 type FindingAssetTree struct {
 	Nodes        []FindingAssetNode `json:"nodes"`
@@ -59,7 +59,7 @@ type FindingAssetTree struct {
 	DroppedKinds []string `json:"dropped_kinds,omitempty"`
 }
 
-// assetRow는 트리를 만드는 데 필요한 자산 필드의 일부다.
+// assetRow 는 트리를 만드는 데 필요한 자산 필드의 일부다.
 type assetRow struct {
 	id          int64
 	kind        string
@@ -80,7 +80,7 @@ func (a *assetRow) coverageNode() CoverageGraphNode {
 	}
 }
 
-// label은 커버리지 그래프의 라벨 규칙(URL > domain > ip > app_name > root_domain)을
+// label 은 커버리지 그래프의 라벨 규칙(URL > domain > ip > app_name > root_domain)을
 // 그대로 쓰되, URL이 없는 서비스(SMB, HTTP가 아닌 포트 등)에는 포트를 붙인다. 그러지
 // 않으면 라벨이 호스트 IP·도메인 행과 똑같아져 트리의 부모·자식 두 행이 중복으로 보인다.
 func (a *assetRow) label() string {
@@ -94,7 +94,7 @@ func (a *assetRow) label() string {
 	return coverageNodeLabel(&n)
 }
 
-// hostPort는 커버리지 그래프와 같다. domain을 먼저, 그다음 URL의 host, 마지막으로 ip를 쓴다.
+// hostPort 는 커버리지 그래프와 같다. domain을 먼저, 그다음 URL의 host, 마지막으로 ip를 쓴다.
 func (a *assetRow) hostPort() (string, int) {
 	n := a.coverageNode()
 	return hostPortOf(&n)
@@ -124,20 +124,20 @@ func scanAssetRows(rows interface {
 	return out, rows.Err()
 }
 
-// findingAssetHit은 트리를 만들 때 발견 사항 하나에 필요한 최소 정보다.
+// findingAssetHit 은 트리를 만들 때 발견 사항 하나에 필요한 최소 정보다.
 type findingAssetHit struct {
 	severity string
 	ts       time.Time
 	assetIDs []int64
 }
 
-// BuildFindingAssetTree는 현재 필터로 자산 트리를 만든다. AssetScope 자체는 쓰지
+// BuildFindingAssetTree 는 현재 필터로 자산 트리를 만든다. AssetScope 자체는 쓰지
 // 않는다(쓰면 선택한 노드를 따라 트리가 한 줄로 쪼그라든다).
 func (d *DB) BuildFindingAssetTree(f FindingFilter) (*FindingAssetTree, error) {
 	return d.buildFindingAssetTree(f, findingAssetTreeMaxNodes)
 }
 
-// buildFindingAssetTree는 노드 수 제한이 있는 내부 구현이다. maxNodes<=0이면 자르지
+// buildFindingAssetTree 는 노드 수 제한이 있는 내부 구현이다. maxNodes<=0이면 자르지
 // 않는다. AssetScope를 해석할 때는 반드시 이 방식을 쓴다. 그러지 않으면 버려진
 // endpoint 때문에 하위 트리 id 집합이 빠진다.
 func (d *DB) buildFindingAssetTree(f FindingFilter, maxNodes int) (*FindingAssetTree, error) {
@@ -228,7 +228,7 @@ FROM findings f LEFT JOIN tasks t ON f.task_id = t.id`+where, args...)
 	return tree, nil
 }
 
-// countFinding은 발견 사항 하나를 노드에 더한다(총수, 심각도별 수, 최근 발견 시각).
+// countFinding 은 발견 사항 하나를 노드에 더한다(총수, 심각도별 수, 최근 발견 시각).
 func countFinding(n *FindingAssetNode, h findingAssetHit) {
 	if n == nil {
 		return
@@ -249,7 +249,7 @@ func countFinding(n *FindingAssetNode, h findingAssetHit) {
 	}
 }
 
-// loadFindingAssetRows는 일치한 자산 행을 읽고 조상(service의 호스트 도메인·IP,
+// loadFindingAssetRows 는 일치한 자산 행을 읽고 조상(service의 호스트 도메인·IP,
 // 하위 도메인의 루트 도메인)을 단계별로 채운다. 조상 자체에는 발견 사항이 없을 수
 // 있지만 트리 모양을 만들려면 필요하다.
 func (d *DB) loadFindingAssetRows(ids map[int64]bool) (map[int64]*assetRow, error) {
@@ -291,7 +291,7 @@ func (d *DB) loadFindingAssetRows(ids map[int64]bool) (map[int64]*assetRow, erro
 	return byID, nil
 }
 
-// missingHosts는 한 단계에서 DB에서 찾을 호스트 식별자를 대상 자산 유형별로 나눠 담는다.
+// missingHosts 는 한 단계에서 DB에서 찾을 호스트 식별자를 대상 자산 유형별로 나눠 담는다.
 type missingHosts struct {
 	services []string // endpoint의 호스트(service 행을 찾는다)
 	domains  []string // service/endpoint의 호스트 도메인(subdomain 행을 찾는다)
@@ -303,7 +303,7 @@ func (m missingHosts) empty() bool {
 	return len(m.services) == 0 && len(m.domains) == 0 && len(m.ips) == 0 && len(m.roots) == 0
 }
 
-// missingParents는 아직 읽지 않은 호스트를 모은다. service(endpoint의 부모),
+// missingParents 는 아직 읽지 않은 호스트를 모은다. service(endpoint의 부모),
 // 하위 도메인·IP(service와 endpoint의 부모), 루트 도메인(하위 도메인의 부모)이다.
 func missingParents(byID map[int64]*assetRow) missingHosts {
 	haveService := map[string]bool{}
@@ -372,7 +372,7 @@ func keysOf(m map[string]bool) []string {
 	return out
 }
 
-// isIPLiteral은 host가 IP 리터럴인지 대략 판단한다(호스트를 ip와 subdomain 중 어디서 찾을지 정한다).
+// isIPLiteral 은 host가 IP 리터럴인지 대략 판단한다(호스트를 ip와 subdomain 중 어디서 찾을지 정한다).
 func isIPLiteral(host string) bool {
 	if strings.Contains(host, ":") {
 		return true // IPv6
@@ -391,7 +391,7 @@ func isIPLiteral(host string) bool {
 	return strings.Count(host, ".") == 3
 }
 
-// loadAssetsByHost는 호스트 식별자로 자산 행을 일괄로 채우고, 이번 단계에 새로 더한 행 수를 돌려준다.
+// loadAssetsByHost 는 호스트 식별자로 자산 행을 일괄로 채우고, 이번 단계에 새로 더한 행 수를 돌려준다.
 func (d *DB) loadAssetsByHost(want missingHosts, byID map[int64]*assetRow) (int, error) {
 	added := 0
 	load := func(q string, arg []string) error {
@@ -434,7 +434,7 @@ WHERE a.type='root_domain' AND a.domain = ANY($1::text[])`, want.roots); err != 
 	return added, nil
 }
 
-// assembleFindingAssetNodes는 자산 행을 노드로 바꾸고 부모·자식을 잇는다. 부모가
+// assembleFindingAssetNodes 는 자산 행을 노드로 바꾸고 부모·자식을 잇는다. 부모가
 // 없으면(DB에 그 루트 도메인 자산이 아예 없으면) 커버리지 그래프처럼 "r:<domain>"
 // 자리 노드를 합성한다.
 func (d *DB) assembleFindingAssetNodes(byID map[int64]*assetRow) (map[string]*FindingAssetNode, map[string]string) {
@@ -520,7 +520,7 @@ func (d *DB) assembleFindingAssetNodes(byID map[int64]*assetRow) (map[string]*Fi
 	return nodes, parentOf
 }
 
-// attachCompanyNodes는 최상위 자산(루트 도메인, IP, 애플리케이션)에 기업 부모 노드를
+// attachCompanyNodes 는 최상위 자산(루트 도메인, IP, 애플리케이션)에 기업 부모 노드를
 // 붙인다. 자산이 실제로 기업에 소속돼 있을 때만 기업 층이 생기고, 소속 없는 자산은
 // 그대로 최상위다.
 func (d *DB) attachCompanyNodes(nodes map[string]*FindingAssetNode, parentOf map[string]string) error {
@@ -585,7 +585,7 @@ func (d *DB) attachCompanyNodes(nodes map[string]*FindingAssetNode, parentOf map
 	return nil
 }
 
-// sortFindingAssetNodes는 발견 사항이 많은 것을 앞에, 같으면 라벨 순으로 정렬하고
+// sortFindingAssetNodes 는 발견 사항이 많은 것을 앞에, 같으면 라벨 순으로 정렬하고
 // "자산 없음"은 항상 마지막에 둔다. 프런트엔드는 배열 순서대로 자식을 붙이므로 같은
 // 부모 아래의 상대 순서만 맞으면 된다.
 func sortFindingAssetNodes(nodes []FindingAssetNode) {
@@ -601,7 +601,7 @@ func sortFindingAssetNodes(nodes []FindingAssetNode) {
 	})
 }
 
-// truncateFindingAssetTree는 노드가 너무 많으면 층을 통째로 버린다(endpoint 먼저,
+// truncateFindingAssetTree 는 노드가 너무 많으면 층을 통째로 버린다(endpoint 먼저,
 // 그다음 service). 수는 이미 부모에 더해져 있으므로 잃는 것은 펼쳐 볼 세부 층뿐이다.
 func truncateFindingAssetTree(tree *FindingAssetTree, maxNodes int) {
 	if maxNodes <= 0 || len(tree.Nodes) <= maxNodes {
@@ -624,7 +624,7 @@ func truncateFindingAssetTree(tree *FindingAssetTree, maxNodes int) {
 	}
 }
 
-// applyAssetScope는 AssetScope(노드 key)를 SQL에 쓸 자산 id 집합으로 바꾼다. 노드
+// applyAssetScope 는 AssetScope(노드 key)를 SQL에 쓸 자산 id 집합으로 바꾼다. 노드
 // 하나를 고르면 그 하위 트리 전체를 고른 것이므로 트리를 먼저 만든 뒤 자손을 모은다.
 func (d *DB) applyAssetScope(f FindingFilter) (FindingFilter, error) {
 	scope := strings.TrimSpace(f.AssetScope)
@@ -674,7 +674,7 @@ func (d *DB) applyAssetScope(f FindingFilter) (FindingFilter, error) {
 	return f, nil
 }
 
-// assetIDContainments는 자산 id를 jsonb 포함 검사의 오른쪽 피연산자 집합으로 바꾼다.
+// assetIDContainments 는 자산 id를 jsonb 포함 검사의 오른쪽 피연산자 집합으로 바꾼다.
 // idx_findings_asset_ids(GIN jsonb_path_ops)를 쓰기 위해서다.
 func assetIDContainments(ids []int64) []string {
 	out := make([]string, 0, len(ids))

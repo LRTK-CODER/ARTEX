@@ -26,7 +26,7 @@ func isFKViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
-// dropReason은 활동 기록이 버려진 이유를 분류해, 로그를 원본 오류 문구가 아니라
+// dropReason 은 활동 기록이 버려진 이유를 분류해, 로그를 원본 오류 문구가 아니라
 // 원인별로 묶어 볼 수 있게 한다.
 func dropReason(err error) string {
 	var pgErr *pgconn.PgError
@@ -65,12 +65,12 @@ func preview(s string, n int) string {
 }
 
 // model_error(제공자·API 장애: LLM 계층의 일시적 재시도를 다 썼거나, 스트림이 시작된 뒤 중간에
-// 끊김)로 끝난 work 는 "해 봤지만 다 못 함"도 진짜 실패도 아니고 외부의 일시적 흔들림이다. 기본처럼
-// 영구 blocked 로 두면 탐색 의도 하나를 그냥 잃으므로, 이 종료 상태는 몇 번 더 재실행한다. 재시도
+// 끊김)로 끝난 work는 "해 봤지만 다 못 함"도 진짜 실패도 아니고 외부의 일시적 흔들림이다. 기본처럼
+// 영구 blocked로 두면 탐색 의도 하나를 그냥 잃으므로, 이 종료 상태는 몇 번 더 재실행한다. 재시도
 // 사이에 백오프를 두어 제공자가 회복할 시간을 준다. 재시도 중 일시 중지·중지·취소되면 바로 해당
 // 분기에 넘긴다.
 const (
-	modelErrorRetries      = 2               // model_error 로 끝난 뒤 더 재시도하는 횟수
+	modelErrorRetries      = 2               // model_error로 끝난 뒤 더 재시도하는 횟수
 	modelErrorRetryBackoff = 3 * time.Second // 재시도 전마다 두는 백오프
 	workControlWaitTimeout = 30 * time.Second
 )
@@ -137,11 +137,11 @@ type Engine struct {
 
 	plannerRound sync.Map // taskID -> int, planner round counter (for UI round separators)
 
-	// 작업 단위 시간 초과(docs/任务级超时与收尾设计.md 참고):
+	// 작업 단위 시간 초과:
 	settling     sync.Map // taskID -> bool, 작업이 마무리 단계에 들어갔다(새 탐색 의도를 나눠 주거나 할당받지 않는다)
 	deadline     sync.Map // taskID -> int64 unix, 절대 마감 시각(처음 실행할 때 기록한다. 0이나 없음 = 제한 없음)
-	stamped      sync.Map // taskID -> bool, first_run_at 을 기록했는지(이 프로세스에서 한 번만 기록한다)
-	inflight     sync.Map // taskID -> *int64, 실행 중인 planner.Plan + worker.Execute 수(drain 에 쓴다)
+	stamped      sync.Map // taskID -> bool, first_run_at을 기록했는지(이 프로세스에서 한 번만 기록한다)
+	inflight     sync.Map // taskID -> *int64, 실행 중인 planner.Plan + worker.Execute 수(drain에 쓴다)
 	coordStarted sync.Map // taskID -> bool, deadline 조정자를 시작했는지(Run/reload 중복 방지)
 
 	// resolve returns a task's dedicated planner/worker (wired by the server as the
@@ -524,7 +524,7 @@ func (e *Engine) drainSteer(intentID int64) (string, bool) {
 	return msg, true
 }
 
-// steerHooks는 가드의 hook 실행기를 감싸 플래너가 실행 중인 작업의 방향을 틀 수 있게 한다.
+// steerHooks 는 가드의 hook 실행기를 감싸 플래너가 실행 중인 작업의 방향을 틀 수 있게 한다.
 // 도구 호출마다 대기 중인 방향 수정 메시지가 있으면 꺼내 그 호출을 막고 메시지를 모델에
 // 돌려준다. 모델은 도구를 실행하는 대신 다음 단계를 다시 계획한다. 대기 메시지가 없으면
 // 가드는 전과 똑같이 동작한다.
@@ -533,9 +533,9 @@ type steerHooks struct {
 	inner harness.HookRunner
 	drain func() (string, bool)
 	// nudges 는 이 탐색 의도에 넣은 공회전 이어 가기 횟수이고 최대는 limit 이다. 포인터인 이유:
-	// harness 는 steerHooks 의 값 복사본을 들고 있으므로 횟수는 한 곳을 함께 써야 한다.
+	// harness는 steerHooks의 값 복사본을 들고 있으므로 횟수는 한 곳을 함께 써야 한다.
 	nudges *atomic.Int64
-	// limit 은 공회전 이어 가기의 최대 횟수로, Engine.emptyTurnNudgeLimit() 가 '빈 응답 재시도
+	// limit 은 공회전 이어 가기의 최대 횟수로, Engine.emptyTurnNudgeLimit()가 '빈 응답 재시도
 	// 횟수'에서 구한다. <=0 이면 개입하지 않는다(사용자가 이 단계를 명시적으로 껐다).
 	limit int
 	// label 은 "worker-1 · #42" 같은 형태이고 로그에만 쓴다.
@@ -543,11 +543,11 @@ type steerHooks struct {
 }
 
 // 공회전 회차(사고만 있고 본문도 도구 호출도 없음)의 이어 가기 횟수 기본값이다. SDK 빈 응답 재시도의
-// 내장 기본값(norma/llm/openai.go 의 emptyResponseRetries)과 맞춘다. 두 단계가 같은 설정 하나를
+// 내장 기본값(norma/llm/openai.go의 emptyResponseRetries)과 맞춘다. 두 단계가 같은 설정 하나를
 // 함께 쓰므로 설정하지 않았을 때의 동작도 같아야 한다. 값을 구하는 곳은 Engine.emptyTurnNudgeLimit.
 //
-// 이 수는 '연속 몇 번'이 아니라 '탐색 의도 하나의 총량'이다. harness 의 stopHookActive 가 이미
-// 연속 공회전에는 한 번만 재촉하게 막는다. 재촉한 회차도 공회전이면 Stop 훅이 다시 불리지 않고 run 이
+// 이 수는 '연속 몇 번'이 아니라 '탐색 의도 하나의 총량'이다. harness의 stopHookActive가 이미
+// 연속 공회전에는 한 번만 재촉하게 막는다. 재촉한 회차도 공회전이면 Stop 훅이 다시 불리지 않고 run이
 // 끝난다. 도구 회차가 한 번 실제로 일어나야 횟수가 새로 채워진다(norma/harness/query.go:534).
 // 그래서 이 제한은 '도구 → 공회전 → 재촉 → 도구 → 공회전' 같은 비정상 반복이 탐색 의도의 단계 한도를
 // 다 써 버리지 않게 막는다.
@@ -555,10 +555,10 @@ const defaultEmptyTurnNudges = 2
 
 // emptyTurnNudge 는 공회전 회차에 넣는 이어 가기 지시다.
 //
-// harness 는 이런 회차를 자연스러운 종료로 본다(stop_reason=end_turn 이고 tool_use 없음). 그래서 다섯
+// harness는 이런 회차를 자연스러운 종료로 본다(stop_reason=end_turn 이고 tool_use 없음). 그래서 다섯
 // 단계의 LLM 재시도 중 어느 것도 걸리지 않는다. 오류가 아니라 모델이 "생각은 끝냈지만 손을 대지 않은"
-// 것이기 때문이다. SDK 의 빈 응답 재시도도 닿지 않는다. 그 단계는 "이벤트를 yield 했는가"로 빈 응답을
-// 가리는데, 사고 증분도 이벤트라서(norma/llm/openai.go 의 SEThinkingDelta) thinking-only 는 빈 응답이
+// 것이기 때문이다. SDK의 빈 응답 재시도도 닿지 않는다. 그 단계는 "이벤트를 yield 했는가"로 빈 응답을
+// 가리는데, 사고 증분도 이벤트라서(norma/llm/openai.go의 SEThinkingDelta) thinking-only는 빈 응답이
 // 아니다. 게다가 그 단계는 프롬프트 전체를 그대로 다시 보내므로, 컨텍스트 모양 때문에 생긴 공회전이면
 // 모델이 같은 생각을 한 번 더 할 뿐이다. 그래서 여기서는 지시를 하나 덧붙여 이미 만든 사고를 이어
 // 가게 한다. 입력이 바뀌어야 다른 행동을 기대할 수 있다.
@@ -595,8 +595,8 @@ func (h steerHooks) PostToolUse(ctx context.Context, name string, input, result 
 	}
 }
 
-// Stop 은 guard 의 원래 동작 위에 공회전 회차 이어 가기를 더한다. 모델이 사고만 내고 본문도 도구
-// 호출도 없으면 harness 는 이를 자연 종료로 보고 빈 summary 로 끝낸다(query.go 의
+// Stop 은 guard의 원래 동작 위에 공회전 회차 이어 가기를 더한다. 모델이 사고만 내고 본문도 도구
+// 호출도 없으면 harness는 이를 자연 종료로 보고 빈 summary로 끝낸다(query.go의
 // ReasonCompleted + asst.Text()). 그러면 아직 끝나지 않은 탐색 의도가 중간에 끊긴다. 이때 이어 가기
 // 지시를 넣어 모델이 이미 한 사고를 가지고 계속하게 한다.
 func (h steerHooks) Stop(ctx context.Context, messages []llm.Message) (bool, []string, string) {
@@ -608,8 +608,8 @@ func (h steerHooks) Stop(ctx context.Context, messages []llm.Message) (bool, []s
 	if h.inner != nil {
 		prevent, blocking, msg = h.inner.Stop(ctx, messages)
 	}
-	// inner 가 이미 강제로 멈추기로 했거나 자기 이어 가기 메시지를 넣으려 하면 그대로 따르고 겹치지 않는다.
-	// limit<=0 은 사용자가 '빈 응답 재시도 횟수'를 -1로 설정해 이 단계를 명시적으로 끈 것이다.
+	// inner가 이미 강제로 멈추기로 했거나 자기 이어 가기 메시지를 넣으려 하면 그대로 따르고 겹치지 않는다.
+	// limit<=0은 사용자가 '빈 응답 재시도 횟수'를 -1로 설정해 이 단계를 명시적으로 끈 것이다.
 	if prevent || len(blocking) > 0 || h.nudges == nil || h.limit <= 0 || !isThinkingOnlyTurn(messages) {
 		return prevent, blocking, msg
 	}
@@ -643,10 +643,10 @@ func (e *Engine) Broadcaster() *Broadcaster { return e.bc }
 func (e *Engine) emitActivity(t *Task, r db.Activity) db.Activity {
 	id, err := e.appendActivity(t, r)
 	if err != nil {
-		// 더는 조용히 넘기지 않는다. 기록 하나를 버리면 활동 기록에서 명령↔결과 짝이 깨진다. tool_result 를
-		// 잃은 tool_use 는 계속 '실행 중'으로 보이고, 'result'/'round' 기록을 잃으면 세션에 요약이 없다.
+		// 더는 조용히 넘기지 않는다. 기록 하나를 버리면 활동 기록에서 명령↔결과 짝이 깨진다. tool_result를
+		// 잃은 tool_use는 계속 '실행 중'으로 보이고, 'result'/'round' 기록을 잃으면 세션에 요약이 없다.
 		// 근본 원인을 분석하는 데 필요한 것을 오류 수준 한 줄에 모두 담는다: 이유 분류, summary 미리
-		// 보기, 이 작업에서 버린 누적 건수, 그리고 FK 경우에는 부모 exploration 에 닿지 못하는 이유를
+		// 보기, 이 작업에서 버린 누적 건수, 그리고 FK 경우에는 부모 exploration에 닿지 못하는 이유를
 		// 실제 DB에서 확인한 결과.
 		n := e.bumpDrop(t.ID)
 		diag := ""
@@ -769,7 +769,7 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 	}
 	e.startDeadlineCoordinator(ctx, t) // 작업 단위 시간 초과 타이머(timeout>0 일 때만, 중복 방지)
 	// 활성 탐색 의도(open+running)가 하나도 없을 때만 첫 계획 회차를 시작한다. 시드 탐색 의도가 있는
-	// 작업은 시드가 open 이거나, 위에서 막 띄운 워커가 먼저 할당받아 running 이 됐다. 둘 다 "할 일이
+	// 작업은 시드가 open 이거나, 위에서 막 띄운 워커가 먼저 할당받아 running이 됐다. 둘 다 "할 일이
 	// 있음"이므로 첫 플래너 회차를 건너뛰고, 워커가 시드 탐색 의도를 바로 할당받아 실행한다. 끝나면
 	// NotifyDone·하트비트가 플래너를 깨운다.
 	// 주의: Frontier(open만 센다)를 쓰면 안 된다. 워커의 할당(open→running)과 이 검사가 경쟁해 잘못
@@ -779,7 +779,7 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 	}
 }
 
-// plannerHeartbeatInterval 은 작업의 플래너 하트비트 간격을 구한다. db.CreateTask 가 이미 정규화했지만
+// plannerHeartbeatInterval 은 작업의 플래너 하트비트 간격을 구한다. db.CreateTask가 이미 정규화했지만
 // (600 미만은 600으로 올린다) 메모리 상태의 이상한 값에 대비해 여기서 한 번 더 하한을 둔다.
 func plannerHeartbeatInterval(t *Task) time.Duration {
 	sec := t.PlanHeartbeatSeconds
@@ -789,7 +789,7 @@ func plannerHeartbeatInterval(t *Task) time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
-// resetPlannerTimer 는 이미 울렸을 수 있는 Timer 를 안전하게 다시 건다(표준 Stop→drain→Reset 패턴).
+// resetPlannerTimer 는 이미 울렸을 수 있는 Timer를 안전하게 다시 건다(표준 Stop→drain→Reset 패턴).
 func resetPlannerTimer(timer *time.Timer, d time.Duration) {
 	if !timer.Stop() {
 		select {
@@ -803,13 +803,13 @@ func resetPlannerTimer(timer *time.Timer, d time.Duration) {
 func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 	interval := plannerHeartbeatInterval(t)
 	// 하트비트 타이머를 루프 입구에서 건다 = 작업 시작부터 잰다. 첫 플래너 회차를 건너뛴 시드 작업이라
-	// 여기서 계속 막혀 있어도(Run 에서 frontier 가 비어 있지 않으면 첫 회차를 시작하지 않는다)
+	// 여기서 계속 막혀 있어도(Run 에서 frontier가 비어 있지 않으면 첫 회차를 시작하지 않는다)
 	// '작업 시작 + interval'에 하트비트가 첫 계획 회차를 시작한다. 그 뒤로는 깨어날 때마다(변경 신호·
 	// 하트비트) 다시 건다 = 마지막 계획 시작부터 잰 시간.
 	heartbeat := time.NewTimer(interval)
 	defer heartbeat.Stop()
 
-	// runRound 는 계획 회차 하나를 실행한다(debounce 병합 + 각 guard 포함). src 는 로그에서 트리거 출처를 가리는 데만 쓴다.
+	// runRound는 계획 회차 하나를 실행한다(debounce 병합 + 각 guard 포함). src는 로그에서 트리거 출처를 가리는 데만 쓴다.
 	runRound := func(src string) {
 		// debounce: 잇따른 변경을 planner 한 라운드로 묶는다
 		timer := time.NewTimer(e.debounce)
@@ -842,19 +842,19 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		if isTerminalStatus(t.lifecycleSnapshot().Status) {
 			return
 		}
-		// 작업 단위 시간 초과로 마무리하는 중: 일반 깨우기는 버린다. 워커의 마무리 기록이나 Resume 의
+		// 작업 단위 시간 초과로 마무리하는 중: 일반 깨우기는 버린다. 워커의 마무리 기록이나 Resume의
 		// Notify 도 일반 계획 회차를 시작하지 않는다. 최종 회차는 조정자(settleTask)가 직접 돌리고 여기를 지나지 않는다.
 		if e.isSettling(t.ID) {
 			return
 		}
-		// goalless(사람이 직접 넣음) 분기: 작업에 open 목표가 없으면 플래너를 돌리지 않는다. 돌리면 met 를
-		// 다시 판정해 cancelExec 로 사용자가 메인 에이전트를 거쳐 직접 넣은 탐색 의도를 죽인다. 끝낼지는
-		// frontier 가 정한다. open/running 탐색 의도가 남았으면 running 으로 두고 조용히 기다리고, 모두
-		// 끝났으면 done 으로 기록한다. 이 구간은 순수 Go 이고 LLM 호출도 계획 회차 표시도 하지 않는다.
+		// goalless(사람이 직접 넣음) 분기: 작업에 open 목표가 없으면 플래너를 돌리지 않는다. 돌리면 met를
+		// 다시 판정해 cancelExec로 사용자가 메인 에이전트를 거쳐 직접 넣은 탐색 의도를 죽인다. 끝낼지는
+		// frontier가 정한다. open/running 탐색 의도가 남았으면 running으로 두고 조용히 기다리고, 모두
+		// 끝났으면 done으로 기록한다. 이 구간은 순수 Go 이고 LLM 호출도 계획 회차 표시도 하지 않는다.
 		if open, err := t.Store.HasOpenGoal(); err == nil && !open {
 			t.drainTriggers() // 쌓인 done/finding 트리거를 버려 긴 goalless 세션에서 끝없이 늘지 않게 한다
 			if active, err := t.Store.HasActiveIntent(); err == nil && !active {
-				// frontier 가 비고 실행 중인 탐색 의도도 없음 → 마무리. Guarded 버전으로 CAS 해서 동시에 일어나는
+				// frontier가 비고 실행 중인 탐색 의도도 없음 → 마무리. Guarded 버전으로 CAS 해서 동시에 일어나는
 				// pause/delete/시간 초과 마무리의 상태 전환을 덮어쓰지 않게 한다.
 				if won, err := e.m.SetTaskStatusGuarded(t.ID, "done"); err != nil {
 					log.Printf("[goalless] task %s 마무리 done 기록 실패: %v", t.ID, err)
@@ -863,16 +863,16 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 						Summary: "목표를 모두 달성했고 직접 넣은 탐색 의도도 모두 실행해 작업을 마칩니다"})
 				}
 			}
-			return // goalless 분기는 planner.Plan 에 들어가지 않는다
+			return // goalless 분기는 planner.Plan에 들어가지 않는다
 		}
 		if !e.beginTaskOperation(t.ID) {
 			return
 		}
 		defer e.decInflight(t.ID)
-		e.stampFirstRun(t) // 처음 실제로 계획할 때 first_run_at 을 기록하고 deadline 을 계산한다(timeout 이 있는 작업만)
+		e.stampFirstRun(t) // 처음 실제로 계획할 때 first_run_at을 기록하고 deadline을 계산한다(timeout이 있는 작업만)
 		e.touch(t.ID)
 		emit := func(r db.Activity) { e.emitActivity(t, r) }
-		ectx := e.clockCtx(e.execContextFor(ctx, t.ID), t, false) // Pause 로 취소할 수 있고 작업 deadline 을 따른다
+		ectx := e.clockCtx(e.execContextFor(ctx, t.ID), t, false) // Pause로 취소할 수 있고 작업 deadline을 따른다
 		if ectx.Err() != nil || e.IsDeleting(t.ID) {
 			return
 		}
@@ -893,13 +893,13 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 			log.Printf("[planner] task %s 계획 오류: %v", t.ID, err)
 		case met:
 			log.Printf("[planner] task %s 목표 달성 판정: %s", t.ID, reason)
-			// 목표를 모두 달성함 → 작업 상태를 done 으로 저장한다(프런트엔드 DTO 가 이 종료 상태를 먼저 보여 준다).
+			// 목표를 모두 달성함 → 작업 상태를 done으로 저장한다(프런트엔드 DTO가 이 종료 상태를 먼저 보여 준다).
 			if err := e.m.SetTaskStatus(t.ID, "done"); err != nil {
 				log.Printf("[planner] task %s 완료 상태 저장 실패: %v", t.ID, err)
 			}
 			// 작업을 완료로 판정함 → 실행 중인 워커를 바로 취소한다. 손에 든 탐색 의도의 결과가 더는 의미 없다.
 			// 다음 워커 루프는 종료 상태 검사에 걸려 새 탐색 의도를 할당받지 않는다. 취소된 것들은 아래
-			// '작업 완료' 분기에서 blocked 가 아니라 stopped 로 분류된다.
+			// '작업 완료' 분기에서 blocked가 아니라 stopped로 분류된다.
 			e.cancelExec(t.ID, agent.AbortGoalMet)
 		default:
 			log.Printf("[planner] task %s 계획 완료", t.ID)
@@ -949,13 +949,13 @@ func (e *Engine) workerLoop(ctx context.Context, t *Task, name string) {
 			if sleepCtx(ctx, 1000*time.Millisecond) {
 				return
 			}
-			continue // 작업 시간 초과로 마무리하는 중: 새 탐색 의도를 할당받지 않는다(실행 중인 것은 스스로 마무리하고 조정자가 drain 을 기다린다)
+			continue // 작업 시간 초과로 마무리하는 중: 새 탐색 의도를 할당받지 않는다(실행 중인 것은 스스로 마무리하고 조정자가 drain을 기다린다)
 		}
 		if isTerminalStatus(e.m.TaskStatus(t.ID)) {
 			if sleepCtx(ctx, 1000*time.Millisecond) {
 				return
 			}
-			continue // 작업이 종료 상태다(done/failed/timeout): 남은 탐색 의도를 할당받지 않고, 완료 뒤 frontier 를 헛돌지 않는다
+			continue // 작업이 종료 상태다(done/failed/timeout): 남은 탐색 의도를 할당받지 않고, 완료 뒤 frontier를 헛돌지 않는다
 		}
 		if !e.beginTaskOperation(t.ID) {
 			return
@@ -990,10 +990,10 @@ func (e *Engine) runWorkerStep(ctx context.Context, t *Task, name string, worker
 // cannot observe quiescence between the LLM return and the final DB writes.
 func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *agent.Worker, intent *db.Node, requestID, message string) bool {
 	hasChatMessage := message != ""
-	e.stampFirstRun(t) // 처음 실제로 실행할 때 first_run_at 을 기록하고 deadline 을 계산한다(timeout 이 있는 작업만)
+	e.stampFirstRun(t) // 처음 실제로 실행할 때 first_run_at을 기록하고 deadline을 계산한다(timeout이 있는 작업만)
 	e.touch(t.ID)
 	emit := func(r db.Activity) { e.emitActivity(t, r) }
-	ectx := e.clockCtx(e.execContextFor(ctx, t.ID), t, false) // Pause 로 취소할 수 있고 작업 deadline 을 따른다
+	ectx := e.clockCtx(e.execContextFor(ctx, t.ID), t, false) // Pause로 취소할 수 있고 작업 deadline을 따른다
 	if ectx.Err() != nil || e.IsDeleting(t.ID) {
 		if err := transitionIntentState(t.Store, intent.ID, "running", "open"); err != nil {
 			log.Printf("[worker %s] task %s 탐색 의도 #%d 할당 뒤 되돌리기 실패: %v", name, t.ID, intent.ID, err)
@@ -1013,7 +1013,7 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 	}
 	label := fmt.Sprintf("%s · #%d", name, iid)
 	workCtx = intercept.WithTaskContext(workCtx, t.ID, label, taskEmit)
-	// nudges 는 일부러 model_error 재실행 루프 밖에 만든다. 공회전 이어 가기의 최대값은 '이 탐색
+	// nudges는 일부러 model_error 재실행 루프 밖에 만든다. 공회전 이어 가기의 최대값은 '이 탐색
 	// 의도'의 총량이라, 한 번 재실행했다고 횟수를 처음부터 다시 세면 안 된다.
 	hooks := steerHooks{
 		inner:  t.Guard.Hooks(),
@@ -1033,14 +1033,14 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		reason, wrote, err = worker.Execute(workCtx, name, wTaskID, e.m.assets, t.Store, intent, hooks, emit, e.m.enrich, t.NotifyFinding)
 	}
 	e.EndLLMCall(t.ID)
-	// model_error 로 끝남 → 몇 번 더 재실행한다(백오프 뒤 재시도). 탐색 의도가 아직 이 work 의 것이고,
+	// model_error로 끝남 → 몇 번 더 재실행한다(백오프 뒤 재시도). 탐색 의도가 아직 이 work의 것이고,
 	// 작업이 일시 중지·중지·취소되지 않았고 **마무리 단계도 아닐 때만** 재시도한다. 아니면 해당 분기에
 	// 넘긴다(마무리 중에는 재시도하지 않아 백오프가 다른 워커의 정상 마무리 시간을 빼앗지 않게 한다).
 	maxRetries, retryBackoff := e.modelErrorRetryPolicy()
 	for attempt := 1; attempt <= maxRetries &&
 		retryableWorkerModelError(reason, err) &&
 		workCtx.Err() == nil && ectx.Err() == nil && !e.IsPaused(t.ID) && !e.isSettling(t.ID); attempt++ {
-		log.Printf("[worker %s] task %s 탐색 의도 #%d model_error 로 끝남, %v 뒤 재시도 (%d/%d)",
+		log.Printf("[worker %s] task %s 탐색 의도 #%d model_error로 끝남, %v 뒤 재시도 (%d/%d)",
 			name, t.ID, intent.ID, retryBackoff, attempt, maxRetries)
 		if sleepCtx(workCtx, retryBackoff) {
 			break // 백오프 중에 취소됨(중지·일시 중지) → 아래 분기에 넘긴다
@@ -1106,8 +1106,8 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		}
 		return true
 	}
-	// 작업 시간 초과 마무리의 강제 cancel(pause 도 kill 도 아님)이 이 run 을 취소함 → exhausted(마무리됨)로
-	// 분류하고 blocked 로 잘못 표시하지 않는다. 이때 워커는 보통 settlement 단계에서 결과를 이미 기록했다.
+	// 작업 시간 초과 마무리의 강제 cancel(pause 도 kill 도 아님)이 이 run을 취소함 → exhausted(마무리됨)로
+	// 분류하고 blocked로 잘못 표시하지 않는다. 이때 워커는 보통 settlement 단계에서 결과를 이미 기록했다.
 	if ectx.Err() != nil && e.isSettling(t.ID) {
 		if err := transitionIntentState(t.Store, intent.ID, "running", "exhausted"); err != nil {
 			log.Printf("[worker %s] task %s 탐색 의도 #%d 시간 초과 마무리 상태 저장 실패: %v", name, t.ID, intent.ID, err)
@@ -1116,8 +1116,8 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		e.touch(t.ID)
 		return true
 	}
-	// 작업을 완료로 판정함(일반 경로의 done) → 위의 cancelExec 가 이 run 을 취소했다. 탐색 의도 결과는
-	// 의미가 없으므로 stopped(blocked 가 아님)로 표시해 완료된 작업의 탐색 의도 상태를 어지럽히지 않는다.
+	// 작업을 완료로 판정함(일반 경로의 done) → 위의 cancelExec가 이 run을 취소했다. 탐색 의도 결과는
+	// 의미가 없으므로 stopped(blocked가 아님)로 표시해 완료된 작업의 탐색 의도 상태를 어지럽히지 않는다.
 	if ectx.Err() != nil && isTerminalStatus(e.m.TaskStatus(t.ID)) {
 		if err := transitionIntentState(t.Store, intent.ID, "running", "stopped"); err != nil {
 			log.Printf("[worker %s] task %s 탐색 의도 #%d 종료 상태 stopped 저장 실패: %v", name, t.ID, intent.ID, err)

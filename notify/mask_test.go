@@ -350,7 +350,7 @@ func TestPrepareConfigUpdateStillGuardsBlankDestinationChanges(t *testing.T) {
 }
 
 func TestDestinationKeysDeclaredForEveryKind(t *testing.T) {
-	// SecretKeys 와 같은 이유로, 알림 채널이 목적지 키 선언을 잊으면 PrepareConfigUpdate가 그 채널을 지키지 못한다.
+	// SecretKeys와 같은 이유로, 알림 채널이 목적지 키 선언을 잊으면 PrepareConfigUpdate가 그 채널을 지키지 못한다.
 	for kind, ch := range registry {
 		if len(ch.DestinationKeys()) == 0 {
 			t.Errorf("알림 채널 %s이(가) 목적지 키를 선언하지 않아, 주소를 바꿔 자격 증명을 빼내는 것에 대한 방어가 듣지 않음", kind)

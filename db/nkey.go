@@ -20,7 +20,7 @@ func DomainKey(fqdn string) string {
 
 func IPKey(ip string) string { return strings.TrimSpace(ip) }
 
-// RootDomain은 host의 등록 가능 도메인(eTLD+1)과 host 자신이 그 apex인지를 돌려준다
+// RootDomain 은 host의 등록 가능 도메인(eTLD+1)과 host 자신이 그 apex인지를 돌려준다
 // (§3.1). 경계 처리(§3.1): IP 리터럴이나 publicsuffix가 분류하지 못하는 host(localhost,
 // 내부 이름, ICANN 밖 TLD)는 그대로 자기 자신을 루트로 삼고 isApex=true로 돌려준다.
 // 최선 노력이며 하위 도메인으로 다루지 않는다.
@@ -56,7 +56,7 @@ func ParameterKey(endpointID int64, location, name string) string {
 	return itoa(endpointID) + "|" + strings.ToLower(location) + "|" + name
 }
 
-// NormalizeParamName은 파라미터 이름을 정규화한다(endpoint.params 원소가 "같은 참조"인지 판정).
+// NormalizeParamName 은 파라미터 이름을 정규화한다(endpoint.params 원소가 "같은 참조"인지 판정).
 // 규칙: 소문자로 바꾸고 앞뒤 공백을 없앤다. 동의어는 합치지 않는다(userId/user_id/uid는 서로
 // 다르다). 쓰기와 조회가 이 구현을 함께 써서 "파라미터 이름으로 같은 기업의 API 찾기"가 같은
 // 결과를 낸다.

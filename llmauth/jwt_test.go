@@ -51,9 +51,9 @@ func TestParseClaims(t *testing.T) {
 			want:  Claims{},
 		},
 		{name: "점이 모자람", token: "abc.def", wantError: true},
-		{name: "base64 가 아님", token: "a.!!!.c", wantError: true},
-		{name: "JSON 이 아님", token: "a.bm90LWpzb24.c", wantError: true},
-		{name: "exp 가 숫자가 아님", token: fakeJWT(t, map[string]any{"exp": "soon"}), wantError: true},
+		{name: "base64가 아님", token: "a.!!!.c", wantError: true},
+		{name: "JSON이 아님", token: "a.bm90LWpzb24.c", wantError: true},
+		{name: "exp가 숫자가 아님", token: fakeJWT(t, map[string]any{"exp": "soon"}), wantError: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestParseClaims(t *testing.T) {
 	}
 }
 
-// TestTokensPlanType 은 토큰 교환 결과의 플랜이 id token 을 앞세우고, 없으면 access token 에서 오는지 본다.
+// TestTokensPlanType 은 토큰 교환 결과의 플랜이 id token을 앞세우고, 없으면 access token 에서 오는지 본다.
 func TestTokensPlanType(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	tests := []struct {
@@ -86,7 +86,7 @@ func TestTokensPlanType(t *testing.T) {
 		accessPlan string
 		wantPlan   string
 	}{
-		{name: "id token 의 플랜", idPlan: "plus", wantPlan: "plus"},
+		{name: "id token의 플랜", idPlan: "plus", wantPlan: "plus"},
 		{name: "access token 만 플랜", accessPlan: "pro", wantPlan: "pro"},
 		{name: "둘 다 있으면 id token", idPlan: "plus", accessPlan: "pro", wantPlan: "plus"},
 		{name: "플랜 클레임 없음", wantPlan: ""},

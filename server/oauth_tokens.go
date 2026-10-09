@@ -11,7 +11,7 @@ import (
 	"github.com/Autumn-27/artex/llmauth"
 )
 
-// oauthStore 는 한 프로필의 암호화된 자격 증명(db)을 llmauth.Store 로 보인다.
+// oauthStore 는 한 프로필의 암호화된 자격 증명(db)을 llmauth.Store로 보인다.
 type oauthStore struct {
 	pg        *db.DB
 	cipher    *db.TokenCipher
@@ -35,8 +35,8 @@ func (s oauthStore) Load(ctx context.Context) (llmauth.Tokens, error) {
 	return tokensFromCredentials(cred), nil
 }
 
-// Refresh 는 db 의 행 잠금 안에서 갱신한다. 잠금을 쥔 채 인증 서버를 부르므로 ctx 에 시간 상한이
-// 있어야 한다. llmauth.TokenSource 가 30초 상한을 건 ctx 를 넘기고, 여기서는 그대로 전달한다.
+// Refresh 는 db의 행 잠금 안에서 갱신한다. 잠금을 쥔 채 인증 서버를 부르므로 ctx에 시간 상한이
+// 있어야 한다. llmauth.TokenSource가 30초 상한을 건 ctx를 넘기고, 여기서는 그대로 전달한다.
 func (s oauthStore) Refresh(ctx context.Context, staleAccessToken string, refresh func(context.Context, llmauth.Tokens) (llmauth.Tokens, error)) (llmauth.Tokens, error) {
 	rotate := func(ctx context.Context, current db.OAuthCredentials) (db.OAuthCredentials, error) {
 		next, err := refresh(ctx, tokensFromCredentials(current))
@@ -68,7 +68,7 @@ func (s oauthStore) Refresh(ctx context.Context, staleAccessToken string, refres
 }
 
 // wrapNoTokens 는 자격 증명이 없다는 db 오류를 llmauth.ErrNoTokens 로도 알아보게 감싼다.
-// llmauth 와 agent 는 ErrNoTokens 로 "로그인이 필요하다"를 가른다.
+// llmauth와 agent는 ErrNoTokens로 "로그인이 필요하다"를 가른다.
 func wrapNoTokens(err error) error {
 	if errors.Is(err, db.ErrOAuthCredentialsNotFound) {
 		return fmt.Errorf("%w: %w", llmauth.ErrNoTokens, err)
@@ -76,7 +76,7 @@ func wrapNoTokens(err error) error {
 	return err
 }
 
-// tokensFromCredentials 는 db 의 자격 증명을 llmauth 토큰으로 옮긴다. db 는 IDToken 을 저장하지 않는다.
+// tokensFromCredentials 는 db의 자격 증명을 llmauth 토큰으로 옮긴다. db는 IDToken을 저장하지 않는다.
 func tokensFromCredentials(c db.OAuthCredentials) llmauth.Tokens {
 	return llmauth.Tokens{
 		AccessToken:  c.AccessToken,
@@ -88,7 +88,7 @@ func tokensFromCredentials(c db.OAuthCredentials) llmauth.Tokens {
 }
 
 // oauthTokenRegistry 는 구독 OAuth 프로필마다 TokenSource를 하나만 만들어 나눠 준다.
-// 같은 프로필을 쓰는 프로바이더들이 TokenSource 를 공유해야 갱신이 한 번에 하나만 돌고,
+// 같은 프로필을 쓰는 프로바이더들이 TokenSource를 공유해야 갱신이 한 번에 하나만 돌고,
 // agent.Config 비교(applyLLM)에서도 같은 설정으로 보인다.
 // nil 레지스트리(키를 불러오지 못했거나 테스트의 제로값 Server)는 OAuth 프로필을 쓸 수 없다고 답한다.
 type oauthTokenRegistry struct {
@@ -101,7 +101,7 @@ type oauthTokenRegistry struct {
 	sources    map[int64]*llmauth.TokenSource
 	sourceAuth map[int64]db.AuthType
 	// needsLogin 은 갱신이 "다시 로그인해야 한다"로 거절된 프로필이다. 메모리에만 둔다.
-	// 갱신이 성공하거나 forget 으로 TokenSource 를 버리면 지운다.
+	// 갱신이 성공하거나 forget으로 TokenSource를 버리면 지운다.
 	needsLogin map[int64]bool
 }
 
@@ -111,8 +111,8 @@ func newOAuthTokenRegistry(pg *db.DB, cipher *db.TokenCipher, client *llmauth.Cl
 		sources: map[int64]*llmauth.TokenSource{}, needsLogin: map[int64]bool{}}
 }
 
-// loadOAuthTokenRegistry 는 keyDir 의 oauth.key 로 레지스트리를 만든다. 키를 쓰지 못하면 기록하고
-// nil 을 돌려준다. 키 파일 문제로 API 키 프로필까지 막지 않으려고 서버 시작을 멈추지 않는다.
+// loadOAuthTokenRegistry 는 keyDir의 oauth.key로 레지스트리를 만든다. 키를 쓰지 못하면 기록하고
+// nil을 돌려준다. 키 파일 문제로 API 키 프로필까지 막지 않으려고 서버 시작을 멈추지 않는다.
 func loadOAuthTokenRegistry(pg *db.DB, keyDir string) *oauthTokenRegistry {
 	if pg == nil {
 		return nil
@@ -130,7 +130,7 @@ func loadOAuthTokenRegistry(pg *db.DB, keyDir string) *oauthTokenRegistry {
 	return newOAuthTokenRegistry(pg, cipher, &llmauth.Client{})
 }
 
-// source 는 프로필의 TokenSource 를 돌려준다. 처음 부를 때 만들고 그 뒤로는 같은 것을 준다.
+// source 는 프로필의 TokenSource를 돌려준다. 처음 부를 때 만들고 그 뒤로는 같은 것을 준다.
 func (r *oauthTokenRegistry) source(profileID int64) *llmauth.TokenSource {
 	return r.sourceForAuth(profileID, db.AuthChatGPTOAuth)
 }
@@ -159,8 +159,8 @@ func (r *oauthTokenRegistry) sourceForAuth(profileID int64, authType db.AuthType
 	return src
 }
 
-// forget 은 프로필의 TokenSource 와 재로그인 표시를 버린다. 로그인을 새로 했거나 연결을 끊거나
-// 프로필을 지웠을 때 부른다. 다음 source 호출이 새 TokenSource 를 만든다.
+// forget 은 프로필의 TokenSource와 재로그인 표시를 버린다. 로그인을 새로 했거나 연결을 끊거나
+// 프로필을 지웠을 때 부른다. 다음 source 호출이 새 TokenSource를 만든다.
 func (r *oauthTokenRegistry) forget(profileID int64) {
 	if r == nil {
 		return
@@ -178,7 +178,7 @@ func (r *oauthTokenRegistry) forget(profileID int64) {
 // errOAuthNotConnected 는 프로필에 저장된 OAuth 자격 증명이 없다는 뜻이다. 로그인이 필요하다.
 var errOAuthNotConnected = errors.New("oauth profile is not connected")
 
-// connectedSource 는 자격 증명이 저장된 프로필의 TokenSource 를 돌려준다. 자격 증명이 없으면
+// connectedSource 는 자격 증명이 저장된 프로필의 TokenSource를 돌려준다. 자격 증명이 없으면
 // errOAuthNotConnected, 조회·복호화가 실패하면 그 오류를 올린다. 토큰은 갱신하지 않는다.
 func (r *oauthTokenRegistry) connectedSource(ctx context.Context, profileID int64) (*llmauth.TokenSource, error) {
 	return r.connectedSourceForAuth(ctx, profileID, db.AuthChatGPTOAuth)

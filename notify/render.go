@@ -44,7 +44,7 @@ func OneLine(s string, max int) string {
 // TruncateRunes 는 s를 max 문자(바이트가 아니다) 이하로 자르고, 넘으면 말줄임표를 붙인다.
 // max<=0이면 제한하지 않는다.
 //
-// TruncateBytes 와 다른 점은 플랫폼의 길이 기준이다. WeCom은 바이트로, Telegram은 문자 수로 길이를 제한한다.
+// TruncateBytes와 다른 점은 플랫폼의 길이 기준이다. WeCom은 바이트로, Telegram은 문자 수로 길이를 제한한다.
 // 기준을 잘못 쓰면 오류는 나지 않고 메시지만 예상보다 훨씬 짧게 잘린다(한글·한자 1자 = 3바이트라
 // 4096바이트로 자르면 약 1365자만 남는다). 그래서 두 함수를 모두 두고 알림 채널마다 골라 쓴다.
 func TruncateRunes(s string, max int) string {
@@ -119,7 +119,7 @@ func packItemCount(items []Item, maxSize, reserve int, footer string, size func(
 	return len(items)
 }
 
-// byteSize / runeSize 는 packItemCount 의 두 가지 길이 기준이다. 이름을 붙여 두어 호출하는 곳에
+// byteSize / runeSize는 packItemCount의 두 가지 길이 기준이다. 이름을 붙여 두어 호출하는 곳에
 // 이름 없는 func(s string) int 클로저가 나오지 않게 한다. 그러면 어느 기준을 쓰는지 한눈에 알기 어렵다.
 func byteSize(s string) int { return len(s) }
 func runeSize(s string) int { return utf8.RuneCountInString(s) }
@@ -136,7 +136,7 @@ func assetLine(assets []string, limit int) string {
 	return strings.Join(assets[:limit], ", ") + " 외 총 " + itoa(len(assets)) + "개"
 }
 
-// itoa 는 strconv.Itoa 의 짧은 별칭이다. 표시 텍스트를 이어 붙일 때만 쓰며, 곳곳에서 strconv를 import하지 않으려는 것이다.
+// itoa 는 strconv.Itoa의 짧은 별칭이다. 표시 텍스트를 이어 붙일 때만 쓰며, 곳곳에서 strconv를 import하지 않으려는 것이다.
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

@@ -15,7 +15,7 @@ import (
 )
 
 // goalsDefaultTmpl 은 목표 분해기 프롬프트의 내장 편집 가능 본문(섹션 [A])이며
-// agent_prompts 에 씨앗으로 들어간다. 지금은 템플릿 변수를 쓰지 않는다.
+// agent_prompts에 씨앗으로 들어간다. 지금은 템플릿 변수를 쓰지 않는다.
 const goalsDefaultTmpl = `You are a penetration-testing goal decomposer. Your job is to identify from the user input the **final results to be achieved**, not to plan attack steps.
 
 **Step 1 (do this before splitting goals): extract operation constraints**
@@ -74,26 +74,26 @@ type GoalSpec struct {
 
 // DecomposeGoals 는 LLM 에게 침투 테스트 작업 목표를 서로 독립적으로 검증 가능한
 // 개별 목표(각각 하나의 goal 노드가 된다)로 쪼개 달라고 한다. 제공자가 설정되지 않았거나
-// 호출이 아무것도 내놓지 못하면 nil 을 돌려준다 — 그러면 호출자가 규칙 기반 분해로
+// 호출이 아무것도 내놓지 못하면 nil을 돌려준다 — 그러면 호출자가 규칙 기반 분해로
 // 되돌아가 goal 노드가 늘 존재하게 한다.
 //
-// prov 는 호출자가 건넨다(여기서 Config 로 만들지 않는다). 그래서 목표 분해가 엔진의
-// 나머지와 같은 제공자 인스턴스를 타고 돈다 — 같은 속도 제한기를 공유하고, llmrec 에
+// prov는 호출자가 건넨다(여기서 Config로 만들지 않는다). 그래서 목표 분해가 엔진의
+// 나머지와 같은 제공자 인스턴스를 타고 돈다 — 같은 속도 제한기를 공유하고, llmrec에
 // 기록되며, LLM 실패 전환에 참여한다. 이 셋을 조용히 건너뛰지 않는다.
 //
-// desc 는 작업의 자유 서술 설명(배경: 대상 범위/flag 개수/교전 설명 등)이다. 목표와 함께
+// desc는 작업의 자유 서술 설명(배경: 대상 범위/flag 개수/교전 설명 등)이다. 목표와 함께
 // 넣어 분해기가 더는 맹목적으로 쪼개지 않게 한다 — 프롬프트는 두 텍스트에 없는 것을
 // 지어내는 것을 여전히 금지한다.
 //
-// emit 은 nil 이 아니면 Worker="planner" 로 모든 LLM 단계(thinking/tool_use/result)를 받아,
-// 0번째 라운드의 목표 분해 활동이 UI 에 보이게 한다.
+// emit은 nil이 아니면 Worker="planner" 로 모든 LLM 단계(thinking/tool_use/result)를 받아,
+// 0번째 라운드의 목표 분해 활동이 UI에 보이게 한다.
 //
-// as + taskID 는 nil 이 아니거나 양수이면 add_task_scope 도구를 연결해, 분해기가 목표에서
+// as + taskID는 nil이 아니거나 양수이면 add_task_scope 도구를 연결해, 분해기가 목표에서
 // 뽑아낸 명시적 자산 범위를 등록할 수 있게 한다.
 //
-// ts 는 작업의 탐색 저장소다: set_goals 가 분해한 goal 노드를 바로 여기에 쓴다(메인 agent 가
-// 런타임에 목표를 추가할 때 쓰는 것과 같은 관리 도구다). 돌려주는 spec 은 저장소에서 다시
-// 읽어 오므로, 호출자가 목표별 활동을 내보내고 "LLM 이 아무것도 못 냈다"는 경우를 감지해
+// ts는 작업의 탐색 저장소다: set_goals가 분해한 goal 노드를 바로 여기에 쓴다(메인 agent가
+// 런타임에 목표를 추가할 때 쓰는 것과 같은 관리 도구다). 돌려주는 spec은 저장소에서 다시
+// 읽어 오므로, 호출자가 목표별 활동을 내보내고 "LLM이 아무것도 못 냈다"는 경우를 감지해
 // 되돌아갈 수 있다.
 func DecomposeGoals(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, emit func(db.Activity)) []GoalSpec {
 	if prov == nil {
@@ -110,13 +110,13 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 	if prov == nil {
 		return nil
 	}
-	// 목표 분해는 일회성 호출이다: transcript store 를 달지 않으므로 agentcore 가 ctx 에
-	// session id 를 달지 않는다(writer 가 있을 때만 단다. agentcore.Prompt 참고). 그런데
-	// session-id 헤더로 프롬프트 캐시/고정 라우팅을 하는 게이트웨이(opencode zen 은
-	// x-opencode-session 이 없으면 바로 400 MissingSessionID)는 ctx 의 이 값을 읽는다 —
-	// 채우지 않으면 "대화는 정상, 분해만 400" 이 된다. 안정적인 id 를 명시적으로 단다: 같은
-	// 탐색의 분해 요청이 그것을 공유해(캐시 적중에 유리) planner/worker 와 충돌하지 않고,
-	// llmrec.parseSession 이 올바로 귀속할 수 있다.
+	// 목표 분해는 일회성 호출이다: transcript store를 달지 않으므로 agentcore가 ctx에
+	// session id를 달지 않는다(writer가 있을 때만 단다. agentcore.Prompt 참고). 그런데
+	// session-id 헤더로 프롬프트 캐시/고정 라우팅을 하는 게이트웨이(opencode zen은
+	// x-opencode-session이 없으면 바로 400 MissingSessionID)는 ctx의 이 값을 읽는다 —
+	// 채우지 않으면 "대화는 정상, 분해만 400" 이 된다. 안정적인 id를 명시적으로 단다: 같은
+	// 탐색의 분해 요청이 그것을 공유해(캐시 적중에 유리) planner/worker와 충돌하지 않고,
+	// llmrec.parseSession이 올바로 귀속할 수 있다.
 	if ts != nil {
 		ctx = transcript.WithSessionID(ctx, fmt.Sprintf("exp%d-goals", ts.ID()))
 	}
@@ -128,7 +128,7 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 	// {{.EngagementDescription}} template var — else a prompt that references the var
 	// would inject the description twice. System prompt stays pure static instructions.
 	sys := renderSystem("goals", goalsDefaultTmpl, GoalsVars{DataDir: dataDir, Now: nowStr()})
-	// set_constraints 는 늘 쓸 수 있다(asset store 에 의존하지 않는다). 본문에 이미 "먼저
+	// set_constraints는 늘 쓸 수 있다(asset store에 의존하지 않는다). 본문에 이미 "먼저
 	// 작업 제약 조건을 뽑고 목표를 쪼개라"는 단계가 있으니(agent 편집 페이지에서 표현을 바꿀
 	// 수 있다) 여기서는 도구만 연결하면 된다.
 	tools := []actool.CoreTool{tsx.setGoals(), tsx.setConstraints()}
@@ -160,7 +160,7 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 		// 3단계(제약 조건 추출 → 범위 등록 → 목표 분해)마다 도구 호출이 한 번씩 필요하다.
 		// 회합을 넉넉히 줘 마무리 전에 set_goals 호출을 빠뜨리지 않게 한다.
 		MaxTurns:     8,
-		NonStreaming: nonStreaming, // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		NonStreaming: nonStreaming, // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다
 		MaxTokens:    maxTokens,    // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}, userMsg, captureEmit)
 	// set_goals persisted the goals directly; read them back so the caller sees what

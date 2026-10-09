@@ -12,17 +12,17 @@ import (
 // 개요 탭 '제약 조건 관리'의 수동 CRUD API와 주입 범위 스위치를 처리한다. 작업 제약 조건(allow/deny)은
 // 에이전트 쪽 set_constraints 도구와 같은 task_constraints 표에 쓴다. 여기서는 사람이 UI에서 직접
 // 추가·수정·삭제한다. 제약 조건은 프롬프트 컨텍스트일 뿐이라 바꾼 뒤 플래너에 알리지 **않는다**. 다음
-// 계획 회차가 DB를 읽을 때 적용된다(제품 결정). 변경 handler 는 모두 beginTaskOperation/decInflight 를
+// 계획 회차가 DB를 읽을 때 적용된다(제품 결정). 변경 handler는 모두 beginTaskOperation/decInflight를
 // 거쳐 작업 삭제와 경쟁하지 않게 한다(목표·탐색 의도 CRUD와 같다).
 
-// 주입 범위 스위치의 settings 키. 기본값은 모두 켜짐이다(GetBool 의 둘째 인자 = true).
+// 주입 범위 스위치의 settings 키. 기본값은 모두 켜짐이다(GetBool의 둘째 인자 = true).
 const (
 	settingConstraintsInjectPlanner = "constraints_inject_planner"
 	settingConstraintsInjectWorker  = "constraints_inject_worker"
 )
 
-// constraintInjectPlanner / constraintInjectWorker 는 작업 제약 조건을 해당 에이전트의 시스템
-// 프롬프트에 넣을지 알려 준다(기본값 켜짐). resolver 로 플래너·워커에 넘겨 회차마다 읽으므로
+// constraintInjectPlanner / constraintInjectWorker는 작업 제약 조건을 해당 에이전트의 시스템
+// 프롬프트에 넣을지 알려 준다(기본값 켜짐). resolver로 플래너·워커에 넘겨 회차마다 읽으므로
 // 스위치를 바꾸면 바로 적용된다.
 func (s *Server) constraintInjectPlanner() bool {
 	return s.m.pg.GetBool(settingConstraintsInjectPlanner, true)

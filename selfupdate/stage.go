@@ -15,10 +15,10 @@ import (
 	"time"
 )
 
-// sumsAsset 은 release.yml 이 만드는 체크섬 목록이다. Release 의 zip 전부를 다룬다.
+// sumsAsset 은 release.yml이 만드는 체크섬 목록이다. Release의 zip 전부를 다룬다.
 const sumsAsset = "SHA256SUMS"
 
-// maxBinarySize 는 압축을 푼 바이너리 크기를 제한해 잘못된 zip 이 디스크를 가득 채우지 못하게 한다.
+// maxBinarySize 는 압축을 푼 바이너리 크기를 제한해 잘못된 zip이 디스크를 가득 채우지 못하게 한다.
 const maxBinarySize = 512 << 20 // 512 MiB
 
 // Phase 는 업데이트 과정의 단계다. SSE 이벤트의 phase 필드로 그대로 쓴다.
@@ -33,17 +33,17 @@ const (
 	PhaseFailed   Phase = "failed"
 )
 
-// Progress 는 호출자가 넘겨 진행 상황을 프런트엔드로 보내는 데 쓴다. pct 는 다운로드 단계에서만 의미가 있고(0-100),
-// 나머지 단계에서는 -1 을 넘긴다.
+// Progress 는 호출자가 넘겨 진행 상황을 프런트엔드로 보내는 데 쓴다. pct는 다운로드 단계에서만 의미가 있고(0-100),
+// 나머지 단계에서는 -1을 넘긴다.
 type Progress func(ph Phase, pct int, msg string)
 
-// Stage 는 지정한 Release 의 현재 플랫폼용 배포 패키지를 내려받아 검증한 뒤 새 바이너리를 artex.new 로 임시 저장한다.
+// Stage 는 지정한 Release의 현재 플랫폼용 배포 패키지를 내려받아 검증한 뒤 새 바이너리를 artex.new로 임시 저장한다.
 //
-// 바이너리만이 아니라 zip 전체를 받는 이유는 두 가지다. 기존 Release 의 SHA256SUMS 는 원래
-// zip 만 다루므로 zip 을 받으면 CI 를 고칠 필요가 없고 이미 배포한 이전 버전과도 호환된다. 또 zip 에는
-// skills/ 가 들어 있어 나중에 내장 스킬을 동기화할 여지가 남는다. 대가는 skills 몇백 KB 를 더 받는 것뿐이다.
+// 바이너리만이 아니라 zip 전체를 받는 이유는 두 가지다. 기존 Release의 SHA256SUMS는 원래
+// zip 만 다루므로 zip을 받으면 CI를 고칠 필요가 없고 이미 배포한 이전 버전과도 호환된다. 또 zip 에는
+// skills/ 가 들어 있어 나중에 내장 스킬을 동기화할 여지가 남는다. 대가는 skills 몇백 KB를 더 받는 것뿐이다.
 //
-// 함수가 반환하면 임시 저장이 끝난 것이다. 호출자는 이어서 정상 종료하고 ExitRestart 로 종료한다.
+// 함수가 반환하면 임시 저장이 끝난 것이다. 호출자는 이어서 정상 종료하고 ExitRestart로 종료한다.
 func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion string, prog Progress) error {
 	if prog == nil {
 		prog = func(Phase, int, string) {}
@@ -72,8 +72,8 @@ func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion str
 		return fmt.Errorf("%s에 %s이(가) 없어 검증하지 않은 바이너리의 설치를 거부합니다", sumsAsset, name)
 	}
 
-	// 임시 파일은 모두 대상 디렉터리에 둔다. 마지막 rename 이 같은 파일 시스템 안의 원자적 동작이 되게 하기 위해서다
-	// (다른 장치로의 rename 은 실패하고, /tmp 는 흔히 별도 마운트 지점이다).
+	// 임시 파일은 모두 대상 디렉터리에 둔다. 마지막 rename이 같은 파일 시스템 안의 원자적 동작이 되게 하기 위해서다
+	// (다른 장치로의 rename은 실패하고, /tmp는 흔히 별도 마운트 지점이다).
 	zipPath := p.New + ".zip.part"
 	binPath := p.New + ".part"
 	defer func() {
@@ -100,7 +100,7 @@ func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion str
 		return fmt.Errorf("새 버전이 현재 시스템에서 실행되지 않습니다: %w", err)
 	}
 
-	// 임시 저장본 자체의 sha256 을 따로 저장한다. 다음 시작 때 바이너리를 교체하기 전에 한 번 더 검증해서,
+	// 임시 저장본 자체의 sha256을 따로 저장한다. 다음 시작 때 바이너리를 교체하기 전에 한 번 더 검증해서,
 	// 임시 저장한 뒤 재시작하기 전 사이에 파일이 바뀌거나 망가지는 것을 막는다.
 	binSum, err := fileSHA256(binPath)
 	if err != nil {
@@ -127,7 +127,7 @@ func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion str
 	return nil
 }
 
-// fetchSums 는 SHA256SUMS 를 내려받아 파싱하고, 파일 이름 → 16진수 다이제스트를 돌려준다.
+// fetchSums 는 SHA256SUMS를 내려받아 파싱하고, 파일 이름 → 16진수 다이제스트를 돌려준다.
 func fetchSums(ctx context.Context, c *http.Client, rel *Release) (map[string]string, error) {
 	asset, ok := rel.FindAsset(sumsAsset)
 	if !ok {
@@ -158,7 +158,7 @@ func fetchSums(ctx context.Context, c *http.Client, rel *Release) (map[string]st
 func parseSums(raw string) map[string]string {
 	out := map[string]string{}
 	for line := range strings.Lines(raw) {
-		// 형식은 "<sha256>  <filename>"이다(sha256sum 은 공백 두 칸을 쓰고, shasum 의 바이너리
+		// 형식은 "<sha256>  <filename>"이다(sha256sum은 공백 두 칸을 쓰고, shasum의 바이너리
 		// 모드는 파일 이름 앞에 * 를 붙인다).
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) != 2 || !isHexSHA256(fields[0]) {
@@ -187,7 +187,7 @@ func isHexSHA256(s string) bool {
 	return true
 }
 
-// download 는 자산을 dst 에 쓰면서 SHA256 을 계산하고 Content-Length 에 따라 진행 상황을 보고한다.
+// download 는 자산을 dst에 쓰면서 SHA256을 계산하고 Content-Length에 따라 진행 상황을 보고한다.
 func download(ctx context.Context, c *http.Client, a Asset, dst string, prog Progress) (string, error) {
 	body, err := get(ctx, c, a.URL)
 	if err != nil {
@@ -215,7 +215,7 @@ func download(ctx context.Context, c *http.Client, a Asset, dst string, prog Pro
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// get 은 허용 목록 제약을 받는 GET 을 보내고 응답 본문을 돌려준다.
+// get 은 허용 목록 제약을 받는 GET을 보내고 응답 본문을 돌려준다.
 func get(ctx context.Context, c *http.Client, rawURL string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -282,8 +282,8 @@ func extractBinary(zipPath, dst string) error {
 	return fmt.Errorf("배포 패키지에 %s이(가) 없습니다", want)
 }
 
-// checkWritable 은 디렉터리에 쓸 수 있는지 미리 확인한다. 이 단계가 없으면 root 가 아닌 사용자로 실행하거나 바이너리를 시스템
-// 디렉터리에 둔 경우, 수십 MB 를 내려받은 뒤에야 바이너리를 교체하는 순간에 실패한다.
+// checkWritable 은 디렉터리에 쓸 수 있는지 미리 확인한다. 이 단계가 없으면 root가 아닌 사용자로 실행하거나 바이너리를 시스템
+// 디렉터리에 둔 경우, 수십 MB를 내려받은 뒤에야 바이너리를 교체하는 순간에 실패한다.
 func checkWritable(dir string) error {
 	probe, err := os.CreateTemp(dir, ".artex-update-probe-*")
 	if err != nil {
@@ -295,7 +295,7 @@ func checkWritable(dir string) error {
 	return nil
 }
 
-// progressWriter 는 쓴 바이트 수를 세고 보고 빈도를 제한한다. 32KiB 조각마다 SSE 를 하나씩 보내지 않기 위해서다.
+// progressWriter 는 쓴 바이트 수를 세고 보고 빈도를 제한한다. 32KiB 조각마다 SSE를 하나씩 보내지 않기 위해서다.
 type progressWriter struct {
 	total   int64
 	written int64

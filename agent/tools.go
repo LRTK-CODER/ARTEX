@@ -362,7 +362,7 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 		gsum = append(gsum, map[string]any{"id": g.ID, "state": g.State, "text": p["text"]})
 	}
 	out["goals"] = gsum
-	// hints: 사람/메인 agent 가 add_hint 로 그래프에 단 전략 힌트. planner 가 의도를 만들 때마다
+	// hints: 사람/메인 agent가 add_hint로 그래프에 단 전략 힌트. planner가 의도를 만들 때마다
 	// 읽도록 접어 넣는다(그러지 않으면 쓰기만 하고 읽지 않는다).
 	hints, _ := t.ts.ListByKind(db.KindHint, 50)
 	hsum := make([]map[string]any, 0, len(hints))
@@ -421,17 +421,17 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 			if hidden(n.ID) {
 				continue // in a cold_digest and still cold — shown via cold_digests (§6.2)
 			}
-			recentDone = append(recentDone, n) // 최신이 앞(all 은 id 내림차순). 접힌 것은 이미 걸렀고, 출력 때 최신 N 개로 자른다
+			recentDone = append(recentDone, n) // 최신이 앞(all은 id 내림차순). 접힌 것은 이미 걸렀고, 출력 때 최신 N 개로 자른다
 		}
 	}
 	out["running_intents"] = compactIntents(running, parentsOf, yieldsOf)
-	// done_intents_total: 끝난 의도(done/blocked/exhausted)의 총수. recent_done_intents 와
+	// done_intents_total: 끝난 의도(done/blocked/exhausted)의 총수. recent_done_intents와
 	// 짝을 이루는 이름이다 — 후자는 그 최신 창을 자른 뷰일 뿐이다. 두 키를 나란히 두면 그 자체로
-	// "보이는 것은 N/총수"라고 설명되어, planner 가 중복 제거할 때 "안 보임"을 "안 보냄"으로 오인하지 않게 해 프롬프트에 따로 설명할 필요가 없다.
+	// "보이는 것은 N/총수"라고 설명되어, planner가 중복 제거할 때 "안 보임"을 "안 보냄"으로 오인하지 않게 해 프롬프트에 따로 설명할 필요가 없다.
 	if dt, err := t.ts.CountFinishedIntents(); err == nil {
 		out["done_intents_total"] = dt
 	}
-	// frontier_open: 열린 의도의 실제 총수(open_intents 는 그중 우선순위가 가장 높은 앞 N 개를 자른 뷰일 뿐이다).
+	// frontier_open: 열린 의도의 실제 총수(open_intents는 그중 우선순위가 가장 높은 앞 N 개를 자른 뷰일 뿐이다).
 	if fo, err := t.ts.CountOpenIntents(); err == nil {
 		out["frontier_open"] = fo
 	} else {
@@ -445,10 +445,10 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	factNodes, _ := t.ts.ListByKind(db.KindFact, 1000) // newest first
 	out["findings_total"] = len(vulnNodes)             // 확인된 취약점 총수(목표 판정 때 본다). 자세한 것은 finding_list(최신 한 창) 참고
 	out["facts"] = len(factNodes)                      // 탐색 사실/결론 수(부정 결론 포함)
-	// findings 는 작업에서 가장 가치가 높은 산출물이다 → 개요에 최신 한 창을 담는다(≤10개, vulnNodes 는 이미 id 내림차순이라 최신이 앞).
-	// planner 가 라운드마다 목표를 판정할 때 최근 확인된 취약점을 한눈에 보게 한다. 전량/더 오래된 것은 list_findings 로 가져온다.
-	// 각 항목은 {id, summary, from_intent?} 만 남긴다: from_intent 는 이 취약점을 만든 의도다.
-	// evidence/assets/vulnclass/severity/state 등은 여전히 list_findings / node_detail(id) 로 가져올 수 있다.
+	// findings는 작업에서 가장 가치가 높은 산출물이다 → 개요에 최신 한 창을 담는다(≤10개, vulnNodes는 이미 id 내림차순이라 최신이 앞).
+	// planner가 라운드마다 목표를 판정할 때 최근 확인된 취약점을 한눈에 보게 한다. 전량/더 오래된 것은 list_findings로 가져온다.
+	// 각 항목은 {id, summary, from_intent?} 만 남긴다: from_intent는 이 취약점을 만든 의도다.
+	// evidence/assets/vulnclass/severity/state 등은 여전히 list_findings / node_detail(id)로 가져올 수 있다.
 	const findingListCap = 10
 	findingList := make([]map[string]any, 0, findingListCap)
 	for _, n := range vulnNodes {
@@ -464,9 +464,9 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 		findingList = append(findingList, m)
 	}
 	out["finding_list"] = findingList
-	// recent_facts: 접히지 않은 사실 중 최신 한 창(≤N, factNodes 는 id 내림차순이라 최신이 앞). digest 에 접혔고
-	// 아직 차가운(hidden) 것은 cold_digests 로 가고 여기서 중복하지 않는다. 각 항목은 {id, summary, from_intent?,
-	// confidence?}. evidence 등 자세한 것은 node_detail(id). 더 오래된 것은 list_facts 로 넘긴다.
+	// recent_facts: 접히지 않은 사실 중 최신 한 창(≤N, factNodes는 id 내림차순이라 최신이 앞). digest에 접혔고
+	// 아직 차가운(hidden) 것은 cold_digests로 가고 여기서 중복하지 않는다. 각 항목은 {id, summary, from_intent?,
+	// confidence?}. evidence 등 자세한 것은 node_detail(id). 더 오래된 것은 list_facts로 넘긴다.
 	const recentFactsCap = 20
 	recentFacts := make([]map[string]any, 0, recentFactsCap)
 	for _, n := range factNodes {
@@ -474,14 +474,14 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 			break
 		}
 		if hidden(n.ID) {
-			continue // digest 에 접혔고 아직 차갑다 — cold_digests 참고
+			continue // digest에 접혔고 아직 차갑다 — cold_digests 참고
 		}
 		m := compactNode(n)
 		if from := factFrom[n.ID]; from > 0 {
 			m["from_intent"] = from // 이 사실이 어느 의도에서 나왔는가
 		}
-		// confidence 를 개요에 담는다: 규획자가 어떤 결론이 inferred 일 뿐인지 한눈에 보게 한다(특히 부정 결론을
-		// 확정으로 여기지 않도록). evidence 는 길어서 node_detail(id) 에 맡긴다.
+		// confidence를 개요에 담는다: 규획자가 어떤 결론이 inferred 일 뿐인지 한눈에 보게 한다(특히 부정 결론을
+		// 확정으로 여기지 않도록). evidence는 길어서 node_detail(id)에 맡긴다.
 		var fp map[string]any
 		if json.Unmarshal(n.Payload, &fp) == nil {
 			if c, ok := fp["confidence"].(string); ok && c != "" {
@@ -491,20 +491,20 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 		recentFacts = append(recentFacts, m)
 	}
 	out["recent_facts"] = recentFacts
-	// recent_done_intents: 접히지 않은 끝난 의도 중 최신 한 창(≤N, recentDone 는 이미 id 내림차순).
-	// 더 오래된 것은 done_intents_total 수 + node_detail(id) 로 본다.
+	// recent_done_intents: 접히지 않은 끝난 의도 중 최신 한 창(≤N, recentDone는 이미 id 내림차순).
+	// 더 오래된 것은 done_intents_total 수 + node_detail(id)로 본다.
 	const recentDoneCap = 12
 	if len(recentDone) > recentDoneCap {
 		recentDone = recentDone[:recentDoneCap]
 	}
 	out["recent_done_intents"] = compactIntents(recentDone, parentsOf, yieldsOf)
-	// cold-digest §6.1: 차가운 영역을 접은 digest body 를, 최신 멤버 시간 내림차순으로 앞 N 개를 취한다. 잘린 더 오래된 digest 는
-	// 벌거벗은 id 만 준다(여전히 expand_digest 로 펼칠 수 있다). 차가운 영역의 유일한 출구가 무한히 길어지는 것을 막는다.
+	// cold-digest §6.1: 차가운 영역을 접은 digest body를, 최신 멤버 시간 내림차순으로 앞 N 개를 취한다. 잘린 더 오래된 digest는
+	// 벌거벗은 id 만 준다(여전히 expand_digest로 펼칠 수 있다). 차가운 영역의 유일한 출구가 무한히 길어지는 것을 막는다.
 	const coldDigestsCap = 15
 	if cds, more := coldDigestsRecent(t.ts, coldDigestsCap); len(cds) > 0 {
-		out["cold_digests"] = cds // [{id, body, member_count}] — body 를 바로 읽는다 (§6.1)
+		out["cold_digests"] = cds // [{id, body, member_count}] — body를 바로 읽는다 (§6.1)
 		if len(more) > 0 {
-			out["cold_digests_more"] = more // 잘린 더 오래된 digest 의 id. expand_digest(id) 로 펼친다
+			out["cold_digests_more"] = more // 잘린 더 오래된 digest의 id. expand_digest(id)로 펼친다
 		}
 	}
 	// the original task (root) so the planner always has it, not just the
@@ -516,11 +516,11 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	// summaries in a separate field so their intents never enter this task's
 	// frontier or get mistaken for locally claimable work.
 	out["related_tasks"] = t.relatedTaskOverviews()
-	// coverage: 대략의 자산 테스트 커버리지 참고값 — 범위(task_scope) 안의 자산 중 fact 가 건드린
-	// 비율 + by_type(유형별 총수/테스트됨). 테스트 안 된 구체 자산은 agent 가 필요에 따라 list_untested_assets 를 불러 스스로 판단한다. 작업 컨텍스트에만 있다.
+	// coverage: 대략의 자산 테스트 커버리지 참고값 — 범위(task_scope) 안의 자산 중 fact가 건드린
+	// 비율 + by_type(유형별 총수/테스트됨). 테스트 안 된 구체 자산은 agent가 필요에 따라 list_untested_assets를 불러 스스로 판단한다. 작업 컨텍스트에만 있다.
 	// 자산 커버리지 기능이 꺼져 있으면(coverageDisabled) host_count(대상 호스트 수의 인지 정보)만 남기고,
 	// denominator/tested/pct/by_type/note 등 커버리지 지표는 버려 컨텍스트를 더럽히지 않고
-	// 이미 숨긴 add_task_scope/list_untested_assets 를 유도하지도 않는다.
+	// 이미 숨긴 add_task_scope/list_untested_assets를 유도하지도 않는다.
 	if t.as != nil && t.ts != nil && t.taskID > 0 {
 		{
 			m := map[string]any{}
@@ -539,8 +539,8 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 				}
 			}
 			if hosts, err := t.as.HostsByTaskWithSources(t.taskID); err == nil {
-				// 호스트 총수만 준다. host 목록을 graph_overview 에 펼쳐 넣지 않는다(큰 범위 작업에서는 라운드마다
-				// 반복해 실리는 많은 문자열이고 규획 결정에 주는 가치가 적다). 구체 호스트는 필요에 따라 list_assets 로 조회한다.
+				// 호스트 총수만 준다. host 목록을 graph_overview에 펼쳐 넣지 않는다(큰 범위 작업에서는 라운드마다
+				// 반복해 실리는 많은 문자열이고 규획 결정에 주는 가치가 적다). 구체 호스트는 필요에 따라 list_assets로 조회한다.
 				m["host_count"] = len(hosts)
 			}
 			if len(m) > 0 {
@@ -811,7 +811,7 @@ func (t *ToolSet) relatedTaskOverviews() []map[string]any {
 			}
 			item["cold_digests"] = cds
 			if len(more) > 0 {
-				item["cold_digests_more"] = more // 잘린 더 오래된 digest 의 id. expand_digest(id) 로 펼친다
+				item["cold_digests_more"] = more // 잘린 더 오래된 digest의 id. expand_digest(id)로 펼친다
 			}
 		}
 		if statsErr == nil {
@@ -1017,7 +1017,7 @@ func (t *ToolSet) nodeDetail() actool.CoreTool {
 
 // --- planner write tools ---
 
-// intentItem 은 add_intent 의 일괄/단건 탐색 방향 하나다.
+// intentItem 은 add_intent의 일괄/단건 탐색 방향 하나다.
 type intentItem struct {
 	Summary   string            `json:"summary"`
 	AssetIDs  []json.RawMessage `json:"asset_ids"`
@@ -1025,9 +1025,9 @@ type intentItem struct {
 	Priority  int               `json:"priority"`
 }
 
-// addOneIntent 은 의도 노드를 하나 만들고 상류 혈연을 이어 id 를 돌려준다.
-// 제약: 의도는 이미 확인된 지식에만 닻을 내릴 수 있다 — 각 parent_id 는 이미 존재하는 fact/finding
-// 노드여야 한다(다른 의도/목표/힌트에는 걸 수 없다). 최상위의 완전히 새로운 방향은 parent_ids 를 비우고, 기본으로 origin fact 에 잇는다.
+// addOneIntent 은 의도 노드를 하나 만들고 상류 혈연을 이어 id를 돌려준다.
+// 제약: 의도는 이미 확인된 지식에만 닻을 내릴 수 있다 — 각 parent_id는 이미 존재하는 fact/finding
+// 노드여야 한다(다른 의도/목표/힌트에는 걸 수 없다). 최상위의 완전히 새로운 방향은 parent_ids를 비우고, 기본으로 origin fact에 잇는다.
 // 이렇게 해서 "모든 의도가 fact 노드에 이어지고, 허공의 규획이 아니라 발견 주도로 만들어진다"가 생성 경로에서 강제된다.
 func (t *ToolSet) addOneIntent(it intentItem) (int64, error) {
 	if strings.TrimSpace(it.Summary) == "" {
@@ -1123,9 +1123,9 @@ func (t *ToolSet) addIntent() actool.CoreTool {
 				createdAny = true
 			}
 
-			// 사람이 메인 agent 를 통해 의도를 직접 투입 → 작업이 이미 done 이면(열린 목표가 없는 goalless 분기) 그것을
-			// running 으로 되돌려야 worker 가 이 의도를 받아 실행한다. resumeTask 는 메인 agent 의 Chat 만 연결한다
-			// (SetResumeTask). planner 의 ToolSet 은 nil 이므로 planner 가 직접 add_intent 를 부를 때 이 부분은
+			// 사람이 메인 agent를 통해 의도를 직접 투입 → 작업이 이미 done 이면(열린 목표가 없는 goalless 분기) 그것을
+			// running으로 되돌려야 worker가 이 의도를 받아 실행한다. resumeTask는 메인 agent의 Chat 만 연결한다
+			// (SetResumeTask). planner의 ToolSet은 nil 이므로 planner가 직접 add_intent를 부를 때 이 부분은
 			// no-op 이고 정상적인 의도 생성에 영향이 없다. 의도 노드는 위에서 이미 만들어졌고(open), 되살릴 때 잘못 비워지지 않는다.
 			if createdAny && t.resumeTask != nil {
 				t.resumeTask()
@@ -1182,8 +1182,8 @@ func (t *ToolSet) proveGoal() actool.CoreTool {
 			}
 			_ = t.ts.Link(ev, db.RelProves, goal)
 			_ = t.ts.SetNodeState(goal, "met")
-			// 목표를 하나 met 로 표시할 때마다 이 작업의 [모든 목표]가 met 됐는지 확인한다. 그렇다면
-			// 작업 완료로 자동 판정하고(GoalMet 설정), 모델이 goal_met 를 명시적으로 부르는 데 더는 기대지 않는다.
+			// 목표를 하나 met로 표시할 때마다 이 작업의 [모든 목표]가 met 됐는지 확인한다. 그렇다면
+			// 작업 완료로 자동 판정하고(GoalMet 설정), 모델이 goal_met를 명시적으로 부르는 데 더는 기대지 않는다.
 			if goals, err := t.ts.ListByKind(db.KindGoal, 1000); err == nil && len(goals) > 0 {
 				allMet := true
 				for _, g := range goals {
@@ -1194,7 +1194,7 @@ func (t *ToolSet) proveGoal() actool.CoreTool {
 				}
 				if allMet {
 					t.GoalMet = true
-					t.Reason = fmt.Sprintf("모든 %d 개 목표가 met 됨(마지막은 goal %d 가 트리거)", len(goals), goal)
+					t.Reason = fmt.Sprintf("모든 %d 개 목표가 met 됨(마지막은 goal %d가 트리거)", len(goals), goal)
 					return actool.Text(fmt.Sprintf("goal %d marked met; all goals of this task are achieved, the task is automatically judged complete", goal)), nil
 				}
 			}
@@ -1302,7 +1302,7 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 // This is the home for observations and — importantly — negative results
 // ("port closed", "param not injectable", "no login found"). Such conclusions
 // must NOT be stuffed into the asset graph via upsert_asset.
-// factItem 은 record_fact 의 일괄/단건 사실 하나다.
+// factItem은 record_fact의 일괄/단건 사실 하나다.
 type factItem struct {
 	Summary    string            `json:"summary"`
 	Detail     string            `json:"detail"`
@@ -1312,8 +1312,8 @@ type factItem struct {
 	AssetIDs   []json.RawMessage `json:"asset_ids"`
 }
 
-// recordOneFact 은 fact 노드를 하나 써 의도에 잇는다(intent→yields→fact). defaultIntent 는
-// 일괄 때의 기본 의도다(이 항목이 intent_id 를 주지 않았을 때 쓴다).
+// recordOneFact 은 fact 노드를 하나 써 의도에 잇는다(intent→yields→fact). defaultIntent는
+// 일괄 때의 기본 의도다(이 항목이 intent_id를 주지 않았을 때 쓴다).
 func (t *ToolSet) recordOneFact(it factItem, defaultIntent int64) (int64, error) {
 	if strings.TrimSpace(it.Summary) == "" {
 		return 0, fmt.Errorf("summary must not be empty")
@@ -1411,7 +1411,7 @@ type hintItem struct {
 	TrafficRefs []db.TrafficRef   `json:"traffic_refs"`
 }
 
-// addOneHint 은 hint 노드(active/human)를 탐색 그래프에 달고, 자산에 닻을 내릴 수 있으며, id 를 돌려준다.
+// addOneHint 은 hint 노드(active/human)를 탐색 그래프에 달고, 자산에 닻을 내릴 수 있으며, id를 돌려준다.
 func (t *ToolSet) addOneHint(it hintItem) (int64, error) {
 	if len(it.TrafficRefs) > 0 && !findingTrafficBindingEnabled() {
 		return 0, fmt.Errorf("the agent's automatic traffic binding is off; the hint carrying traffic_refs was not saved; enable it in system settings, or hand off text only")
@@ -1433,8 +1433,8 @@ func (t *ToolSet) addOneHint(it hintItem) (int64, error) {
 	if len(refs) > 0 {
 		payload["traffic_refs"] = refs
 	}
-	// planner 깨우기는 여기서 하나씩 하지 않는다 — addHint 가 일괄을 다 쓴 뒤 한 번에 트리거한다(힌트 텍스트를 실어).
-	// 한 번의 add_hint 가 여러 힌트를 하나씩 planner 트리거 줄에 도배하지 않게 한다.
+	// planner 깨우기는 여기서 하나씩 하지 않는다 — addHint가 일괄을 다 쓴 뒤 한 번에 트리거한다(힌트 텍스트를 실어).
+	// 한 번의 add_hint가 여러 힌트를 하나씩 planner 트리거 줄에 도배하지 않게 한다.
 	return t.ts.AddNode(db.KindHint, payload, 0, "active", "human", anchors)
 }
 
@@ -1444,8 +1444,8 @@ type goalItem struct {
 }
 
 // addOneGoal 은 goal 노드(open)를 탐색 그래프에 달고, 작업 루트(origin fact, rel spawns)에 잇는다.
-// origin 은 t.worker(기본 system)를 쓴다: goals 분해기가 쓴 것은 "goals", 메인 agent 런타임은
-// "human" 으로 기록한다. planner 깨우기는 setGoals 가 일괄을 다 쓴 뒤 한 번에 한다(아래 참고). 여기서는 저장만 맡는다.
+// origin은 t.worker(기본 system)를 쓴다: goals 분해기가 쓴 것은 "goals", 메인 agent 런타임은
+// "human" 으로 기록한다. planner 깨우기는 setGoals가 일괄을 다 쓴 뒤 한 번에 한다(아래 참고). 여기서는 저장만 맡는다.
 func (t *ToolSet) addOneGoal(it goalItem) (int64, error) {
 	text := strings.TrimSpace(it.Text)
 	if text == "" {
@@ -1469,8 +1469,8 @@ func (t *ToolSet) addOneGoal(it goalItem) (int64, error) {
 	return id, nil
 }
 
-// setGoals 는 [이 작업]에 탐색 목표(goal 노드)를 추가한다. 목표 분해기의 제출 도구이자, 메인 agent 가
-// 런타임에 목표를 보태는 도구다 — 같은 관리 도구이며, web 에서 설명/schema 를 바꾸고 agent 별로 묶을 수 있다.
+// setGoals 는 [이 작업]에 탐색 목표(goal 노드)를 추가한다. 목표 분해기의 제출 도구이자, 메인 agent가
+// 런타임에 목표를 보태는 도구다 — 같은 관리 도구이며, web 에서 설명/schema를 바꾸고 agent 별로 묶을 수 있다.
 func (t *ToolSet) setGoals() actool.CoreTool {
 	return writeTool("set_goals",
 		"Add exploration goals (goal) to [this task]. A goal = a final deliverable/verifiable result, not an attack step or recon action.\n"+
@@ -1509,17 +1509,17 @@ func (t *ToolSet) setGoals() actool.CoreTool {
 				addedTexts = append(addedTexts, strings.TrimSpace(it.Text))
 			}
 			if len(addedTexts) > 0 {
-				// planner 를 깨운다(일괄 한 번). notifyGoal 우선: 한 번의 set_goals 가 "사람이
-				// 목표 N 개를 추가함: …" 트리거를 하나 기록하고 하나씩 도배하지 않는다. 분해기/worker 는 이 콜백이 없어 → 순수 notify 로 되돌아간다(분해기
-				// round-0 은 notify 도 연결하지 않아 무동작이다. 이때는 아직 planner 가 시작되지 않았기 때문).
+				// planner를 깨운다(일괄 한 번). notifyGoal 우선: 한 번의 set_goals가 "사람이
+				// 목표 N 개를 추가함: …" 트리거를 하나 기록하고 하나씩 도배하지 않는다. 분해기/worker는 이 콜백이 없어 → 순수 notify로 되돌아간다(분해기
+				// round-0은 notify 도 연결하지 않아 무동작이다. 이때는 아직 planner가 시작되지 않았기 때문).
 				switch {
 				case t.notifyGoal != nil:
 					t.notifyGoal(addedTexts)
 				case t.notify != nil:
 					t.notify()
 				}
-				// 메인 agent 가 런타임에 목표를 추가 → 완료/일시 중지된 작업을 running 으로 되돌려 계속 돌린다(종료 상태 게이트가
-				// 보통의 notify 를 삼키므로 명시적으로 되살려야 한다). mainagent 만 이 콜백을 연결한다. 분해기/worker 는 nil.
+				// 메인 agent가 런타임에 목표를 추가 → 완료/일시 중지된 작업을 running으로 되돌려 계속 돌린다(종료 상태 게이트가
+				// 보통의 notify를 삼키므로 명시적으로 되살려야 한다). mainagent 만 이 콜백을 연결한다. 분해기/worker는 nil.
 				if t.resumeTask != nil {
 					t.resumeTask()
 				}
@@ -1544,8 +1544,8 @@ type constraintItem struct {
 	Type string `json:"type"` // allow | deny
 }
 
-// addOneConstraint 은 작업 제약 조건 하나를 task_constraints 에 저장한다. origin 은 t.worker(기본 system)를 쓴다:
-// 분해기는 "goals", 메인 agent 는 "human" 으로 쓴다.
+// addOneConstraint 은 작업 제약 조건 하나를 task_constraints에 저장한다. origin은 t.worker(기본 system)를 쓴다:
+// 분해기는 "goals", 메인 agent는 "human" 으로 쓴다.
 func (t *ToolSet) addOneConstraint(it constraintItem) (int64, error) {
 	text := strings.TrimSpace(it.Text)
 	if text == "" {
@@ -1562,8 +1562,8 @@ func (t *ToolSet) addOneConstraint(it constraintItem) (int64, error) {
 }
 
 // setConstraints 는 [이 작업]에 작업 제약 조건(allow=무엇을 허용 / deny=무엇을 금지)을 추가한다. 목표
-// 분해기가 round-0 에 제약을 뽑아 제출하는 도구이자, 메인 agent 가 런타임에 제약을 보태는 도구다 — 같은 관리 도구이며, web 에서
-// 설명/schema 를 바꾸고 agent 별로 묶을 수 있다. 제약은 planner/worker 의 시스템 프롬프트에 주입되어 탐색 경계를 제약한다.
+// 분해기가 round-0에 제약을 뽑아 제출하는 도구이자, 메인 agent가 런타임에 제약을 보태는 도구다 — 같은 관리 도구이며, web 에서
+// 설명/schema를 바꾸고 agent 별로 묶을 수 있다. 제약은 planner/worker의 시스템 프롬프트에 주입되어 탐색 경계를 제약한다.
 func (t *ToolSet) setConstraints() actool.CoreTool {
 	return writeTool("set_constraints",
 		"Add operation constraints to [this task] to frame the exploration boundary: type=allow (allowed actions) or deny (forbidden actions).\n"+
@@ -1647,9 +1647,9 @@ func (t *ToolSet) addHint() actool.CoreTool {
 				addedTexts = append(addedTexts, strings.TrimSpace(it.Text))
 			}
 			if len(addedTexts) > 0 {
-				// planner 를 깨운다(일괄 한 번). notifyHint 우선: 한 번의 add_hint 가 "사람이
-				// 전략 힌트 N 개를 추가함: …" 트리거를 하나 기록해, planner 가 "이번 라운드는 새 hint 로 트리거됐다"를 분명히 알고 힌트 내용을 보게 한다.
-				// 이 콜백을 연결하지 않았으면 순수 notify 로 되돌아간다(bare wake. hint 는 여전히 그래프에 접혀 있어 스스로 읽을 수 있다).
+				// planner를 깨운다(일괄 한 번). notifyHint 우선: 한 번의 add_hint가 "사람이
+				// 전략 힌트 N 개를 추가함: …" 트리거를 하나 기록해, planner가 "이번 라운드는 새 hint로 트리거됐다"를 분명히 알고 힌트 내용을 보게 한다.
+				// 이 콜백을 연결하지 않았으면 순수 notify로 되돌아간다(bare wake. hint는 여전히 그래프에 접혀 있어 스스로 읽을 수 있다).
 				switch {
 				case t.notifyHint != nil:
 					t.notifyHint(addedTexts)
@@ -1945,7 +1945,7 @@ func (t *ToolSet) searchAllWorkerTraces() actool.CoreTool {
 			if strings.TrimSpace(a.Q) == "" {
 				return actool.Errorf("q is required"), nil
 			}
-			// 호출자 자신의 이 의도 단계를 제외한다(worker 자신의 trace 는 이미 그 컨텍스트에 있다).
+			// 호출자 자신의 이 의도 단계를 제외한다(worker 자신의 trace는 이미 그 컨텍스트에 있다).
 			acts, err := t.ts.ActivityTraceSearchAllWithSources(t.ownerNode, a.Q, a.Limit)
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
@@ -2037,16 +2037,16 @@ func (t *ToolSet) PlannerTools() []actool.CoreTool {
 		t.expandDigest(),
 		t.getWorkerOutput(), t.getWorkerTrace(), t.searchAllWorkerTraces(), t.listGoals(), t.addIntent(), t.proveGoal(), t.goalMet(),
 		t.killWorkTool(), t.steerWorkTool(),
-		// report_finding: 규획 태세를 분석하다 스스로 취약점을 확증하면 직접 등록할 수 있다(worker 와 같은 도구).
+		// report_finding: 규획 태세를 분석하다 스스로 취약점을 확증하면 직접 등록할 수 있다(worker와 같은 도구).
 		t.addFinding(),
 		// list_companies: 기업 목록 + scope + 자산 수를 본다(company_id 획득 / 귀속 범위 이해).
 		t.listCompanies(),
-		// list_assets: 규획 때 DSL 로 전체 자산 라이브러리를 검색한다(list_untested_assets 의 "범위 내 미테스트" 관점과 함께,
+		// list_assets: 규획 때 DSL로 전체 자산 라이브러리를 검색한다(list_untested_assets의 "범위 내 미테스트" 관점과 함께,
 		// "도메인/지문/포트/상태 코드 등 조건으로 전체 라이브러리에서 조회"하는 능력을 보탠다).
 		t.listAssets(),
 		// add_company_scope: 규획 때 도메인/IP/CIDR/ICP/키워드를 어떤 기업의 자산 범위에 넣을 수 있다(일치한 자산을 자동 인수).
 		t.addCompanyScope(),
-		// add_task_scope: 루트 도메인 전체/기업 전체/어떤 하위 도메인/IP 를 이 작업의 테스트 범위(커버리지 분모)에 능동적으로 넣는다.
+		// add_task_scope: 루트 도메인 전체/기업 전체/어떤 하위 도메인/IP를 이 작업의 테스트 범위(커버리지 분모)에 능동적으로 넣는다.
 		t.addTaskScope(),
 		// list_untested_assets: 필요에 따라 이 작업 범위 내 미테스트 자산을 조회하고(유형+페이지), 보완 테스트를 스스로 정한다.
 		t.listUntestedAssets(),

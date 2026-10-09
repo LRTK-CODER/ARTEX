@@ -16,10 +16,10 @@ import (
 // 원격 코드 실행 통로가 열린다.
 const Repo = "LRTK-CODER/ARTEX"
 
-// latestURL 은 GitHub 의 "최신 정식 릴리스" API 다. prerelease 와 draft 는 자동으로 건너뛴다.
+// latestURL 은 GitHub의 "최신 정식 릴리스" API 다. prerelease와 draft는 자동으로 건너뛴다.
 const latestURL = "https://api.github.com/repos/" + Repo + "/releases/latest"
 
-// allowedHosts 는 업데이트 과정이 접근할 수 있는 도메인을 제한한다. 아래 checkRedirect 와 함께
+// allowedHosts 는 업데이트 과정이 접근할 수 있는 도메인을 제한한다. 아래 checkRedirect와 함께
 // 어느 단계에서든 목록 밖 호스트로 리다이렉트되면 바로 실패한다. DNS 오염·중간자 공격으로
 // 바이너리가 바뀌는 것을 막는 첫 관문이고, 둘째 관문은 SHA256SUMS 비교다.
 var allowedHosts = map[string]bool{
@@ -42,16 +42,16 @@ type Release struct {
 	Assets      []Asset   `json:"assets"`
 }
 
-// Asset 은 Release 에 붙은 파일 하나다.
+// Asset 은 Release에 붙은 파일 하나다.
 type Asset struct {
 	Name string `json:"name"`
 	URL  string `json:"browser_download_url"`
 	Size int64  `json:"size"`
 }
 
-// NewClient 는 GitHub 도메인만 허용하는 HTTP 클라이언트를 만든다. proxy 가 비어 있으면 직접 연결한다.
+// NewClient 는 GitHub 도메인만 허용하는 HTTP 클라이언트를 만든다. proxy가 비어 있으면 직접 연결한다.
 //
-// 기본 Transport 를 일부러 재사용하지 않는다. 업데이트 과정은 TLS 와 인증서 검증을 반드시 거쳐야 하고,
+// 기본 Transport를 일부러 재사용하지 않는다. 업데이트 과정은 TLS와 인증서 검증을 반드시 거쳐야 하고,
 // 다른 곳에서 설정한 InsecureSkipVerify 같은 것에 영향을 받으면 안 된다.
 func NewClient(proxy string) *http.Client {
 	tr := &http.Transport{
@@ -75,7 +75,7 @@ func NewClient(proxy string) *http.Client {
 	}
 }
 
-// checkURL 은 https 와 도메인 허용 목록을 강제한다.
+// checkURL 은 https와 도메인 허용 목록을 강제한다.
 func checkURL(u *url.URL) error {
 	if u.Scheme != "https" {
 		return fmt.Errorf("HTTPS가 아닌 주소 거부: %s", u.Scheme+"://"+u.Host)
@@ -106,8 +106,8 @@ func FetchLatest(ctx context.Context, c *http.Client) (*Release, error) {
 
 	switch {
 	case resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusTooManyRequests:
-		// 인증하지 않은 GitHub API 는 IP 마다 시간당 60회라서, 아웃바운드 IP 를 함께 쓰면 쉽게 걸린다.
-		return nil, fmt.Errorf("GitHub API 속도 제한(시간당 60회)에 걸렸습니다. 잠시 뒤 다시 시도하세요")
+		// 인증하지 않은 GitHub API는 IP 마다 시간당 60회라서, 아웃바운드 IP를 함께 쓰면 쉽게 걸린다.
+		return nil, fmt.Errorf("GitHub API 속도 제한(시간당 60회)에 걸렸습니다. 잠시 뒤 다시 시도하세요.")
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, fmt.Errorf("저장소 %s에 아직 정식 릴리스가 없습니다", Repo)
 	case resp.StatusCode != http.StatusOK:
@@ -124,7 +124,7 @@ func FetchLatest(ctx context.Context, c *http.Client) (*Release, error) {
 	return &rel, nil
 }
 
-// AssetName 은 현재 플랫폼에 맞는 배포 패키지 이름을 돌려준다. build.sh 의 package_binary 와 같게 유지한다:
+// AssetName 은 현재 플랫폼에 맞는 배포 패키지 이름을 돌려준다. build.sh의 package_binary와 같게 유지한다:
 // artex-<버전>-<os>-<arch>.zip(버전에 v 접두사를 붙이지 않는다).
 func AssetName(tag, goos, goarch string) string {
 	return fmt.Sprintf("artex-%s-%s-%s.zip", strings.TrimPrefix(tag, "v"), goos, goarch)

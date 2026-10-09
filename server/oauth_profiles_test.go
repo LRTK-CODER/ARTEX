@@ -29,7 +29,7 @@ const (
 	fakeOAuthAccountID    = "acct-issue39"
 )
 
-// syncBuffer 는 여러 goroutine 이 log 로 써도 안전한 버퍼다.
+// syncBuffer 는 여러 goroutine이 log로 써도 안전한 버퍼다.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -57,7 +57,7 @@ func captureLogs(t *testing.T) *syncBuffer {
 	return buf
 }
 
-// assertNoTokens 는 out 에 가짜 토큰이 없는지 본다.
+// assertNoTokens 는 out에 가짜 토큰이 없는지 본다.
 func assertNoTokens(t *testing.T, where, out string, tokens ...string) {
 	t.Helper()
 	for _, tok := range append([]string{fakeOAuthAccessToken, fakeOAuthRefreshToken}, tokens...) {
@@ -67,7 +67,7 @@ func assertNoTokens(t *testing.T, where, out string, tokens ...string) {
 	}
 }
 
-// fakeAccessJWT 는 llmauth 가 읽는 클레임(exp, chatgpt_account_id)만 담은 서명 없는 JWT 다.
+// fakeAccessJWT 는 llmauth가 읽는 클레임(exp, chatgpt_account_id)만 담은 서명 없는 JWT 다.
 func fakeAccessJWT(t *testing.T, exp time.Time, marker string) string {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
@@ -82,7 +82,7 @@ func fakeAccessJWT(t *testing.T, exp time.Time, marker string) string {
 	return enc([]byte(`{"alg":"none"}`)) + "." + enc(payload) + ".sig"
 }
 
-// oauthFixture 는 실제 PostgreSQL 에 chatgpt_oauth 프로필 하나와 그 레지스트리를 만든다.
+// oauthFixture 는 실제 PostgreSQL에 chatgpt_oauth 프로필 하나와 그 레지스트리를 만든다.
 type oauthFixture struct {
 	s       *Server
 	pg      *db.DB
@@ -90,7 +90,7 @@ type oauthFixture struct {
 	profile *db.LLMProfile
 }
 
-// newOAuthFixture 는 PostgreSQL 이 없으면 건너뛴다. issuer 는 갱신 요청을 받을 가짜 인증 서버다.
+// newOAuthFixture 는 PostgreSQL이 없으면 건너뛴다. issuer는 갱신 요청을 받을 가짜 인증 서버다.
 func newOAuthFixture(t *testing.T, issuer *httptest.Server) *oauthFixture {
 	t.Helper()
 	skipWithoutPostgres(t)
@@ -135,7 +135,7 @@ func (f *oauthFixture) connect(t *testing.T, expiresAt time.Time) {
 	f.connectWith(t, fakeOAuthAccessToken, expiresAt)
 }
 
-// connectWith 는 access token 을 골라 저장한다. 다시 로그인하면 access token 이 바뀐다.
+// connectWith 는 access token을 골라 저장한다. 다시 로그인하면 access token이 바뀐다.
 func (f *oauthFixture) connectWith(t *testing.T, accessToken string, expiresAt time.Time) {
 	t.Helper()
 	err := f.pg.SaveOAuthCredentials(context.Background(), f.reg.cipher, db.OAuthCredentials{
@@ -147,7 +147,7 @@ func (f *oauthFixture) connectWith(t *testing.T, accessToken string, expiresAt t
 	}
 }
 
-// codexBackend 는 Codex 백엔드처럼 /responses 에 짧은 SSE 를, /models 에 모델 목록을 준다.
+// codexBackend 는 Codex 백엔드처럼 /responses에 짧은 SSE를, /models에 모델 목록을 준다.
 type codexBackend struct {
 	mu       sync.Mutex
 	requests []*http.Request
@@ -205,7 +205,7 @@ func TestOAuthStoreLoadWithoutCredentialsIsNoTokens(t *testing.T) {
 	}
 }
 
-// TestOAuthStoreRefreshPassesDeadline 는 행 잠금을 쥔 채 부르는 갱신 함수에 호출자 ctx 의
+// TestOAuthStoreRefreshPassesDeadline 는 행 잠금을 쥔 채 부르는 갱신 함수에 호출자 ctx의
 // 시간 상한이 그대로 가는지, 받은 토큰이 저장되는지 본다.
 func TestOAuthStoreRefreshPassesDeadline(t *testing.T) {
 	f := newOAuthFixture(t, nil)
@@ -241,7 +241,7 @@ func TestOAuthStoreRefreshPassesDeadline(t *testing.T) {
 	}
 }
 
-// TestOAuthRefreshRecordsLoginRequired 는 갱신이 재로그인 필요로 거절되면 목록 응답에 needs_login 이
+// TestOAuthRefreshRecordsLoginRequired 는 갱신이 재로그인 필요로 거절되면 목록 응답에 needs_login이
 // 보이고, 다음 갱신이 성공하면 지워지는지 본다.
 func TestOAuthRefreshRecordsLoginRequired(t *testing.T) {
 	var mu sync.Mutex
@@ -263,7 +263,7 @@ func TestOAuthRefreshRecordsLoginRequired(t *testing.T) {
 	defer issuer.Close()
 	f := newOAuthFixture(t, issuer)
 	logs := captureLogs(t)
-	// 만료가 5분 안이라 Token 이 곧바로 갱신한다.
+	// 만료가 5분 안이라 Token이 곧바로 갱신한다.
 	f.connect(t, time.Now().Add(time.Minute))
 	src := f.reg.source(f.profile.ID)
 
@@ -277,7 +277,7 @@ func TestOAuthRefreshRecordsLoginRequired(t *testing.T) {
 		t.Fatalf("profile list does not report needs_login:\n%s", body)
 	}
 
-	// 다시 로그인한 것처럼 새 자격 증명을 저장하면 TokenSource 가 그것을 읽어 갱신에 성공한다.
+	// 다시 로그인한 것처럼 새 자격 증명을 저장하면 TokenSource가 그것을 읽어 갱신에 성공한다.
 	mu.Lock()
 	rejectRefresh = false
 	mu.Unlock()
@@ -341,8 +341,8 @@ func TestLoadOAuthTokenRegistryUsesKeyDir(t *testing.T) {
 	}
 }
 
-// TestProfileConfigChatGPTOAuth 는 OAuth 프로필의 설정이 형식·스트리밍을 강제하고, 같은 TokenSource 를
-// 재사용하며, providerForProfile 의 프로바이더가 저장된 토큰으로 Codex 백엔드를 부르는지 본다.
+// TestProfileConfigChatGPTOAuth 는 OAuth 프로필의 설정이 형식·스트리밍을 강제하고, 같은 TokenSource를
+// 재사용하며, providerForProfile의 프로바이더가 저장된 토큰으로 Codex 백엔드를 부르는지 본다.
 func TestProfileConfigChatGPTOAuth(t *testing.T) {
 	f := newOAuthFixture(t, nil)
 	backend := &codexBackend{}

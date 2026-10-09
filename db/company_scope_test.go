@@ -240,7 +240,7 @@ func TestCompanyICPAttribution(t *testing.T) {
 	// 그 뒤에 돌아서, 정리 문이 모두 **닫힌 연결** 위에서 실행되고 오류는 `_, _ =`로 버려져
 	// 자산과 기업이 DB에 영구히 남았다. 남은 데이터가 바로 오류를 내지는 않지만, 이 테스트는
 	// `MAX(companies.id)+1`을 가짜 TaskID로 자산에 표시한다(아래 suffix 참고). 이 숫자가
-	// 다른 테스트의 작업 id와 겹치면 그 테스트의 「자산이 정확히 N개」 단언이 이유 없이
+	// 다른 테스트의 작업 id와 겹치면 그 테스트의 '자산이 정확히 N개' 단언이 이유 없이
 	// 실패하고, 원인을 찾기가 매우 어렵다.
 	t.Cleanup(func() { d.Close() })
 
@@ -343,7 +343,7 @@ func TestCompanyScopeAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertCompany: %v", err)
 	}
-	// 회사와 198.51.100.0/24 scope 가 남으면 다음 실행의 같은 IP 가 이전 회사로 귀속된다.
+	// 회사와 198.51.100.0/24 scope가 남으면 다음 실행의 같은 IP가 이전 회사로 귀속된다.
 	// 위 cleanup 보다 나중에 등록해 연결을 닫기 전에 지운다.
 	t.Cleanup(func() {
 		if err := cs.DeleteCompany(cid); err != nil {

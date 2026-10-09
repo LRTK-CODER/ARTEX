@@ -9,7 +9,7 @@ import (
 )
 
 // 캡처 프록시가 붙은 이전 기본값 행은 시작 때 새 기본값으로 바뀌고,
-// 이어서 syncBrowserMCPProxy 가 현재 프록시를 다시 붙인다(#85).
+// 이어서 syncBrowserMCPProxy가 현재 프록시를 다시 붙인다(#85).
 func TestNewManagerMigratesLegacyBrowserMCPAndKeepsProxy(t *testing.T) {
 	const proxy = "http://127.0.0.1:9"
 	dsn, _, err := db.DSN()

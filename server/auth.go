@@ -22,9 +22,9 @@ const (
 	keyChars       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-// loadOrCreateJWTKey 는 keyDir/jwt.key 의 32바이트 서명 키를 읽는다. keyDir 는 PrepareKeyDir 가 정한
+// loadOrCreateJWTKey 는 keyDir/jwt.key의 32바이트 서명 키를 읽는다. keyDir는 PrepareKeyDir가 정한
 // 키 디렉터리이고, 파일 관리자로 열람할 수 있는 작업 공간(dataDir) 밖이어야 한다.
-// 예전 설치는 dataDir/jwt.key 에 키를 두었다. 거기 있고 새 위치에 없으면 옮기고(세션이 유지되도록 키는
+// 예전 설치는 dataDir/jwt.key에 키를 두었다. 거기 있고 새 위치에 없으면 옮기고(세션이 유지되도록 키는
 // 그대로) 원래 파일을 지운다. 처음 실행하면 무작위 키를 만들어 저장한다.
 func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	path := filepath.Join(keyDir, jwtKeyFilename)
@@ -182,7 +182,7 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, ok, _ := pg.GetSetting(authPassKey)
 	if !ok || hash == "" {
-		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요")
+		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요.")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.OldPassword)); err != nil {
@@ -221,7 +221,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, ok, _ := pg.GetSetting(authPassKey)
 	if !ok || hash == "" {
-		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요")
+		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요.")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {

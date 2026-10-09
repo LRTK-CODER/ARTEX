@@ -94,7 +94,7 @@ func (s *Server) startFindingRetest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a == nil || !a.Enabled {
-		writeErr(w, 409, "취약점 재검사 에이전트가 없거나 사용 안 함 상태입니다. 에이전트 관리에서 retester를 설정하세요")
+		writeErr(w, 409, "취약점 재검사 에이전트가 없거나 사용 안 함 상태입니다. 에이전트 관리에서 retester를 설정하세요.")
 		return
 	}
 	for _, key := range []string{"get_finding_retest_context", "record_finding_retest_result"} {

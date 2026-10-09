@@ -13,8 +13,8 @@ import (
 	"testing"
 )
 
-// testPaths 는 격리된 업데이트 디렉터리를 만든다. ResolvePaths() 를 바로 쓸 수 없다. 그러면 테스트
-// 바이너리 자신을 가리켜, 돌리자마자 go test 의 실행 파일 이름이 바뀐다.
+// testPaths 는 격리된 업데이트 디렉터리를 만든다. ResolvePaths()를 바로 쓸 수 없다. 그러면 테스트
+// 바이너리 자신을 가리켜, 돌리자마자 go test의 실행 파일 이름이 바뀐다.
 func testPaths(t *testing.T) Paths {
 	t.Helper()
 	dir := t.TempDir()
@@ -28,7 +28,7 @@ func testPaths(t *testing.T) Paths {
 	}
 }
 
-// fakeBin 은 artex 를 흉내 내는 실행 가능한 셸 스크립트를 쓴다. smokeTest 는 -h 로 띄워 종료 코드만 보므로
+// fakeBin 은 artex를 흉내 내는 실행 가능한 셸 스크립트를 쓴다. smokeTest는 -h로 띄워 종료 코드만 보므로
 // 스크립트로 충분하고, 진짜 바이너리를 컴파일하는 것보다 훨씬 빠르다.
 func fakeBin(t *testing.T, path, marker string, exitCode int) {
 	t.Helper()
@@ -45,7 +45,7 @@ func itoa(n int) string {
 	return string(rune('0' + n))
 }
 
-// stage 는 bin 을 "임시 저장돼 바이너리 교체를 기다리는" 상태로 배치한다. artex.new 와 그 체크섬을 써 둔다.
+// stage 는 bin을 "임시 저장돼 바이너리 교체를 기다리는" 상태로 배치한다. artex.new와 그 체크섬을 써 둔다.
 func stage(t *testing.T, p Paths, marker string, exitCode int) {
 	t.Helper()
 	fakeBin(t, p.New, marker, exitCode)
@@ -83,7 +83,7 @@ func TestCompareVersions(t *testing.T) {
 		{"0.3.7", "0.3.8", -1, true},
 		{"0.3.8", "0.3.7", 1, true},
 		{"0.3.7", "0.3.7", 0, true},
-		{"v0.3.7", "0.3.8", -1, true}, // build.sh 는 v 를 떼고 tag 는 v 를 붙이므로 양쪽 모두 알아봐야 한다
+		{"v0.3.7", "0.3.8", -1, true}, // build.sh는 v를 떼고 tag는 v를 붙이므로 양쪽 모두 알아봐야 한다
 		{"0.3.7", "v0.3.7", 0, true},
 		{"0.9.0", "0.10.0", -1, true}, // 사전순이 아니라 숫자로 비교한다
 		{"1.0.0", "0.99.99", 1, true},
@@ -111,17 +111,17 @@ func TestResolvePathsNaming(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolvePaths: %v", err)
 	}
-	// 핵심 불변 조건: 업데이트 파일은 모두 실행 파일과 같은 디렉터리에 있다. CWD 에 생기면 서비스로 실행할 때
+	// 핵심 불변 조건: 업데이트 파일은 모두 실행 파일과 같은 디렉터리에 있다. CWD에 생기면 서비스로 실행할 때
 	// (작업 디렉터리가 / 일 수 있다) 바이너리 교체가 완전히 무력해진다.
 	for name, path := range map[string]string{"New": p.New, "Sum": p.Sum, "Old": p.Old, "Marker": p.Marker} {
 		if filepath.Dir(path) != p.Dir {
 			t.Errorf("%s이(가) 실행 파일 디렉터리 밖에 있음: %s, 기대값 %s 아래", name, path, p.Dir)
 		}
 	}
-	// Windows 에서는 .new/.old 가 .exe 를 유지해야 한다. 그러지 않으면 스모크 테스트와 바이너리 교체 뒤 실행이 모두 실패한다.
+	// Windows 에서는 .new/.old가 .exe를 유지해야 한다. 그러지 않으면 스모크 테스트와 바이너리 교체 뒤 실행이 모두 실패한다.
 	if runtime.GOOS == "windows" {
 		if !strings.HasSuffix(p.New, ".exe") || !strings.HasSuffix(p.Old, ".exe") {
-			t.Errorf("Windows 에서 .new/.old 는 .exe 로 끝나야 함: new=%s old=%s", p.New, p.Old)
+			t.Errorf("Windows 에서 .new/.old는 .exe로 끝나야 함: new=%s old=%s", p.New, p.Old)
 		}
 	}
 }
@@ -141,7 +141,7 @@ func TestVerifyStagedRejectsTamperedBinary(t *testing.T) {
 func TestVerifyStagedRejectsUnrunnableBinary(t *testing.T) {
 	requireUnix(t)
 	p := testPaths(t)
-	stage(t, p, "broken", 1) // 실행은 되지만 종료 코드가 0 이 아니다
+	stage(t, p, "broken", 1) // 실행은 되지만 종료 코드가 0이 아니다
 
 	if err := verifyStaged(p); err == nil {
 		t.Fatal("스모크 테스트 실패로 거부돼야 하는데 통과했다")
@@ -165,13 +165,13 @@ func TestApplyStagedHappyPath(t *testing.T) {
 		t.Error("바이너리 교체 뒤 상태는 Pending 이어야 함")
 	}
 	if !strings.Contains(readAll(t, p.Current), "new") {
-		t.Error("artex 가 새 버전으로 바뀌어 있어야 함")
+		t.Error("artex가 새 버전으로 바뀌어 있어야 함")
 	}
 	if !strings.Contains(readAll(t, p.Old), "old") {
-		t.Error("이전 버전은 artex.old 로 백업돼야 함")
+		t.Error("이전 버전은 artex.old로 백업돼야 함")
 	}
 	if _, err := os.Stat(p.New); !os.IsNotExist(err) {
-		t.Error("바이너리 교체 뒤 artex.new 는 없어야 함")
+		t.Error("바이너리 교체 뒤 artex.new는 없어야 함")
 	}
 	if _, err := os.Stat(p.Sum); !os.IsNotExist(err) {
 		t.Error("바이너리 교체 뒤 체크섬 파일은 정리돼야 함")
@@ -194,7 +194,7 @@ func TestApplyStagedKeepsCurrentWhenVerifyFails(t *testing.T) {
 		t.Fatalf("검증 실패 시 action = %v, 기대값 Continue", action)
 	}
 	if !st.FailedStage {
-		t.Error("상태는 FailedStage 로 표시돼야 함")
+		t.Error("상태는 FailedStage로 표시돼야 함")
 	}
 	if !strings.Contains(readAll(t, p.Current), "old") {
 		t.Fatal("검증에 실패하면 현재 버전을 절대 건드리면 안 됨")
@@ -215,10 +215,10 @@ func TestSwapOverwritesPreviousBackup(t *testing.T) {
 		t.Fatalf("swap: %v", err)
 	}
 	if !strings.Contains(readAll(t, p.Current), "v3") {
-		t.Error("v3 으로 바이너리가 교체돼야 함")
+		t.Error("v3으로 바이너리가 교체돼야 함")
 	}
 	if !strings.Contains(readAll(t, p.Old), "v2") {
-		t.Error("백업은 방금 교체되어 나온 v2 로 갱신돼야 함")
+		t.Error("백업은 방금 교체되어 나온 v2로 갱신돼야 함")
 	}
 }
 
@@ -251,7 +251,7 @@ func TestConfirmCountsAttemptsThenRollsBack(t *testing.T) {
 		t.Fatalf("시도 한도 초과 시 action = %v, 기대값 Restart", action)
 	}
 	if !st.RolledBack {
-		t.Error("상태는 RolledBack 으로 표시돼야 함")
+		t.Error("상태는 RolledBack으로 표시돼야 함")
 	}
 	if !strings.Contains(readAll(t, p.Current), "good-old") {
 		t.Fatal("이전 버전으로 롤백돼 있어야 함")
@@ -261,7 +261,7 @@ func TestConfirmCountsAttemptsThenRollsBack(t *testing.T) {
 	}
 	// 시작하지 못한 버전은 바로 지우지 않고 원인 조사용으로 남긴다.
 	if _, err := os.Stat(p.Current + ".failed"); err != nil {
-		t.Error("실패한 버전은 조사용으로 .failed 에 남아야 함")
+		t.Error("실패한 버전은 조사용으로 .failed에 남아야 함")
 	}
 }
 
@@ -271,7 +271,7 @@ func TestManualRollbackIsReversible(t *testing.T) {
 	fakeBin(t, p.Current, "v2", 0)
 	fakeBin(t, p.Old, "v1", 0)
 
-	// Rollback() 은 ResolvePaths() 를 거치므로, 여기서는 아래 단계의 맞바꾸기 동작을 직접 테스트한다.
+	// Rollback()은 ResolvePaths()를 거치므로, 여기서는 아래 단계의 맞바꾸기 동작을 직접 테스트한다.
 	tmp := p.Current + ".swap"
 	if err := os.Rename(p.Current, tmp); err != nil {
 		t.Fatal(err)
@@ -286,7 +286,7 @@ func TestManualRollbackIsReversible(t *testing.T) {
 		t.Error("롤백 뒤 현재 버전은 v1 이어야 함")
 	}
 	if !strings.Contains(readAll(t, p.Old), "v2") {
-		t.Error("롤백 뒤 백업은 v2 가 돼야 함. 그래야 다시 되돌릴 수 있다")
+		t.Error("롤백 뒤 백업은 v2가 돼야 함. 그래야 다시 되돌릴 수 있다")
 	}
 }
 
@@ -295,7 +295,7 @@ func TestParseSums(t *testing.T) {
 		linuxSum = "1111111111111111111111111111111111111111111111111111111111111111"
 		winSum   = "ABCDEF0000000000000000000000000000000000000000000000000000000000"
 	)
-	// sha256sum 출력은 공백 두 칸으로 나뉜다. shasum -a 256 은 바이너리 모드에서 파일 이름 앞에 * 를 붙인다.
+	// sha256sum 출력은 공백 두 칸으로 나뉜다. shasum -a 256은 바이너리 모드에서 파일 이름 앞에 * 를 붙인다.
 	raw := linuxSum + "  artex-0.3.8-linux-amd64.zip\n" +
 		winSum + " *artex-0.3.8-windows-amd64.zip\n" +
 		"\n" +
@@ -327,7 +327,7 @@ func TestExtractBinaryFindsNestedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	zw := zip.NewWriter(f)
-	// 실제 배포 패키지의 구조: artex-<버전>-<os>-<arch>/artex 에 방해용 파일 몇 개를 더한다.
+	// 실제 배포 패키지의 구조: artex-<버전>-<os>-<arch>/artex에 방해용 파일 몇 개를 더한다.
 	for name, body := range map[string]string{
 		"artex-0.3.8-linux-amd64/README.md":           "readme",
 		"artex-0.3.8-linux-amd64/skills/a.md":         "skill",
@@ -408,7 +408,7 @@ func TestCheckURLRejectsNonGitHub(t *testing.T) {
 }
 
 func TestAssetNameMatchesBuildScript(t *testing.T) {
-	// build.sh 의 package_binary 는 artex-<버전>-<os>-<arch>.zip 을 쓰고, 버전 번호에서
+	// build.sh의 package_binary는 artex-<버전>-<os>-<arch>.zip을 쓰고, 버전 번호에서
 	// v 접두사를 뗀다. 여기서 한 글자만 틀려도 모든 플랫폼의 원클릭 업데이트가 자산을 찾지 못한다.
 	if got := AssetName("v0.3.8", "linux", "amd64"); got != "artex-0.3.8-linux-amd64.zip" {
 		t.Errorf("AssetName = %q", got)
@@ -457,7 +457,7 @@ func TestSettleIsNoopWithoutMarker(t *testing.T) {
 	fakeBin(t, p.Current, "cur", 0)
 	settle(p) // 일반 시작 경로. panic 하지도, 어떤 파일을 건드리지도 않아야 한다
 	if _, err := os.Stat(p.Current); err != nil {
-		t.Error("마커가 없으면 settle 이 어떤 파일에도 영향을 주면 안 됨")
+		t.Error("마커가 없으면 settle이 어떤 파일에도 영향을 주면 안 됨")
 	}
 }
 

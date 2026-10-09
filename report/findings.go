@@ -21,7 +21,7 @@ func sortFindingsForExport(fs []*db.DBFinding) {
 	sort.SliceStable(fs, func(i, j int) bool {
 		ri, rj := sevRank[fs[i].Severity], sevRank[fs[j].Severity]
 		if ri != rj {
-			return ri < rj // sevRank 가 작을수록 심각하다
+			return ri < rj // sevRank가 작을수록 심각하다
 		}
 		return fs[i].CreatedAt.After(fs[j].CreatedAt)
 	})

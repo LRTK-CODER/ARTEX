@@ -223,7 +223,7 @@ func TestPrepareKeyDirMigrationFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(keyDir, 0o700) }) // TempDir 정리가 지울 수 있게 되돌린다.
 	if os.Geteuid() == 0 {
-		t.Skip("root 는 쓰기 권한 없는 디렉터리에도 쓸 수 있어 실패를 만들 수 없다")
+		t.Skip("root는 쓰기 권한 없는 디렉터리에도 쓸 수 있어 실패를 만들 수 없다")
 	}
 
 	if _, err := PrepareKeyDir(keyDir, base, data); err == nil {

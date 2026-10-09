@@ -20,7 +20,7 @@ import (
 // 재시작은 이 프로세스가 하지 않는다. 새 버전을 임시로 받아 둔 뒤 selfupdate.ExitRestart로 종료하면
 // 감시 스크립트(start.sh / start.bat, Docker에서는 ENTRYPOINT)가 다시 띄운다.
 
-// restartCh 는 업데이트 준비나 롤백이 끝나면 닫힌다. main은 이를 받고 ExitRestart로 종료한다.
+// restartCh는 업데이트 준비나 롤백이 끝나면 닫힌다. main은 이를 받고 ExitRestart로 종료한다.
 var (
 	restartOnce sync.Once
 	restartCh   = make(chan struct{})
@@ -31,7 +31,7 @@ func RestartRequested() <-chan struct{} { return restartCh }
 
 func requestRestart() { restartOnce.Do(func() { close(restartCh) }) }
 
-// bootState 는 이번 시작 때 selfupdate.Bootstrap이 내린 결론(업데이트 성공, 방금 롤백, 받아 둔 파일 폐기)이다.
+// bootState는 이번 시작 때 selfupdate.Bootstrap이 내린 결론(업데이트 성공, 방금 롤백, 받아 둔 파일 폐기)이다.
 // main이 넣어 주며, /api/update/check가 지난 업데이트의 결과를 프런트에 그대로 알리는 데 쓴다.
 var (
 	bootStateMu sync.Mutex
@@ -121,7 +121,7 @@ type updateProgress struct {
 
 // updateHub 는 업데이트 한 번의 진행률을 들고 SSE 구독자에게 방송한다.
 //
-// running 은 상호 배제도 겸한다. 업데이트 중에 POST /api/update/apply가 다시 오면 바로 409를 돌려
+// running은 상호 배제도 겸한다. 업데이트 중에 POST /api/update/apply가 다시 오면 바로 409를 돌려
 // 두 goroutine이 같은 artex.new에 동시에 쓰지 않게 한다.
 type updateHub struct {
 	mu      sync.Mutex

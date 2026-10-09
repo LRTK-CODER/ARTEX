@@ -55,7 +55,7 @@ func (s *Server) wireInterceptReviewer() {
 		}
 		v := intercept.ParseVerdict(text)
 		if v.Action == "" {
-			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("모델 판정 형식이 잘못됐습니다. 판정, 실제 동작, 성공 시 결과, 적용 규칙이 모두 있어야 합니다")
+			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("모델 판정 형식이 잘못됐습니다. 판정, 실제 동작, 성공 시 결과, 적용 규칙이 모두 있어야 합니다.")
 		}
 		return intercept.Decision{Action: v.Action, Message: v.Reason, ProfileID: profileID}, nil
 	})

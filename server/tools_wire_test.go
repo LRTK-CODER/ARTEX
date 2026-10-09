@@ -31,7 +31,7 @@ func TestWireTools(t *testing.T) {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
 	// 닫기를 먼저 등록해 공유 설정을 되돌리는 t.Cleanup 들보다 나중에 돌게 한다.
-	// defer 로 닫으면 함수 끝에서 먼저 닫혀 되돌리기가 닫힌 연결에서 실패한다.
+	// defer로 닫으면 함수 끝에서 먼저 닫혀 되돌리기가 닫힌 연결에서 실패한다.
 	t.Cleanup(func() { _ = pg.Close() })
 
 	wireTools(pg, nil) // nil domainReg: test only covers filter/decoration, not injection

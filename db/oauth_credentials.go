@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// CredentialKeyFilename 은 OAuth 토큰 암호화 키 파일 이름이다. jwt.key 와 같은 디렉터리에 둔다.
+// CredentialKeyFilename 은 OAuth 토큰 암호화 키 파일 이름이다. jwt.key와 같은 디렉터리에 둔다.
 const CredentialKeyFilename = "oauth.key"
 
 // credentialKeySize 는 AES-256 키 길이(바이트)다.
@@ -44,13 +44,13 @@ type OAuthCredentials struct {
 	PlanType string `json:"-"`
 }
 
-// TokenCipher 는 토큰 열을 AES-256-GCM 으로 암호화·복호화한다.
-// 암호문을 프로필 ID 와 열 이름에 묶어(AAD) 다른 행·열로 옮긴 값은 풀리지 않게 한다.
+// TokenCipher 는 토큰 열을 AES-256-GCM으로 암호화·복호화한다.
+// 암호문을 프로필 ID와 열 이름에 묶어(AAD) 다른 행·열로 옮긴 값은 풀리지 않게 한다.
 type TokenCipher struct {
 	aead cipher.AEAD
 }
 
-// NewTokenCipher 는 32바이트 키로 TokenCipher 를 만든다.
+// NewTokenCipher 는 32바이트 키로 TokenCipher를 만든다.
 func NewTokenCipher(key []byte) (*TokenCipher, error) {
 	if len(key) != credentialKeySize {
 		return nil, fmt.Errorf("credential key must be %d bytes, got %d", credentialKeySize, len(key))
@@ -96,8 +96,8 @@ func (c *TokenCipher) open(profileID int64, column, stored string) (string, erro
 	return string(plain), nil
 }
 
-// LoadOrCreateCredentialKey 는 dir/oauth.key 의 키를 읽고, 없으면 새 키를 만들어 0600 으로 쓴다.
-// dir 은 jwt.key 와 같은 키 디렉터리(파일 관리자로 열람할 수 없는 곳)다.
+// LoadOrCreateCredentialKey 는 dir/oauth.key의 키를 읽고, 없으면 새 키를 만들어 0600으로 쓴다.
+// dir은 jwt.key와 같은 키 디렉터리(파일 관리자로 열람할 수 없는 곳)다.
 // 파일이 있는데 형식이 틀리면 새로 만들지 않고 오류를 올린다. 덮어쓰면 저장된 토큰을 모두 풀 수 없게 된다.
 func LoadOrCreateCredentialKey(dir string) ([]byte, error) {
 	path := filepath.Join(dir, CredentialKeyFilename)
@@ -131,7 +131,7 @@ func readCredentialKey(path string) ([]byte, error) {
 	return key, nil
 }
 
-// writeKeyFileExclusive 는 임시 파일에 다 쓴 뒤 link 로 path 에 붙인다. link 는 path 가 있으면
+// writeKeyFileExclusive 는 임시 파일에 다 쓴 뒤 link로 path에 붙인다. link는 path가 있으면
 // 실패하므로 쓰는 도중 실패하거나 동시에 만들어도 기존 키 파일을 덮지 않는다.
 func writeKeyFileExclusive(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+CredentialKeyFilename+".tmp-*")
@@ -139,7 +139,7 @@ func writeKeyFileExclusive(path string, data []byte) error {
 		return fmt.Errorf("create credential key temp: %w", err)
 	}
 	tmpPath := tmp.Name()
-	// link 뒤에는 path 가 같은 내용을 가리키므로 임시 이름은 성공·실패와 무관하게 지운다.
+	// link 뒤에는 path가 같은 내용을 가리키므로 임시 이름은 성공·실패와 무관하게 지운다.
 	defer os.Remove(tmpPath)
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
@@ -245,7 +245,7 @@ AND ($2::text='' OR EXISTS (SELECT 1 FROM llm_profiles p WHERE p.id=profile_id A
 }
 
 // OAuthCredentials 는 프로필의 OAuth 토큰을 복호화해 돌려준다. 실제로 요청을 인증할 때만 부른다.
-// 없으면 ErrOAuthCredentialsNotFound, 풀지 못하면 ErrCredentialDecrypt 를 올린다.
+// 없으면 ErrOAuthCredentialsNotFound, 풀지 못하면 ErrCredentialDecrypt를 올린다.
 func (d *DB) OAuthCredentials(ctx context.Context, c *TokenCipher, profileID int64) (OAuthCredentials, error) {
 	return loadOAuthCredentials(ctx, d.DB, c, profileID, "", "")
 }
@@ -259,7 +259,7 @@ func (d *DB) OAuthCredentialsForAuth(ctx context.Context, c *TokenCipher, profil
 }
 
 // DeleteOAuthCredentials 는 프로필의 OAuth 자격 증명을 지운다. 연결을 끊을 때 부른다.
-// 지울 행이 없으면 ErrOAuthCredentialsNotFound 를 올린다.
+// 지울 행이 없으면 ErrOAuthCredentialsNotFound를 올린다.
 func (d *DB) DeleteOAuthCredentials(ctx context.Context, profileID int64) error {
 	res, err := d.ExecContext(ctx, `DELETE FROM llm_oauth_credentials WHERE profile_id=$1`, profileID)
 	if err != nil {
@@ -276,14 +276,14 @@ func (d *DB) DeleteOAuthCredentials(ctx context.Context, profileID int64) error 
 }
 
 // RefreshFunc 는 현재 자격 증명의 refresh 토큰으로 새 자격 증명을 받아 온다.
-// 돌려준 값의 ProfileID 는 무시하고 갱신 대상 프로필로 저장한다.
+// 돌려준 값의 ProfileID는 무시하고 갱신 대상 프로필로 저장한다.
 type RefreshFunc func(ctx context.Context, current OAuthCredentials) (OAuthCredentials, error)
 
 // RefreshOAuthCredentials 는 행을 잠근 트랜잭션 안에서 토큰을 갱신하고 새 자격 증명을 돌려준다.
-// staleAccessToken 은 호출자가 만료됐거나 거부됐다고 본 access 토큰이다. 잠근 뒤 다시 읽은
-// 토큰이 그것과 다르면 다른 갱신이 이미 끝난 것이므로 refresh 를 부르지 않고 그 토큰을 돌려준다.
+// staleAccessToken은 호출자가 만료됐거나 거부됐다고 본 access 토큰이다. 잠근 뒤 다시 읽은
+// 토큰이 그것과 다르면 다른 갱신이 이미 끝난 것이므로 refresh를 부르지 않고 그 토큰을 돌려준다.
 // refresh 토큰이 갱신마다 회전하므로, 겹친 갱신이 옛 refresh 토큰을 다시 쓰면 토큰을 잃는다.
-// refresh 가 실패하면 저장된 값을 바꾸지 않고 오류를 올린다.
+// refresh가 실패하면 저장된 값을 바꾸지 않고 오류를 올린다.
 func (d *DB) RefreshOAuthCredentials(ctx context.Context, c *TokenCipher, profileID int64, staleAccessToken string, refresh RefreshFunc) (OAuthCredentials, error) {
 	return d.refreshOAuthCredentials(ctx, c, profileID, staleAccessToken, "", refresh)
 }

@@ -84,7 +84,7 @@ function fmtBytes(n: number): string {
   return `${n} B`;
 }
 
-// ── Reliability model (see docs/task-session-history-sse-remediation.md) ──────────
+// ── Reliability model ──────────
 // The task's activity is NO LONGER one unbounded `allActivity` array replayed from
 // SSE since=0. Instead:
 //   • Each UI session (main | plan | intent:<id>) has its own lazily-loaded, reverse-
@@ -607,7 +607,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
           toast.success(`워커 #${session.intent_id}을 일시 중지했습니다`);
         } else if (action === "resume") {
           patchIntentState(session.intent_id, "open");
-          toast.success(`워커 #${session.intent_id}을 재개했습니다. 워커가 다시 할당받을 때까지 기다립니다`);
+          toast.success(`워커 #${session.intent_id}을 재개했습니다. 워커가 다시 할당받을 때까지 기다립니다.`);
         } else if (mode === "hard") {
           // 영구 삭제: 의도와 그것에만 딸린 하위 노드가 물리적으로 지워졌으므로 목록에서 그 행을 뺀다.
           patchIntentState(session.intent_id);

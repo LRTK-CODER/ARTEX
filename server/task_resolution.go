@@ -29,7 +29,7 @@ func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMR
 		Model:     p.Model,
 		Source:    source,
 	}
-	// 실제 실행 경로(loadProfileConfig)와 같은 판단을 쓴다. chatgpt_oauth 는 API 키 대신
+	// 실제 실행 경로(loadProfileConfig)와 같은 판단을 쓴다. chatgpt_oauth는 API 키 대신
 	// 저장된 자격 증명이 있어야 쓸 수 있다.
 	if _, ok := s.profileConfig(p); !ok {
 		if p.AuthType == db.AuthChatGPTOAuth {

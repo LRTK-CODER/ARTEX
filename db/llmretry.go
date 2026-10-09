@@ -5,14 +5,14 @@ import (
 	"time"
 )
 
-// LLM 재시도 정책: 다섯 층 재시도의 "횟수 + 간격" 전역 설정이다. docs/LLM重试设计.md 참고.
+// LLM 재시도 정책: 다섯 층 재시도의 "횟수 + 간격" 전역 설정이다.
 // settings 테이블의 JSON 값 하나에 저장한다. 서버 전체에 하나뿐인 실행 파라미터라 테이블을
 // 따로 만들 만하지 않다. 읽을 때 내장 기본값으로 채우므로, 키가 없으면(새 DB, 설정한 적 없음)
 // 상수로 박아 두던 때와 똑같이 동작한다.
 
 const settingLLMRetryPolicy = "llm_retry_policy"
 
-// RetryRule은 한 층의 설정 값 한 쌍이다. 0 값은 "설정 안 됨"을 뜻한다.
+// RetryRule 은 한 층의 설정 값 한 쌍이다. 0 값은 "설정 안 됨"을 뜻한다.
 //
 //	Attempts   0 = 내장 기본 횟수; -1 = 이 층의 재시도 끄기; >0 = 그 값
 //	IntervalMS 0 = 이 층의 원래 간격 정책(보통 지수 백오프); >0 = 고정 밀리초 간격
@@ -77,7 +77,7 @@ func (o RetryOverride) Clamped() RetryOverride {
 	return o
 }
 
-// LLMRetryPolicy는 다섯 층의 재시도 설정을 담는다. Connect/Empty/Stream은 요청 단위 층이라
+// LLMRetryPolicy 는 다섯 층의 재시도 설정을 담는다. Connect/Empty/Stream은 요청 단위 층이라
 // 프로필이 덮어쓸 수 있다(LLMProfile.Retry 참고). Breaker와 Intent는 원래 프로세스 전체
 // 단위라 여기에만 있다.
 type LLMRetryPolicy struct {

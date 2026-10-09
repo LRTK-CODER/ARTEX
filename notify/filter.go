@@ -12,11 +12,11 @@ import (
 type Filter struct {
 	// MinSeverity 는 최저 심각도 기준(low/medium/high/critical)이다. 비어 있으면 기준이 없다.
 	MinSeverity string `json:"min_severity"`
-	// TaskIDs / AssetIDs 가 빈 배열이면 제한 없음이고, 값이 있으면 이벤트와 겹치는 것이 있어야 한다.
+	// TaskIDs / AssetIDs가 빈 배열이면 제한 없음이고, 값이 있으면 이벤트와 겹치는 것이 있어야 한다.
 	TaskIDs  []int64 `json:"task_ids"`
 	AssetIDs []int64 `json:"asset_ids"`
 	// VulnClassInclude 가 비어 있으면 모두 받고, 값이 있으면 vulnclass가 그중 어느 키워드와 일치해야 한다.
-	// VulnClassExclude 는 어느 키워드와 일치하면 제외한다(제외가 포함보다 우선한다).
+	// VulnClassExclude는 어느 키워드와 일치하면 제외한다(제외가 포함보다 우선한다).
 	// 대소문자를 구분하지 않는 부분 문자열로 대조한다. 정규식보다 안전하다. 사용자가 정규식을 잘못 설정해 알림 채널이 소리 없이 무력해지지 않는다.
 	VulnClassInclude []string `json:"vulnclass_include"`
 	VulnClassExclude []string `json:"vulnclass_exclude"`
@@ -57,11 +57,11 @@ func ValidMinSeverity(s string) bool {
 // 결과적으로 사용자는 심각도별로 나눠 보낸다고 믿는데 실제로는 모든 취약점을 그룹에 쏟아붓고,
 // 설정이 틀렸다는 단서도 전혀 없다. 이런 '소리 없는 기능 저하'는 입구에서 막아야 한다.
 //
-// Validate 는 **쓰기** 경로에만 쓴다. 읽기 경로는 여전히 ParseFilter의 너그러운 의미를 따르므로,
+// Validate는 **쓰기** 경로에만 쓴다. 읽기 경로는 여전히 ParseFilter의 너그러운 의미를 따르므로,
 // 이력 데이터에 이미 있는 잘못된 값 때문에 알림 채널 전체를 읽지 못하는 일이 없다.
 func (f Filter) Validate() error {
 	if !ValidMinSeverity(f.MinSeverity) {
-		return fmt.Errorf("최저 심각도 %q은(는) 잘못된 값입니다. low / medium / high / critical 중 하나를 고르거나, 비워 두면 제한 없음입니다", f.MinSeverity)
+		return fmt.Errorf("최저 심각도 %q은(는) 잘못된 값입니다. low / medium / high / critical 중 하나를 고르거나, 비워 두면 제한 없음입니다.", f.MinSeverity)
 	}
 	return nil
 }

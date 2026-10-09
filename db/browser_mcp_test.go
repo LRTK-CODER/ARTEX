@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// restoreBrowserMCPRow 는 공유 개발 DB 의 browser 행을 테스트 전 상태로 되돌린다.
+// restoreBrowserMCPRow 는 공유 개발 DB의 browser 행을 테스트 전 상태로 되돌린다.
 func restoreBrowserMCPRow(t *testing.T, d *DB) {
 	t.Helper()
 	var command sql.NullString
@@ -45,7 +45,7 @@ func browserMCPArgs(t *testing.T, d *DB) []string {
 	return args
 }
 
-// reopen 은 seed 를 다시 돌리려고 같은 DB 를 한 번 더 연다(재시작과 같다).
+// reopen 은 seed를 다시 돌리려고 같은 DB를 한 번 더 연다(재시작과 같다).
 func reopen(t *testing.T) {
 	t.Helper()
 	d, err := Open(testDSN(t))
@@ -72,7 +72,7 @@ func TestSeedBrowserMCPNewInstallUsesChromium(t *testing.T) {
 		t.Fatal(err)
 	}
 	if enabled {
-		t.Fatal("내장 browser MCP 는 기본 비활성이어야 한다")
+		t.Fatal("내장 browser MCP는 기본 비활성이어야 한다")
 	}
 }
 
@@ -121,7 +121,7 @@ func TestSeedBrowserMCPMigratesUnmodifiedLegacyDefault(t *testing.T) {
 			want:    []string{"@playwright/mcp", "--headless"},
 		},
 		{
-			name:    "사용자가 headless 를 뺀 행",
+			name:    "사용자가 headless를 뺀 행",
 			command: "npx",
 			args:    `["@playwright/mcp"]`,
 			want:    []string{"@playwright/mcp"},

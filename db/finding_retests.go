@@ -12,7 +12,7 @@ import (
 
 const FindingRetestAgentKey = "retester"
 
-var ErrRetestNotRunning = errors.New("이 재검사는 이미 끝났거나 아직 시작하지 않았습니다. 취약점 상세에서 새 재검사를 시작하세요")
+var ErrRetestNotRunning = errors.New("이 재검사는 이미 끝났거나 아직 시작하지 않았습니다. 취약점 상세에서 새 재검사를 시작하세요.")
 
 // FindingRetest is an immutable historical test once its conversation turn ends.
 // Snapshot is only loaded for the agent, never sent with the history list.
@@ -157,7 +157,7 @@ func (d *DB) FindingRetestForConversation(ctx context.Context, conversationID in
 	return r, err
 }
 
-// FailPendingRetestForConversation은 실행기가 재검사를 읽지조차 못했을 때 그 대화의
+// FailPendingRetestForConversation 은 실행기가 재검사를 읽지조차 못했을 때 그 대화의
 // 끝나지 않은 재검사를 닫는다. 이 경로에서는 재검사 ID를 모르므로 대화 ID만 쓸 수 있다.
 // 이것이 없으면 일시적인 읽기 오류 하나로 행이 영원히 'pending'에 남는다. 발견 사항
 // 목록은 계속 "재검사 중"을 보여 주고, 이후의 "재검사 시작"은 실제로 돌지 않는 실행과
@@ -185,7 +185,7 @@ func (d *DB) RecordFindingRetestResult(ctx context.Context, conversationID int64
 	}
 	summary, evidence = strings.TrimSpace(summary), strings.TrimSpace(evidence)
 	if summary == "" || evidence == "" {
-		return errors.New("summary와 evidence는 비워 둘 수 없습니다. 확인할 수 없으면 실제로 확인한 내용과 막힌 이유를 적으세요")
+		return errors.New("summary와 evidence는 비워 둘 수 없습니다. 확인할 수 없으면 실제로 확인한 내용과 막힌 이유를 적으세요.")
 	}
 	if len(summary) > 16000 || len(evidence) > 128000 {
 		return errors.New("재검사 결론이 너무 깁니다(summary ≤ 16KB, evidence ≤ 128KB)")

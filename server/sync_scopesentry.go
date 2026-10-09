@@ -51,10 +51,10 @@ func (s *Server) scopeSentryClient(ctx context.Context) (*mcphttp.Client, error)
 		return nil, err
 	}
 	if m == nil {
-		return nil, fmt.Errorf("데이터 소스 %s이(가) 없습니다. 먼저 만드세요", scopeSentryMCPName)
+		return nil, fmt.Errorf("데이터 소스 %s이(가) 없습니다. 먼저 만드세요.", scopeSentryMCPName)
 	}
 	if m.URL == "" {
-		return nil, fmt.Errorf("데이터 소스 %s에 URL이 설정되지 않았습니다. 먼저 설정하세요", scopeSentryMCPName)
+		return nil, fmt.Errorf("데이터 소스 %s에 URL이 설정되지 않았습니다. 먼저 설정하세요.", scopeSentryMCPName)
 	}
 	return mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
 }

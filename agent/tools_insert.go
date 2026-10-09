@@ -14,7 +14,7 @@ import (
 )
 
 // assetInterceptCandidates 는 삽입할 자산 입력 항목 하나에서 도메인/IP/URL 후보 문자열을 뽑아 자산 차단 매칭에 쓴다.
-// URL 의 host 를 분리해 분류하므로, "URL 만 있는" 서비스/엔드포인트 자산도 도메인/IP 규칙에 걸릴 수 있다.
+// URL의 host를 분리해 분류하므로, "URL 만 있는" 서비스/엔드포인트 자산도 도메인/IP 규칙에 걸릴 수 있다.
 func assetInterceptCandidates(item assetInputItem) (domains, ips, urls []string) {
 	add := func(dst *[]string, s string) {
 		if s = strings.TrimSpace(s); s != "" {
@@ -127,7 +127,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 			"auth/technologies/params are appended (merged), not overwriting existing values.\n"+
 			"Returns: {results:[{index,id,type}], errors:[{index,error}]}",
 		obj(map[string]any{
-			// task_id 는 모델에 노출하지 않는다: worker 가 어느 task 에 속하는지는 프로그램이 SetTaskID 로 권위 있게 정한다(handler 참고).
+			// task_id는 모델에 노출하지 않는다: worker가 어느 task에 속하는지는 프로그램이 SetTaskID로 권위 있게 정한다(handler 참고).
 			"assets": map[string]any{
 				"type":        "array",
 				"description": "the asset array; each element corresponds to one asset record",
@@ -210,7 +210,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 			if err := json.Unmarshal(in, &a); err != nil {
 				return actool.Errorf("invalid input: " + err.Error()), nil
 			}
-			// task_id 는 프로그램이 권위 있게 정한다(worker: SetTaskID). 모델이 전달하는 값은 받지 않는다 — 모델이 빠뜨리거나
+			// task_id는 프로그램이 권위 있게 정한다(worker: SetTaskID). 모델이 전달하는 값은 받지 않는다 — 모델이 빠뜨리거나
 			// 잘못 전달해 자산이 작업에 안 묶이거나 엉뚱한 작업에 묶이는 것을 막는다. 작업 컨텍스트가 없는 호출자(auto/pentest/chat)는 t.taskID=0 이다.
 			taskID := t.taskID
 
@@ -239,7 +239,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 			}
 
 			for i, item := range a.Assets {
-				// 자산 게이트: 먼저 차단, 다음 허용. 거부된 자산은 삽입을 금지한다(Upsert 와 이후 부수 효과를 건너뛴다).
+				// 자산 게이트: 먼저 차단, 다음 허용. 거부된 자산은 삽입을 금지한다(Upsert와 이후 부수 효과를 건너뛴다).
 				domains, ips, urls := assetInterceptCandidates(item)
 				if d := db.EvaluateAssetGate(blockRules, allowRules, domains, ips, urls); !d.Allowed {
 					errs = append(errs, errEntry{
@@ -346,15 +346,15 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 						nodeID := t.ownerNode
 						sourceNodeID = &nodeID
 					}
-					summary := "Agent 가 insert_assets 로 등록"
+					summary := "Agent가 insert_assets로 등록"
 					if t.ownerNode > 0 {
-						summary = fmt.Sprintf("Worker 의도 #%d 가 insert_assets 로 등록", t.ownerNode)
+						summary = fmt.Sprintf("Worker 의도 #%d가 insert_assets로 등록", t.ownerNode)
 					}
 					_ = t.as.SetTaskAssetSource(taskID, id, "agent", summary, sourceNodeID)
 				}
-				// 테스트 범위에 자동 편입(source='auto'): worker 가 최상위에서 명시적으로 삽입한 이 항목에 대해서만, 그
+				// 테스트 범위에 자동 편입(source='auto'): worker가 최상위에서 명시적으로 삽입한 이 항목에 대해서만, 그
 				// 유형에 맞는 보수적 범위를 더한다. 부수 효과로 파생된 자산은 여기를 거치지 않으므로 범위가 맹목적으로 넓어지지 않는다. taskID=0 이면 무동작.
-				// 커버리지 스위치와 무관하다: task_scope 는 작업의 범위 경계(list/조회의 필터 기준)이고,
+				// 커버리지 스위치와 무관하다: task_scope는 작업의 범위 경계(list/조회의 필터 기준)이고,
 				// 커버리지 스위치는 그것을 분모로 지표를 계산할지만 정할 뿐 범위 자체를 쌓을지는 정하지 않는다.
 				{
 					svcIP := item.ServiceIP
@@ -647,16 +647,16 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 		t.listFindings(),
 		t.addFinding(), t.recordFact(),
 		// asset management (handlers guard nil store internally)。
-		// add_company_scope 는 worker 에 주지 않는다: 기업 자산 범위 정의는 규획/메인/Auto 의 직무이고, worker 는 탐색만 실행한다.
+		// add_company_scope는 worker에 주지 않는다: 기업 자산 범위 정의는 규획/메인/Auto의 직무이고, worker는 탐색만 실행한다.
 		t.insertAssets(), t.listAssets(),
-		// work 간 되돌아보기: worker 도 다른 work 의 관찰을 재사용해 중복 작업을 피할 수 있다.
-		// search_all_worker_traces: intent_id 를 먼저 알 필요 없이 키워드로 전역에서 걸린 단계를 건진다.
-		// get_worker_trace: 어떤 work 를 특정한 뒤 단계를 나열/현장 검색/완전한 내용 취득.
+		// work 간 되돌아보기: worker 도 다른 work의 관찰을 재사용해 중복 작업을 피할 수 있다.
+		// search_all_worker_traces: intent_id를 먼저 알 필요 없이 키워드로 전역에서 걸린 단계를 건진다.
+		// get_worker_trace: 어떤 work를 특정한 뒤 단계를 나열/현장 검색/완전한 내용 취득.
 		t.searchAllWorkerTraces(), t.getWorkerTrace(),
-		// node_detail: worker 가 intent_id/노드 id 를 얻은 뒤 그 노드의 완전한 상세를 조회할 수 있다(위의 되돌아보기와 함께).
+		// node_detail: worker가 intent_id/노드 id를 얻은 뒤 그 노드의 완전한 상세를 조회할 수 있다(위의 되돌아보기와 함께).
 		t.nodeDetail(),
-		// 다음 도구는 여전히 worker 에 [주지 않고] planner/main 에만 남긴다(컨텍스트 읽기, work 간 복기는 규획 직무이고,
-		// worker 는 단건 의도의 실행과 저장만 한다): list_facts / list_companies / list_worker_traces.
+		// 다음 도구는 여전히 worker에 [주지 않고] planner/main 에만 남긴다(컨텍스트 읽기, work 간 복기는 규획 직무이고,
+		// worker는 단건 의도의 실행과 저장만 한다): list_facts / list_companies / list_worker_traces.
 	}
 }
 
@@ -670,7 +670,7 @@ func (t *ToolSet) MainAgentTools() []actool.CoreTool {
 		t.steerWorkTool(),
 		// set_goals: 사람이 런타임에 이 작업에 새 최종 목표를 보탤 수 있다(규획자가 이를 근거로 달성 여부를 다시 판정한다).
 		t.setGoals(),
-		// set_constraints: 사람이 런타임에 이 작업의 작업 제약 조건(allow/deny)을 보태거나 바꿔 planner/worker 의 탐색 경계를 제약할 수 있다.
+		// set_constraints: 사람이 런타임에 이 작업의 작업 제약 조건(allow/deny)을 보태거나 바꿔 planner/worker의 탐색 경계를 제약할 수 있다.
 		t.setConstraints(),
 		// asset management (handlers guard nil store internally)
 		t.insertAssets(), t.addCompanyScope(), t.listAssets(),

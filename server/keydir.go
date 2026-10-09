@@ -26,11 +26,11 @@ var ErrKeyDirInsideDataDir = errors.New("key dir must be outside the data dir")
 var keyFilenames = []string{jwtKeyFilename, db.CredentialKeyFilename}
 
 // PrepareKeyDir 는 서버 키 디렉터리를 정해 절대 경로로 돌려준다.
-// configured 가 비어 있으면 baseDir 를 쓰고, 상대 경로면 절대 경로로 바꾼다. 디렉터리가 없으면 0700 으로 만든다.
-// 키 디렉터리가 dataDir 와 같거나 그 안이면 ErrKeyDirInsideDataDir 를 올린다(dataDir 는 이미 있어야 한다).
+// configured가 비어 있으면 baseDir를 쓰고, 상대 경로면 절대 경로로 바꾼다. 디렉터리가 없으면 0700으로 만든다.
+// 키 디렉터리가 dataDir와 같거나 그 안이면 ErrKeyDirInsideDataDir를 올린다(dataDir는 이미 있어야 한다).
 // 경로 문자열이 아니라 파일 정체성(os.SameFile)으로 비교하므로 심볼릭 링크, 대소문자만 다른 경로
-// (대소문자를 구분하지 않는 파일 시스템), bind mount 로 들어가도 거절한다.
-// 키 디렉터리가 baseDir 와 다르고 키 파일이 아직 없으면, baseDir 에 있던 jwt.key·oauth.key 를 0600 으로
+// (대소문자를 구분하지 않는 파일 시스템), bind mount로 들어가도 거절한다.
+// 키 디렉터리가 baseDir와 다르고 키 파일이 아직 없으면, baseDir에 있던 jwt.key·oauth.key를 0600으로
 // 옮기고 원래 파일은 지운다. 옮기지 못하면 오류를 올린다. 새 키를 만들면 저장된 구독 토큰을 풀 수 없게 되므로
 // 조용히 넘어가지 않는다.
 func PrepareKeyDir(configured, baseDir, dataDir string) (string, error) {
@@ -85,8 +85,8 @@ func PrepareKeyDir(configured, baseDir, dataDir string) (string, error) {
 	return keyDir, nil
 }
 
-// migrateKeyFiles 는 legacyDir 에 남은 키 파일을 keyDir 로 옮긴다. 같은 디렉터리면 할 일이 없다.
-// keyDir 에 이미 있는 키는 덮지 않는다. 그 키가 지금 쓰이는 키이기 때문이다.
+// migrateKeyFiles 는 legacyDir에 남은 키 파일을 keyDir로 옮긴다. 같은 디렉터리면 할 일이 없다.
+// keyDir에 이미 있는 키는 덮지 않는다. 그 키가 지금 쓰이는 키이기 때문이다.
 func migrateKeyFiles(legacyDir, keyDir string) error {
 	realLegacyDir, err := evalAbs(legacyDir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -124,15 +124,15 @@ func migrateKeyFile(legacyPath, path string) error {
 	}
 	if err := os.Remove(legacyPath); err != nil {
 		// 새 위치에 이미 썼으므로 서버는 그 키로 돈다. 옛 파일이 남는 것은 서버를 멈출 이유가 아니라서 기록만 한다.
-		log.Printf("[auth] 키 파일 %s 를 %s 로 옮겼으나 원래 파일을 지우지 못했다: %v", legacyPath, path, err)
+		log.Printf("[auth] 키 파일 %s를 %s로 옮겼으나 원래 파일을 지우지 못했다: %v", legacyPath, path, err)
 		return nil
 	}
-	log.Printf("[auth] 키 파일을 %s 에서 %s 로 옮겼다", legacyPath, path)
+	log.Printf("[auth] 키 파일을 %s 에서 %s로 옮겼다", legacyPath, path)
 	return nil
 }
 
-// writeFileExclusive 는 같은 디렉터리의 임시 파일에 0600 으로 다 쓴 뒤 link 로 path 에 붙인다.
-// link 는 path 가 있으면 실패하므로 쓰는 도중 실패하거나 다른 프로세스가 먼저 만들어도 기존 키를 덮지 않는다.
+// writeFileExclusive 는 같은 디렉터리의 임시 파일에 0600으로 다 쓴 뒤 link로 path에 붙인다.
+// link는 path가 있으면 실패하므로 쓰는 도중 실패하거나 다른 프로세스가 먼저 만들어도 기존 키를 덮지 않는다.
 func writeFileExclusive(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
@@ -159,7 +159,7 @@ func writeFileExclusive(path string, data []byte) error {
 	return os.Link(tmpPath, path)
 }
 
-// evalAbs 는 dir 를 절대 경로로 바꾸고 심볼릭 링크를 푼다. dir 가 없으면 fs.ErrNotExist 를 잇는 오류를 올린다.
+// evalAbs 는 dir를 절대 경로로 바꾸고 심볼릭 링크를 푼다. dir가 없으면 fs.ErrNotExist를 잇는 오류를 올린다.
 func evalAbs(dir string) (string, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -182,8 +182,8 @@ func evalDeepestExisting(path string) (string, error) {
 	}
 }
 
-// isSameOrUnder 는 심볼릭 링크를 푼 절대 경로 dir 나 그 조상 중 하나가 root 와 같은 파일인지 본다.
-// 경로 문자열 비교는 대소문자만 다른 경로나 bind mount 를 같은 디렉터리로 알아보지 못해 파일 정체성으로 비교한다.
+// isSameOrUnder 는 심볼릭 링크를 푼 절대 경로 dir 나 그 조상 중 하나가 root와 같은 파일인지 본다.
+// 경로 문자열 비교는 대소문자만 다른 경로나 bind mount를 같은 디렉터리로 알아보지 못해 파일 정체성으로 비교한다.
 func isSameOrUnder(dir string, root os.FileInfo) (bool, error) {
 	for {
 		info, err := os.Stat(dir)

@@ -277,7 +277,7 @@ func TestTaskLLMStreamRetriesPreStreamQuotaOnNextProfile(t *testing.T) {
 	}
 }
 
-// Codex 구독 한도 응답은 같은 프로필에서 재시도하지 않고 hooks.exhaust 로 다음 프로필에 넘어가야 한다.
+// Codex 구독 한도 응답은 같은 프로필에서 재시도하지 않고 hooks.exhaust로 다음 프로필에 넘어가야 한다.
 // 분류가 빠지면 같은 프로필 재시도로 빠지므로 재시도 대기를 0으로 두고 병렬로 돌리지 않는다.
 func TestTaskLLMFailsOverOnCodexUsageLimit(t *testing.T) {
 	defer withZeroRetryBackoff()()

@@ -48,35 +48,35 @@ type Config struct {
 	ContextWindowK int
 	// ThinkingType 은 사고 '스위치' 필드(thinking.type)를 따로 제어한다.
 	//   "" = 보내지 않음(기본값, 이 필드를 지원하지 않는 모델과 호환); "disabled" = 명시적으로 끔;
-	//   "enabled" = 켬. ReasoningEffort 와 완전히 분리된다. thinking 필드가 없고
+	//   "enabled" = 켬. ReasoningEffort와 완전히 분리된다. thinking 필드가 없고
 	//   사고 강도 파라미터만으로 사고를 켜는 API 도 있어, 둘을 따로 설정할 수 있게 둔다.
 	ThinkingType string
 	// ReasoningEffort 는 사고 '강도' 필드를 따로 제어한다.
 	//   "" = 보내지 않음(기본값); "low"/"medium"/"high"/"xhigh"/"max" = 해당 강도.
-	//   OpenAI 는 최상위 reasoning_effort 로, Anthropic 은 output_config.effort 로 매핑한다.
+	//   OpenAI는 최상위 reasoning_effort로, Anthropic은 output_config.effort로 매핑한다.
 	ReasoningEffort string
-	// Stream 은 이 프로필이 스트리밍(SSE) API 를 쓸지 정한다. true(기본값) = 스트리밍,
-	// false = 진짜 비스트리밍(stream:false 를 보내 완전한 JSON 을 한 번에 받고 Provider.Complete 를 탄다).
+	// Stream 은 이 프로필이 스트리밍(SSE) API를 쓸지 정한다. true(기본값) = 스트리밍,
+	// false = 진짜 비스트리밍(stream:false를 보내 완전한 JSON을 한 번에 받고 Provider.Complete를 탄다).
 	// 비스트리밍은 일부 게이트웨이의 나쁜 SSE 구현(빈 프레임, 사고 필드 누락)을 피할 수 있지만,
-	// 실행 중 실시간 진행 상황과 실시간 토큰 집계를 잃는다. agentcore.Options.NonStreaming = !Stream 으로 매핑한다.
+	// 실행 중 실시간 진행 상황과 실시간 토큰 집계를 잃는다. agentcore.Options.NonStreaming = !Stream으로 매핑한다.
 	Stream bool
 	// MaxTokens 는 한 번의 응답에 대한 출력 최대 토큰이다. 0 = 이 필드를 보내지 않고 서버 기본값에 맡긴다
-	// (기존 동작). ContextWindowK 와 다르다. 후자는 모델 전체 용량이라 압축 임계값을 로컬에서 계산할 때만 쓰고
-	// 요청에는 넣지 않지만, 이 값은 요청마다 보낸다. agentcore.Options.MaxTokens 로 매핑한다.
+	// (기존 동작). ContextWindowK와 다르다. 후자는 모델 전체 용량이라 압축 임계값을 로컬에서 계산할 때만 쓰고
+	// 요청에는 넣지 않지만, 이 값은 요청마다 보낸다. agentcore.Options.MaxTokens로 매핑한다.
 	MaxTokens int
-	// MaxTokensField 는 MaxTokens 를 어느 요청 필드 이름으로 보낼지 고르며, format=openai 에만 적용된다.
+	// MaxTokensField 는 MaxTokens를 어느 요청 필드 이름으로 보낼지 고르며, format=openai 에만 적용된다.
 	//   "" = max_tokens(기본값); "max_completion_tokens" = 새 필드.
-	// OpenAI 추론 모델(o 계열/GPT-5)은 후자만 받고 max_tokens 를 받으면 바로 unsupported_parameter 를 낸다.
+	// OpenAI 추론 모델(o 계열/GPT-5)은 후자만 받고 max_tokens를 받으면 바로 unsupported_parameter를 낸다.
 	// 반면 호환 게이트웨이 대부분은 전자만 받으므로, 자동 추론하지 않고 사용자가 엔드포인트에 맞게 고르게 한다.
 	MaxTokensField string
 	// SessionHeaderKey 가 비어 있지 않으면, LLM 요청마다 사용자 지정 HTTP 헤더를 붙인다. 헤더 이름은 이 값이고,
 	// 헤더 값은 현재 세션의 session id 다(chat 세션=conv-<id>, worker=exp<x>-worker-i<intent> 등, WorkerSessionID 참고).
 	// session-id 헤더로 프롬프트 캐싱이나 고정 라우팅을 하는 일부 게이트웨이에 쓴다.
-	// 빈 값 = 보내지 않음. 값은 transcript.WithSessionID 가 요청 context 에 실어 두고 RoundTripper 가 읽어 채우므로,
+	// 빈 값 = 보내지 않음. 값은 transcript.WithSessionID가 요청 context에 실어 두고 RoundTripper가 읽어 채우므로,
 	// 같은 공유 provider 라도 세션마다 다른 헤더 값을 보낼 수 있다.
 	SessionHeaderKey string
 	// Retry 는 이 설정이 해석된 뒤의 재시도 파라미터다(프로필 덮어쓰기 → 전역 정책 → 내장 기본값 순으로
-	// server 쪽에서 해석한다). 세 층의 뜻은 RetryConfig 에 있다. 값을 비우면 내장 기본값을 쓴다.
+	// server 쪽에서 해석한다). 세 층의 뜻은 RetryConfig에 있다. 값을 비우면 내장 기본값을 쓴다.
 	Retry RetryConfig
 	// 구독 인증은 APIKey 대신 OAuthTokens로 제공자별 고정 백엔드를 부른다.
 	// 빈 값은 db.AuthAPIKey 다.
@@ -90,17 +90,17 @@ type Config struct {
 // 0 = 그 층 본래의 지수 백오프를 쓴다; >0 = 이 고정 간격으로 바꾼다.
 type RetryConfig struct {
 	// ConnectAttempts/ConnectInterval: SDK 연결 수립 재시도(연결 리셋/시간 초과/429/5xx, 스트림 시작 전)로,
-	// llm.Config.MaxRetries / RetryInterval 로 바로 매핑한다. 기본값은 3회, 0.5s 부터 지수 증가(최대 8s).
+	// llm.Config.MaxRetries / RetryInterval로 바로 매핑한다. 기본값은 3회, 0.5s 부터 지수 증가(최대 8s).
 	ConnectAttempts int
 	ConnectInterval time.Duration
-	// EmptyAttempts/EmptyInterval: SDK 빈 응답 재시도(완료했지만 content block 이 없음, openai 형식만)로,
-	// llm.Config.EmptyResponseRetries / EmptyResponseInterval 로 매핑한다.
+	// EmptyAttempts/EmptyInterval: SDK 빈 응답 재시도(완료했지만 content block이 없음, openai 형식만)로,
+	// llm.Config.EmptyResponseRetries / EmptyResponseInterval로 매핑한다.
 	// 기본값은 2회, 같은 지수 증가 단계.
 	EmptyAttempts int
 	EmptyInterval time.Duration
 	// StreamAttempts/StreamInterval: 같은 provider 안전 구간 재시도다. 이 프로젝트가 SDK 위에 덧댄 한 층으로,
-	// '아직 호출자에게 어떤 출력도 전달하지 않은' 때만 스트림 끊김/과부하/스트림 안 429 를 다시 보낸다.
-	// SDK 는 이를 보지 못하고 server/task_llm.go 가 소비한다. 기본값은 2회, 0.5s 부터 지수 증가(최대 4s).
+	// '아직 호출자에게 어떤 출력도 전달하지 않은' 때만 스트림 끊김/과부하/스트림 안 429를 다시 보낸다.
+	// SDK는 이를 보지 못하고 server/task_llm.go가 소비한다. 기본값은 2회, 0.5s 부터 지수 증가(최대 4s).
 	StreamAttempts int
 	StreamInterval time.Duration
 }
@@ -168,7 +168,7 @@ func FromEnv() (Config, bool) {
 		BaseURL: os.Getenv("ARTEX_LLM_BASE_URL"),
 		Model:   os.Getenv("ARTEX_LLM_MODEL"),
 		Proxy:   strings.TrimSpace(os.Getenv("ARTEX_LLM_PROXY")),
-		// 기본은 스트리밍이다. ARTEX_LLM_STREAM=false/0/off 로 명시해 끄면 비스트리밍을 탄다.
+		// 기본은 스트리밍이다. ARTEX_LLM_STREAM=false/0/off로 명시해 끄면 비스트리밍을 탄다.
 		Stream: !isFalsy(os.Getenv("ARTEX_LLM_STREAM")),
 	}
 	switch prov {
@@ -260,8 +260,8 @@ func (c Config) Provider() string {
 // limiter lives on the single provider instance — so planner + all workers +
 // main agent (which share this provider) are bounded by one shared rate limit.
 //
-// db.AuthChatGPTOAuth 는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true 만
-// 받으므로 비스트리밍 경로(Provider.Complete)는 SSE 응답을 JSON 으로 읽다가 실패하기 때문이다.
+// db.AuthChatGPTOAuth는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true 만
+// 받으므로 비스트리밍 경로(Provider.Complete)는 SSE 응답을 JSON으로 읽다가 실패하기 때문이다.
 func (c Config) NewProvider() (llm.Provider, error) {
 	apiKey, baseURL := c.APIKey, c.BaseURL
 	var tokens OAuthTokenSource
@@ -278,7 +278,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 			return nil, fmt.Errorf("llm: auth type %s requires streaming", c.AuthType)
 		}
 		tokens = c.OAuthTokens
-		// 비우면 Norma 가 OPENAI_API_KEY 로 채운다. 실제 헤더는 oauthTransport 가 덮어쓴다.
+		// 비우면 Norma가 OPENAI_API_KEY로 채운다. 실제 헤더는 oauthTransport가 덮어쓴다.
 		apiKey = oauthAPIKeyPlaceholder
 		if baseURL == "" {
 			baseURL = CodexBaseURL
@@ -311,9 +311,9 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	lc.ThinkingType = c.ThinkingType
 	lc.ReasoningEffort = c.ReasoningEffort
 	// 출력 최대 토큰의 필드 이름 선택(빈 값 = max_tokens 사용). 최대 토큰의 '값'은 여기 있지 않다. 값은 매 회
-	// agentcore.Options.MaxTokens 를 따라가고, provider 는 그것을 어느 키에 넣을지만 정한다.
+	// agentcore.Options.MaxTokens를 따라가고, provider는 그것을 어느 키에 넣을지만 정한다.
 	lc.MaxTokensField = c.MaxTokensField
-	// 재시도 파라미터는 SDK 와 뜻이 같아(횟수 0=기본/음수=끔, 간격 0=지수 백오프/>0=고정) 그대로 전달한다.
+	// 재시도 파라미터는 SDK와 뜻이 같아(횟수 0=기본/음수=끔, 간격 0=지수 백오프/>0=고정) 그대로 전달한다.
 	lc.MaxRetries = c.Retry.ConnectAttempts
 	lc.RetryInterval = c.Retry.ConnectInterval
 	lc.EmptyResponseRetries = c.Retry.EmptyAttempts
@@ -332,7 +332,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	return p, err
 }
 
-// IsQuotaExhaustedMessage 는 잔액·결제·크레딧·쿼터·구독 한도가 소진됐다고 명시한 신호만
+// IsQuotaExhaustedMessage는 잔액·결제·크레딧·쿼터·구독 한도가 소진됐다고 명시한 신호만
 // 쿼터 소진으로 본다. 일반 429·rate limit 문구, 인증 실패, 네트워크 오류, 서버 오류는 뺀다.
 var nonFailoverHTTPStatus = regexp.MustCompile(`(?:status(?:\s+code)?|http(?:\s+status)?)\s*[=:]?\s*(?:401|403|5\d\d)\b`)
 var transientQuotaLimit = regexp.MustCompile(`(?i)(?:\b(?:rpm|tpm|rpd|qps)\b|quota[_\s-]*metric|rate[_\s-]*limit|too many requests|(?:requests?|tokens?)\s+(?:per|/)\s*(?:second|minute)|(?:per|/)\s*(?:second|minute)\s+(?:requests?|tokens?)|generate[_\s-]*requests[_\s-]*per[_\s-]*(?:minute|second)|tokens?[_\s-]*per[_\s-]*(?:minute|second))`)
@@ -356,7 +356,7 @@ func IsQuotaExhaustedMessage(message string) bool {
 		"billing hard limit", "billing_not_active", "credit balance", "insufficient credit",
 		"insufficient balance", "balance is too low", "payment required", "status 402",
 		"余额不足", "额度不足", "额度已用尽", "欠费",
-		// Codex(ChatGPT 구독) 백엔드가 429 본문의 error.type 으로 주는 값이다. 주간·5시간
+		// Codex(ChatGPT 구독) 백엔드가 429 본문의 error.type으로 주는 값이다. 주간·5시간
 		// 한도는 같은 프로필로 재시도해도 풀리지 않으므로 다음 프로필로 넘겨야 한다.
 		"usage_limit_reached", "usage_not_included",
 	}
@@ -448,8 +448,8 @@ func requestBodySnapshot(req *http.Request) string {
 	return string(b)
 }
 
-// quotaAwareHTTPClient 는 Norma 가 모든 요청을 보낼 클라이언트를 만든다. tokens 가 nil 이 아니면
-// base transport 와 quotaAwareTransport 사이에 oauthTransport 를 끼운다. quotaAwareTransport 가
+// quotaAwareHTTPClient 는 Norma가 모든 요청을 보낼 클라이언트를 만든다. tokens가 nil이 아니면
+// base transport와 quotaAwareTransport 사이에 oauthTransport를 끼운다. quotaAwareTransport가
 // 바깥이라 llmrec 캡처는 토큰을 싣기 전의 Norma 원본 본문을 보고, 헤더는 기록하지 않는다.
 func quotaAwareHTTPClient(proxy, sessionHeaderKey string, tokens OAuthTokenSource) (*http.Client, error) {
 	return oauthHTTPClient(proxy, sessionHeaderKey, tokens, db.AuthChatGPTOAuth)
@@ -533,22 +533,22 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	// 원본 wire 메시지를 잡는다. 연결 테스트에서 가장 봐야 하는 것은 게이트웨이가 실제로 무엇을 돌려줬는가(상태 코드+응답 본문)인데,
-	// norma 가 응답을 StreamEvent 로 디코딩하고 나면 이것이 사라진다. quotaAwareTransport 가
-	// context 에서 이 Capture 를 찾아 매 HTTP 시도의 상태 코드와 body 를 채운다.
+	// norma가 응답을 StreamEvent로 디코딩하고 나면 이것이 사라진다. quotaAwareTransport가
+	// context 에서 이 Capture를 찾아 매 HTTP 시도의 상태 코드와 body를 채운다.
 	ctx, capt := llmrec.NewCapture(ctx)
 	defer logTestConnection(c, capt)
-	// 연결 테스트는 단발 경로라 agentcore 의 세션 루프를 거치지 않으므로 아무도 context 에 session id 를 달지 않는다.
-	// SessionHeaderKey 를 설정한 엔드포인트(예: opencode zen 은 x-opencode-session 헤더를 강제하고,
+	// 연결 테스트는 단발 경로라 agentcore의 세션 루프를 거치지 않으므로 아무도 context에 session id를 달지 않는다.
+	// SessionHeaderKey를 설정한 엔드포인트(예: opencode zen은 x-opencode-session 헤더를 강제하고,
 	// 없으면 바로 400 MissingSessionID)에서는 '대화는 정상인데 테스트만 400' 이 되는 어긋남이 생긴다.
-	// 여기서 일회성 무작위 session id 를 달아, 테스트가 실제 대화와 같은 헤더 발송 로직을 타게 한다.
-	// SessionHeaderKey 를 설정하지 않은 엔드포인트는 이를 읽지 않으므로 부작용이 없다.
+	// 여기서 일회성 무작위 session id를 달아, 테스트가 실제 대화와 같은 헤더 발송 로직을 타게 한다.
+	// SessionHeaderKey를 설정하지 않은 엔드포인트는 이를 읽지 않으므로 부작용이 없다.
 	ctx = transcript.WithSessionID(ctx, "conntest-"+transcript.NewSessionID())
 	start := time.Now()
-	// MaxTokens 는 넉넉히 준다. 추론 모델(예: deepseek-v4-pro)은 답을 내기 전에 사고를 한참 쏟아 낸다
+	// MaxTokens는 넉넉히 준다. 추론 모델(예: deepseek-v4-pro)은 답을 내기 전에 사고를 한참 쏟아 낸다
 	// ("ping" 한마디에도 실측 ~2900 토큰). 32 만 주면 모델이 '사고 단계'에 머물다 출력 최대 토큰에 걸려
 	// (finish=length) 잘리고, 연결 테스트는 통과(err=nil)로 치면서도 화면에는
-	// '중단됨/length/resume' 로 엉망으로 보인다. 예산을 넉넉히 줘서 OK 를 깨끗이 끝까지 내게 한다(finish=stop).
-	// EscalateMaxTokens 는 false 로 둔다. 잘림 때문에 최대 토큰을 올려 재시도하지 않아 resume 루프의 헛돎을 막는다.
+	// '중단됨/length/resume' 로 엉망으로 보인다. 예산을 넉넉히 줘서 OK를 깨끗이 끝까지 내게 한다(finish=stop).
+	// EscalateMaxTokens는 false로 둔다. 잘림 때문에 최대 토큰을 올려 재시도하지 않아 resume 루프의 헛돎을 막는다.
 	reply, err := agentcore.Run(ctx, agentcore.Options{
 		Provider:       prov,
 		SystemPrompt:   []string{"You are a connection test. Output exactly the two characters OK and nothing else — no thinking, no explanation, nothing more."},
@@ -562,7 +562,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 		return lat, "", err
 	}
 	// err==nil 만으로는 부족하다. 요청은 통했지만 모델이 한 글자도 내지 않는 경우가 실제로 있다(사고가 예산을 다 태움,
-	// 본문이 안전 정책에 삼켜짐, 호환 계층이 content 를 잃음). 이런 설정은 대화에서 '대답을 안 하는' 상태인데도
+	// 본문이 안전 정책에 삼켜짐, 호환 계층이 content를 잃음). 이런 설정은 대화에서 '대답을 안 하는' 상태인데도
 	// 테스트는 성공으로 보고한다. 바로 이 어긋남을 없애려는 것이다. 보이는 본문이 없으면 모두 실패로 판정한다.
 	reply = strings.TrimSpace(reply)
 	if reply == "" {

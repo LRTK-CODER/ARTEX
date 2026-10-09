@@ -1002,7 +1002,8 @@ function CompanyDialog({ onSaved }: { onSaved: () => void }) {
       const res = await api.createCompany(name.trim(), parsedScope.rules);
       const added = res.scope_added ?? 0;
       const invalid = res.scope_invalid ?? 0;
-      if (invalid > 0) toast.warning(`기업을 만들고 범위 ${added}개를 추가했습니다. 잘못된 줄 ${invalid}개가 있습니다`);
+      if (invalid > 0)
+        toast.warning(`기업을 만들고 범위 ${added}개를 추가했습니다. 잘못된 줄 ${invalid}개가 있습니다.`);
       else toast.success(`기업을 만들고 범위 ${added}개를 추가했습니다`);
       setOpen(false);
       onSaved();
@@ -1083,7 +1084,7 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
     try {
       const res = await api.updateCompanyScope(company.id, parsedScope.rules, reason);
       const errCount = res.invalid ?? 0;
-      if (errCount > 0) toast.warning(`저장했습니다. 잘못된 줄 ${errCount}개가 있습니다`);
+      if (errCount > 0) toast.warning(`저장했습니다. 잘못된 줄 ${errCount}개가 있습니다.`);
       else toast.success(`범위를 업데이트했습니다(총 ${res.added}개)`);
       showScopeWarnings(res.warnings);
       setOpen(false);
@@ -1167,7 +1168,7 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
     try {
       const res = await api.addCompanyScope(company.id, parsedScope.rules, reason);
       const errCount = res.invalid ?? 0;
-      if (errCount > 0) toast.warning(`저장했습니다. 잘못된 줄 ${errCount}개가 있습니다`);
+      if (errCount > 0) toast.warning(`저장했습니다. 잘못된 줄 ${errCount}개가 있습니다.`);
       else toast.success(`범위 ${res.added}개를 추가했습니다`);
       showScopeWarnings(res.warnings);
       setOpen(false);

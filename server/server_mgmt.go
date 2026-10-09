@@ -1812,11 +1812,11 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	switch p.AuthType {
 	case "", db.AuthAPIKey, db.AuthChatGPTOAuth, db.AuthClaudeOAuth:
 	default:
-		// DB CHECK 위반 원문이 500 으로 나가지 않게 여기서 거절한다. 입력값은 문구에 싣지 않는다.
+		// DB CHECK 위반 원문이 500으로 나가지 않게 여기서 거절한다. 입력값은 문구에 싣지 않는다.
 		writeErr(w, 400, "auth_type은 api_key, chatgpt_oauth 또는 claude_oauth여야 한다")
 		return
 	}
-	// 수정할 때 auth_type 을 빼면 기존 값을 지키므로(db.SaveProfile) 고정 규칙도 기존 값으로 정한다.
+	// 수정할 때 auth_type을 빼면 기존 값을 지키므로(db.SaveProfile) 고정 규칙도 기존 값으로 정한다.
 	// 로그인 저장·연결 해제와 같은 잠금으로 인증 방식 변경을 묶는다.
 	lock := s.loginFlows.profileLock(p.ID)
 	lock.Lock()
@@ -1835,7 +1835,7 @@ func (s *Server) pgSaveProfile(w http.ResponseWriter, r *http.Request) {
 	isOAuth := effectiveAuth.IsOAuth()
 	if isOAuth {
 		// 구독 제공자가 받는 형식만 저장해 화면과 실제 동작이 어긋나지 않게 한다.
-		// BaseURL 은 쓰지 않으므로 비운다. API 키 프로필에서 바꿀 때 남은 중계 주소가 보이지 않게 한다.
+		// BaseURL은 쓰지 않으므로 비운다. API 키 프로필에서 바꿀 때 남은 중계 주소가 보이지 않게 한다.
 		p.Format = profileFormat(effectiveAuth, p.Format)
 		if effectiveAuth == db.AuthChatGPTOAuth {
 			p.Streaming = true
@@ -1916,11 +1916,11 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	if err := pg.DeleteProfileContext(r.Context(), id); err != nil {
 		switch {
 		case errors.Is(err, db.ErrActiveLLMProfileDelete):
-			writeErr(w, 409, "활성 LLM 프로필은 삭제할 수 없습니다. 다른 프로필을 먼저 활성으로 설정하세요")
+			writeErr(w, 409, "활성 LLM 프로필은 삭제할 수 없습니다. 다른 프로필을 먼저 활성으로 설정하세요.")
 		case errors.Is(err, db.ErrLLMProfileReferencesChanged):
-			writeErr(w, 409, "작업이나 세션이 LLM 프로필을 바꾸는 중입니다. 다시 시도하세요")
+			writeErr(w, 409, "작업이나 세션이 LLM 프로필을 바꾸는 중입니다. 다시 시도하세요.")
 		case errors.Is(err, context.DeadlineExceeded):
-			writeErr(w, 409, "LLM 프로필 참조가 풀리기를 기다리다 시간이 초과됐습니다. 다시 시도하세요")
+			writeErr(w, 409, "LLM 프로필 참조가 풀리기를 기다리다 시간이 초과됐습니다. 다시 시도하세요.")
 		case errors.Is(err, db.ErrLLMProfileNotFound):
 			writeErr(w, 404, err.Error())
 		default:
@@ -1930,7 +1930,7 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	s.invalidateProfileAgents() // drop cached agents for the removed profile
 	s.llmHealth.Reset(id)       // its breaker state is meaningless now (row is FK-cascaded away)
-	s.oauth.forget(id)          // 자격 증명도 CASCADE 로 지워졌으니 메모리의 토큰도 버린다
+	s.oauth.forget(id)          // 자격 증명도 CASCADE로 지워졌으니 메모리의 토큰도 버린다
 	s.loginFlows.dropProfile(id)
 	s.claudeLoginFlows.dropProfile(id)
 	s.restoreTasksAfterProfileDelete(pg)
@@ -2014,7 +2014,7 @@ func (s *Server) pgLLMPoolReset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.llmPoolStatus())
 }
 
-// modelsHTTPClient 는 모델 목록 조회용 HTTP 클라이언트다. proxy 가 있으면 그것을 거친다.
+// modelsHTTPClient 는 모델 목록 조회용 HTTP 클라이언트다. proxy가 있으면 그것을 거친다.
 func modelsHTTPClient(proxy string) *http.Client {
 	transport := &http.Transport{}
 	if p := strings.TrimSpace(proxy); p != "" {
@@ -2026,7 +2026,7 @@ func modelsHTTPClient(proxy string) *http.Client {
 }
 
 // listChatGPTModels 는 저장된 chatgpt_oauth 프로필의 토큰으로 Codex 계정별 모델 목록을 돌려준다.
-// 주소는 codexURL 만 쓰고 요청·프로필의 base_url 은 무시한다(applyChatGPTOAuthRules 와 같은 이유).
+// 주소는 codexURL 만 쓰고 요청·프로필의 base_url은 무시한다(applyChatGPTOAuthRules와 같은 이유).
 // 실패하면 빈 목록과 고정 문구를 돌려주고, 원인은 토큰 없이 로그에만 남긴다.
 func (s *Server) listChatGPTModels(w http.ResponseWriter, r *http.Request, stored *db.LLMProfile, proxy string) {
 	fail := func(msg string) {

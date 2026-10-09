@@ -46,12 +46,12 @@ type Server struct {
 	skillDir string // root directory for skill subdirectories
 	jwtKey   []byte // keyDir/jwt.key 에서 읽거나 새로 만든 HS256 서명 키
 	// oauth 는 구독 OAuth 프로필의 TokenSource를 프로필마다 하나씩 들고 있다.
-	// oauth.key 를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
+	// oauth.key를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry
 	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL 이다.
 	// 테스트만 httptest 주소로 바꾼다. 설정·환경 변수로 바꾸는 길은 두지 않는다(codexURL).
 	codexBaseURL string
-	// claudeBaseURL은 내부 테스트에서만 바꾸며 설정·환경 변수를 따르지 않는다.
+	// claudeBaseURL 은 내부 테스트에서만 바꾸며 설정·환경 변수를 따르지 않는다.
 	claudeBaseURL string
 	// loginFlows 는 진행 중인 ChatGPT 구독 로그인 흐름이다. 메모리에만 둔다(chatgpt_login.go).
 	loginFlows loginFlows
@@ -114,7 +114,7 @@ type Server struct {
 	provByProfile map[int64]*provEntry
 	provCacheGen  uint64
 
-	// llmHealth는 LLM 장애 조치용 프로세스 전역 회로 차단기 상태다. 일부러 provider
+	// llmHealth 는 LLM 장애 조치용 프로세스 전역 회로 차단기 상태다. 일부러 provider
 	// 캐시 밖에 둔다: 체인을 다시 만들어도(관련 없는 프로필 저장, 설정 전환) 어느
 	// 백엔드가 크레딧 부족·속도 제한 상태인지 알아낸 것을 지우면 안 되기 때문이다.
 	llmHealth *llmpool.Registry
@@ -162,7 +162,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		profChatAgents: map[int64]*agent.ChatAgent{},
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
 		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
-	// OAuth 토큰 키는 jwt.key 와 같은 키 디렉터리에 둔다(파일 관리자로 열람할 수 없는 곳).
+	// OAuth 토큰 키는 jwt.key와 같은 키 디렉터리에 둔다(파일 관리자로 열람할 수 없는 곳).
 	s.oauth = loadOAuthTokenRegistry(m.pg, keyDir)
 	s.initSideQuestions()
 	// 회로 차단기 임계값·대기 시간은 실패 경로에서 자주 읽는 값이라, 시작할 때 전역 재시도
@@ -353,7 +353,7 @@ func (s *Server) loadLLMConfig() (agent.Config, bool) {
 // errLegacyOAuthProfile 은 레거시 설정 저장이 구독 인증의 "default" 프로필을 덮으려 했다는 뜻이다.
 var errLegacyOAuthProfile = errors.New(`legacy LLM config cannot overwrite the OAuth "default" profile`)
 
-// legacyOAuthProfileMessage 는 errLegacyOAuthProfile 을 받은 사용자에게 보일 문구다.
+// legacyOAuthProfileMessage 는 errLegacyOAuthProfile을 받은 사용자에게 보일 문구다.
 const legacyOAuthProfileMessage = "default 프로필이 구독 인증 프로필이라 이 설정으로 바꿀 수 없다. LLM 프로필 화면에서 바꿔야 한다"
 
 // saveLLMConfig persists the LLM config as the active "default" profile in PG.
@@ -524,7 +524,7 @@ func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 // oauthCheckTimeout 은 프로필 설정을 만들 때 자격 증명이 있는지 DB 에서 확인하는 상한이다.
 const oauthCheckTimeout = 5 * time.Second
 
-// profileConfig 는 저장된 프로필(키 포함)로 agent.Config 를 만든다. 요청을 보낼 수 없는
+// profileConfig 는 저장된 프로필(키 포함)로 agent.Config를 만든다. 요청을 보낼 수 없는
 // 프로필(API 키 없음, OAuth 자격 증명 없음)이면 ok=false 다.
 func (s *Server) profileConfig(p *db.LLMProfile) (agent.Config, bool) {
 	cfg := agent.ConfigFrom(profileFormat(p.AuthType, p.Format), p.Model, p.BaseURL, p.APIKey, p.Proxy)
@@ -572,7 +572,7 @@ func profileFormat(authType db.AuthType, format string) string {
 
 // applyChatGPTOAuthRules 는 Codex 백엔드가 받는 형식으로 설정을 고정한다. Codex 백엔드는
 // Responses 형식의 stream:true 요청만 받으므로 프로필에 저장된 형식·수신 방식과 무관하게 맞춘다.
-// 주소는 codexBaseURL 만 쓴다. 저장되거나 요청에 온 base_url 을 따르면 구독 토큰이 그 호스트
+// 주소는 codexBaseURL 만 쓴다. 저장되거나 요청에 온 base_url을 따르면 구독 토큰이 그 호스트
 // (API 키용 중계 등)로 나간다. API 키는 쓰지 않으므로 비운다.
 func applyChatGPTOAuthRules(cfg *agent.Config, codexBaseURL string) {
 	cfg.AuthType = db.AuthChatGPTOAuth
@@ -590,7 +590,7 @@ func (s *Server) codexURL() string {
 	return agent.CodexBaseURL
 }
 
-// ctxOrBackground 는 서버 수명 ctx 를 돌려준다. 테스트처럼 ctx 없이 만든 Server 는 Background 를 쓴다.
+// ctxOrBackground 는 서버 수명 ctx를 돌려준다. 테스트처럼 ctx 없이 만든 Server는 Background를 쓴다.
 func (s *Server) ctxOrBackground() context.Context {
 	if s.ctx != nil {
 		return s.ctx
@@ -612,7 +612,7 @@ func (s *Server) effectiveProfileForAgent(agentKey string, pinID *int64) *int64 
 	return pinID
 }
 
-// resolveChatAgent는 대화 하나에 쓸 ChatAgent를 고른다. 에이전트 자체에 연결한 프로필이나
+// resolveChatAgent 는 대화 하나에 쓸 ChatAgent를 고른다. 에이전트 자체에 연결한 프로필이나
 // 이 대화에서 고른 프로필을 먼저 쓰고, 전역 활성 프로필은 대체로만 쓴다. 보내기 전 검사와
 // 백그라운드 실행기가 반드시 이 함수를 함께 써야 한다. 두 경로가 다르게 고르면, 올바른
 // 프로필을 고른 대화도 전역 활성 프로필이 없을 때 'LLM 설정 안 됨'으로 거부된다.
@@ -1328,7 +1328,7 @@ func (s *Server) rerunIntent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"id": t.ID, "reopened": iid, "queued": queued})
 }
 
-// rerunBlocked는 이 작업의 blocked 의도를 모두 일괄 재실행한다(네트워크·LLM 연결이 한 번
+// rerunBlocked 는 이 작업의 blocked 의도를 모두 일괄 재실행한다(네트워크·LLM 연결이 한 번
 // 끊겨 여러 건이 blocked됐을 때 한 번에 재시도하기 좋다). open으로 되돌리고 작업을 재개하며,
 // 다시 연 건수를 돌려준다.
 func (s *Server) rerunBlocked(w http.ResponseWriter, r *http.Request) {
@@ -1588,7 +1588,7 @@ type createTaskReq struct {
 	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`      // planner 하트비트 트리거 간격(초). 0이거나 생략하면 기본값 600(10min). 최솟값도 600이라 더 작으면 600으로 올린다
 	SeedFirstIntent      *bool    `json:"seed_first_intent,omitempty"` // 만들 때 시드 의도 하나(내용=설명+목표)를 바로 넣어 worker가 첫 planner 회차를 기다리지 않고 시작하게 한다. 생략하거나 null이면 기본값 꺼짐(표준대로 먼저 계획한 뒤 실행). true를 명시해야 켠다(CTF처럼 work 하나로 풀리는 경우 시작 전 planner 회차를 줄일 수 있다).
 	CoverageEnabled      *bool    `json:"coverage_enabled,omitempty"`  // 자산 커버리지 기능. 생략하거나 null이면 기본값 켜짐(true). false면 커버리지 계산·표시·범위 자동 누적을 끄고 add_task_scope/list_untested_assets를 숨긴다. 기업 연결에는 영향이 없다.
-	// InterceptRules는 작업 단위 자산 차단·허용 규칙이다(만들 때 입력하고 task_intercept_rules에 저장하며 전역 표에는 넣지 않는다).
+	// InterceptRules 는 작업 단위 자산 차단·허용 규칙이다(만들 때 입력하고 task_intercept_rules에 저장하며 전역 표에는 넣지 않는다).
 	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
 }
 
@@ -1632,7 +1632,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	companyIDs, err := db.NormalizeTaskCompanyIDs(req.CompanyIDs)
 	if err != nil {
-		writeErr(w, 400, fmt.Sprintf("관련 기업이 잘못됐습니다. 유효한 기업을 최대 %d개까지 고를 수 있습니다", db.MaxTaskCompanyCount))
+		writeErr(w, 400, fmt.Sprintf("관련 기업이 잘못됐습니다. 유효한 기업을 최대 %d개까지 고를 수 있습니다.", db.MaxTaskCompanyCount))
 		return
 	}
 	req.CompanyIDs = companyIDs
@@ -1842,7 +1842,7 @@ func (s *Server) seed(t *Task, text string) {
 	// 시드 작업이 첫 회차를 잘못 트리거한다.
 }
 
-// seedFirstIntent는 작업을 만들 때 open 의도 하나(summary = 설명+목표)를 frontier에 넣어,
+// seedFirstIntent 는 작업을 만들 때 open 의도 하나(summary = 설명+목표)를 frontier에 넣어,
 // worker가 planner 회차를 기다리지 않고 바로 할당받아 실행하게 한다. planner의 최상위 의도와
 // 같은 모양이다: 시작점 fact에서 RelDerivedFrom으로 이어 fact 노드까지 추적할 수 있다.
 // 최선 노력 방식이라 실패하면 보통의 planner 주도 흐름으로 돌아간다.
@@ -1898,7 +1898,7 @@ func (s *Server) taskCoverage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, cov)
 }
 
-// taskCoverageGraph는 작업의 포스 기반(force-directed) 자산 커버리지 그래프를 돌려준다:
+// taskCoverageGraph 는 작업의 포스 기반(force-directed) 자산 커버리지 그래프를 돌려준다:
 // 범위 안의 모든 자산(유형별)과 연결용 루트 도메인·기업 노드. 각각 tested/in_scope를 가진다.
 func (s *Server) taskCoverageGraph(w http.ResponseWriter, r *http.Request) {
 	t, ok := s.m.Task(r.PathValue("id"))
@@ -1920,7 +1920,7 @@ func (s *Server) taskCoverageGraph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, g)
 }
 
-// taskAssetRefs는 이 작업에서 주어진 자산 id에 고정된 의도·사실·발견 사항을 돌려준다.
+// taskAssetRefs 는 이 작업에서 주어진 자산 id에 고정된 의도·사실·발견 사항을 돌려준다.
 // 커버리지 그래프 노드 서랍의 '관련 의도 / 관련 사실'에 쓴다.
 func (s *Server) taskAssetRefs(w http.ResponseWriter, r *http.Request) {
 	t, ok := s.m.Task(r.PathValue("id"))
@@ -2178,7 +2178,7 @@ func (s *Server) resolveAssetIDs(ids []int64) map[int64]*db.Asset {
 	return assets
 }
 
-// findingStats는 페이지로 나뉜 '발견 사항' 화면에 표 전체 집계(통계 카드 + 취약점 분류 필터)를 준다.
+// findingStats 는 페이지로 나뉜 '발견 사항' 화면에 표 전체 집계(통계 카드 + 취약점 분류 필터)를 준다.
 func (s *Server) findingStats(w http.ResponseWriter, r *http.Request) {
 	st, err := s.m.pg.FindingStats()
 	if err != nil {
@@ -2224,7 +2224,7 @@ func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, dto)
 }
 
-// findingsExport는 '발견 사항' 화면의 취약점을 내보낸다.
+// findingsExport 는 '발견 사항' 화면의 취약점을 내보낸다.
 //
 //	scope   = filtered(화면 필터를 그대로 씀) | all(전체) | selected(선택한 ids)
 //	format  = md-single(.md 하나로 합침) | md-zip(취약점마다 .md 하나, zip으로 묶음)
@@ -2662,7 +2662,7 @@ func (s *Server) explorationGraph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"nodes": taskNodeDTOs(nodes), "edges": edgeDTOs(edges)})
 }
 
-// explorationNodes는 활동 피드에 이 작업 자신의 탐색 노드를 페이지로 나뉜 시계열로 준다
+// explorationNodes 는 활동 피드에 이 작업 자신의 탐색 노드를 페이지로 나뉜 시계열로 준다
 // (?order=asc가 아니면 최신순). kind·state와 payload 부분 문자열로 거를 수 있다. 이어받은
 // 노드는 일부러 뺀다: 피드는 이 작업이 지금 하는 일을 보여 주고, 출처 작업의 저장소를 넘나들며
 // 페이지를 나누면 커서가 의미를 잃는다.
@@ -2735,7 +2735,7 @@ func (s *Server) explorationNodes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// nodeAnchoredAssets는 주어진 노드들의 exploration_anchors를 화면에 바로 쓸 자산 라벨로
+// nodeAnchoredAssets 는 주어진 노드들의 exploration_anchors를 화면에 바로 쓸 자산 라벨로
 // 바꿔 노드 id별로 돌려준다. 앵커는 활동 피드의 출처 표시용 장식이라, 여기서 실패해도 호출자의
 // 페이지를 잃게 하면 안 된다. 그래서 오류는 로그로 남기고 '자산 없음'으로 처리한다.
 func (s *Server) nodeAnchoredAssets(t *Task, nodeIDs []int64) map[string][]FindingAssetDTO {
@@ -3452,13 +3452,13 @@ func (s *Server) settingsPayload() map[string]any {
 	}
 }
 
-// notifyPublicBaseURL은 알림 상세 링크에 쓸 외부 링크 기본 주소를 읽는다.
+// notifyPublicBaseURL 은 알림 상세 링크에 쓸 외부 링크 기본 주소를 읽는다.
 func notifyPublicBaseURL(pg *db.DB) string {
 	v, _, _ := pg.GetSetting(settingNotifyPublicBaseURL)
 	return v
 }
 
-// notifyDigestIntervalMin은 다이제스트 주기(분)를 읽고, 잘못됐거나 설정되지 않았으면 기본값을 쓴다.
+// notifyDigestIntervalMin 은 다이제스트 주기(분)를 읽고, 잘못됐거나 설정되지 않았으면 기본값을 쓴다.
 // 빈 문자열 대신 기본값을 돌려줘야 UI가 현재 적용 중인 값을 입력 칸에 채울 수 있다.
 func notifyDigestIntervalMin(pg *db.DB) int {
 	v, ok, _ := pg.GetSetting(settingNotifyDigestMinutes)
@@ -3746,7 +3746,7 @@ func (s *Server) testWebSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true, "count": len(results), "backend": backend})
 }
 
-// mainSessions는 작업의 메인 에이전트 대화 구간(최신순)과 현재 구간을 돌려준다. 프런트는 이를
+// mainSessions 는 작업의 메인 에이전트 대화 구간(최신순)과 현재 구간을 돌려준다. 프런트는 이를
 // 메인 에이전트 아래에서 전환할 수 있는 세션으로 보여 준다.
 func (s *Server) mainSessions(w http.ResponseWriter, r *http.Request) {
 	t := s.m.ResolveTask(r.URL.Query().Get("task"))
@@ -3824,7 +3824,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.chatBusy[t.ID] {
 		s.chatMu.Unlock()
-		writeErr(w, 409, "메인 에이전트가 이전 메시지를 처리하는 중입니다. 잠시 뒤 다시 시도하세요")
+		writeErr(w, 409, "메인 에이전트가 이전 메시지를 처리하는 중입니다. 잠시 뒤 다시 시도하세요.")
 		return
 	}
 	ctx, cancel := context.WithCancelCause(s.ctx)
@@ -3944,7 +3944,7 @@ func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"status": "stopping"})
 }
 
-// fallbackChat은 LLM 없이 사람이 조종하는 처리기다: 간단한 명령 + 현황 요약.
+// fallbackChat 은 LLM 없이 사람이 조종하는 처리기다: 간단한 명령 + 현황 요약.
 // 아래 중국어 접두사는 기존 사용자 입력과의 호환을 위해 영어 접두사와 함께 그대로 받는다.
 func (s *Server) fallbackChat(t *Task, msg string) string {
 	m := strings.TrimSpace(msg)

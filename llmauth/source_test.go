@@ -11,8 +11,8 @@ import (
 
 var errCommit = errors.New("memory store: commit failed")
 
-// memoryStore 는 Store 의 메모리 구현이다. DB 구현과 같은 계약을 mutex 로 지킨다:
-// 잠근 뒤 다시 읽어 stale 이 아니면 그대로 돌려주고, refresh 나 커밋이 실패하면 저장하지 않는다.
+// memoryStore 는 Store의 메모리 구현이다. DB 구현과 같은 계약을 mutex로 지킨다:
+// 잠근 뒤 다시 읽어 stale이 아니면 그대로 돌려주고, refresh 나 커밋이 실패하면 저장하지 않는다.
 // DB 드라이버처럼 취소된 ctx 로는 커밋하지 않는다.
 type memoryStore struct {
 	mu          sync.Mutex
@@ -165,7 +165,7 @@ func TestTokenSourcesShareStore(t *testing.T) {
 	second := NewTokenSource(f.client(), store, clock)
 	ctx := context.Background()
 
-	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401 을 준 것처럼 둘 다 Invalidate 한다.
+	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401을 준 것처럼 둘 다 Invalidate 한다.
 	for _, src := range []*TokenSource{first, second} {
 		access, _, err := src.Token(ctx)
 		if err != nil {
@@ -215,7 +215,7 @@ func TestTokenSourceInvalidate(t *testing.T) {
 	}
 }
 
-// TestTokenSourceRefreshesOnceForConcurrentRejections 는 여러 요청이 같은 옛 토큰으로 401 을 받아
+// TestTokenSourceRefreshesOnceForConcurrentRejections 는 여러 요청이 같은 옛 토큰으로 401을 받아
 // 저마다 Invalidate 해도 갱신은 한 번만 하는지 확인한다.
 func TestTokenSourceRefreshesOnceForConcurrentRejections(t *testing.T) {
 	const callers = 8
@@ -239,7 +239,7 @@ func TestTokenSourceRefreshesOnceForConcurrentRejections(t *testing.T) {
 				errs[i] = err
 				return
 			}
-			// 모두 옛 토큰을 들고 백엔드에서 401 을 받은 뒤에야 거부를 알린다.
+			// 모두 옛 토큰을 들고 백엔드에서 401을 받은 뒤에야 거부를 알린다.
 			allHaveOldToken.Wait()
 			src.Invalidate(old)
 			results[i], _, errs[i] = src.Token(ctx)
@@ -276,7 +276,7 @@ func TestTokenSourceRetriesAfterFailedRefresh(t *testing.T) {
 	if _, _, err := src.Token(ctx); err == nil {
 		t.Fatal("Token after failed refresh: err = nil")
 	}
-	// 만료 전이어도 Invalidate 로 요청한 갱신을 끝내지 못했으니 다시 갱신해야 한다.
+	// 만료 전이어도 Invalidate로 요청한 갱신을 끝내지 못했으니 다시 갱신해야 한다.
 	after, _, err := src.Token(ctx)
 	if err != nil {
 		t.Fatalf("retry Token: %v", err)
@@ -358,7 +358,7 @@ func TestTokenSourceRetriesSaveAfterCommitFailure(t *testing.T) {
 	if calls != 1 || stored.RefreshToken != valid {
 		t.Fatalf("refresh calls = %d, stored refresh %q, server valid %q", calls, stored.RefreshToken, valid)
 	}
-	// 재시작 흉내: 새 TokenSource 가 저장소만 보고 재로그인 없이 쓸 수 있어야 한다.
+	// 재시작 흉내: 새 TokenSource가 저장소만 보고 재로그인 없이 쓸 수 있어야 한다.
 	restarted := NewTokenSource(f.client(), store, clock)
 	stored, _ = store.snapshot()
 	restarted.Invalidate(stored.AccessToken)

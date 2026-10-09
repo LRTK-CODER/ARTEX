@@ -25,7 +25,7 @@ const (
 // facts use state 'confirmed', so this never collides.
 const StateOrigin = "origin"
 
-// StateIntentDeleted는 사용자가 소프트 삭제한 의도를 나타낸다. 다른 종료 상태처럼
+// StateIntentDeleted 는 사용자가 소프트 삭제한 의도를 나타낸다. 다른 종료 상태처럼
 // frontier와 graph_overview에서는 빠지지만 노드와 전체 계보는 남는다. 삭제 사유는
 // exploration_nodes.delete_reason에 있다.
 const StateIntentDeleted = "deleted"

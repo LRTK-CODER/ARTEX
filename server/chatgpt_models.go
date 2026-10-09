@@ -35,10 +35,10 @@ const (
 	chatGPTModelsFailedMessage           = "ChatGPT 모델 목록을 가져오지 못했다"
 )
 
-// errCodexUnauthorized 는 모델 목록 요청이 401 을 받았다는 뜻이다. 토큰은 버려 다음 호출이 갱신한다.
+// errCodexUnauthorized 는 모델 목록 요청이 401을 받았다는 뜻이다. 토큰은 버려 다음 호출이 갱신한다.
 var errCodexUnauthorized = errors.New("codex models: unauthorized")
 
-// codexModelVisibilityList 는 Codex 가 모델 선택 목록에 보이는 모델의 visibility 값이다.
+// codexModelVisibilityList 는 Codex가 모델 선택 목록에 보이는 모델의 visibility 값이다.
 // 출처: openai/codex codex-rs/protocol/src/openai_models.rs ModelVisibility(list·hide·none).
 const codexModelVisibilityList = "list"
 

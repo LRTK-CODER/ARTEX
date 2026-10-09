@@ -52,7 +52,7 @@ tested AS (
   JOIN context_tasks ctx ON ctx.exploration_id=en.exploration_id
 )`
 
-// scopeTargetCTE는 현재 작업(과 직접 출처 작업)이 선언한 범위에 "속하는" 자산을 모두
+// scopeTargetCTE 는 현재 작업(과 직접 출처 작업)이 선언한 범위에 "속하는" 자산을 모두
 // 고른다. 값이 똑같은지가 아니라 소속으로 판단한다. root_domain 범위는 자기 root_domain
 // 열이 그 값인 하위 도메인·service·endpoint를 모두 끌어오고, ip/cidr 범위는 ip나 IP 리터럴
 // host가 그 대역 안에 있는 자산을 끌어온다. $1은 작업 id다. contextCoverageCTE와 달리
