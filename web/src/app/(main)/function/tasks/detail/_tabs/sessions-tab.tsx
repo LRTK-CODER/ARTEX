@@ -164,14 +164,14 @@ function mergeBySeq(current: Activity[], incoming: Activity[]): Activity[] {
 
 // statusIcon maps a session status to its icon. Worker terminal states are
 // distinct & color-coded: 완료(초록 체크 원) / 취소·중지(호박색 사선 원) / 오류(빨간 X 원) /
-// 단계 한도 소진(보라). running=파란 회전, pending(맡기 대기)=회색 시계.
+// 단계 한도 소진(보라). running=파란 회전, pending(할당 대기)=회색 시계.
 function statusIcon(status: SessionStatus) {
   switch (status) {
     case "running": // 실행 중
       return <Loader2Icon className="size-3.5 animate-spin text-blue-500" />;
     case "paused":
       return <PauseIcon className="size-3.5 text-amber-500" />;
-    case "pending": // 맡기 대기(open intent)
+    case "pending": // 할당 대기(open intent)
       return <ClockIcon className="size-3.5 text-muted-foreground" />;
     case "done": // 완료
       return <CircleCheckIcon className="size-3.5 text-emerald-500" />;
@@ -309,7 +309,7 @@ function intentStatus(state: string): SessionStatus {
       return "stopped";
     case "paused":
       return "paused";
-    case "open": // 맡기 대기. 실행 중과 구분한다
+    case "open": // 할당 대기. 실행 중과 구분한다
       return "pending";
     case "deleted": // 사용자 소프트 삭제
       return "deleted";
@@ -369,7 +369,7 @@ function SessionItem({
     s.role === "worker" &&
     !s.inherited &&
     !deleted &&
-    // pending = 맡기 대기(open) 의도다. 실행 중·일시 중지와 함께 삭제할 수 있다.
+    // pending = 할당 대기(open) 의도다. 실행 중·일시 중지와 함께 삭제할 수 있다.
     (s.status === "running" || s.status === "paused" || s.status === "pending");
   return (
     <div
@@ -604,10 +604,10 @@ export function SessionsTab({ taskId }: { taskId: string }) {
         const res = await api.controlIntent(taskId, session.intent_id, action, reason, mode);
         if (action === "pause") {
           patchIntentState(session.intent_id, "paused");
-          toast.success(`워커 #${session.intent_id}을(를) 일시 중지했습니다`);
+          toast.success(`워커 #${session.intent_id}을 일시 중지했습니다`);
         } else if (action === "resume") {
           patchIntentState(session.intent_id, "open");
-          toast.success(`워커 #${session.intent_id}을(를) 재개했습니다. 다시 맡기를 기다립니다`);
+          toast.success(`워커 #${session.intent_id}을 재개했습니다. 워커가 다시 할당받을 때까지 기다립니다`);
         } else if (mode === "hard") {
           // 영구 삭제: 의도와 그것에만 딸린 하위 노드가 물리적으로 지워졌으므로 목록에서 그 행을 뺀다.
           patchIntentState(session.intent_id);
@@ -619,7 +619,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
           // 소프트 삭제: 의도를 deleted로 두고 삭제 이유를 기록하며, 노드와 결과물은 보존한다.
           patchIntentState(session.intent_id, "deleted");
           toast.success(
-            `워커 #${session.intent_id}을(를) 삭제했습니다(이유를 기록했고, 플래너가 이를 바탕으로 다시 계획합니다)`,
+            `워커 #${session.intent_id}을 삭제했습니다(이유를 기록했고, 플래너가 이를 바탕으로 다시 계획합니다)`,
           );
           setCancelReason("");
         }
@@ -2126,7 +2126,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
         >
           <AlertDialogContent className="max-w-[min(32rem,calc(100vw-2rem))]">
             <AlertDialogHeader>
-              <AlertDialogTitle>워커 #{cancelIntent?.intent_id}을(를) 삭제할까요?</AlertDialogTitle>
+              <AlertDialogTitle>워커 #{cancelIntent?.intent_id}을 삭제할까요?</AlertDialogTitle>
               <AlertDialogDescription className="break-words whitespace-normal">
                 {deleteMode === "hard" ? (
                   <>

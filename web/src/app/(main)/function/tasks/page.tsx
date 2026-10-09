@@ -552,8 +552,8 @@ export default function TasksPage() {
         const result = await api.controlTask(id, action);
         toast.success(
           action === "pause"
-            ? `작업 #${id}을(를) 일시 중지했습니다.`
-            : `작업 #${id}을(를) 재개했습니다.${result.queued ? " 대기열에 들어갔습니다." : ""}`,
+            ? `작업 #${id}을 일시 중지했습니다.`
+            : `작업 #${id}을 재개했습니다.${result.queued ? " 대기열에 들어갔습니다." : ""}`,
         );
       } catch (e) {
         toast.error(`작업을 ${action === "pause" ? "일시 중지" : "재개"}하지 못했습니다: ${(e as Error).message}`);
@@ -587,7 +587,7 @@ export default function TasksPage() {
       try {
         await api.pinTask(task.id, !pinned);
         toast.success(
-          pinned ? `작업 #${task.id}의 상단 고정을 해제했습니다.` : `작업 #${task.id}을(를) 상단에 고정했습니다.`,
+          pinned ? `작업 #${task.id}의 상단 고정을 해제했습니다.` : `작업 #${task.id}을 상단에 고정했습니다.`,
         );
         lastRef.current = "";
         load();
@@ -603,7 +603,7 @@ export default function TasksPage() {
     async (task: Task) => {
       try {
         await api.archiveTask(task.id);
-        toast.success(`작업 #${task.id}을(를) 보관 대기열에 넣었습니다.`);
+        toast.success(`작업 #${task.id}을 보관 대기열에 넣었습니다.`);
         setActiveTab("archived");
         lastRef.current = "";
         load();
@@ -2193,7 +2193,7 @@ function DeleteTaskDialog({
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>작업 #{task.id}을(를) 삭제할까요?</AlertDialogTitle>
+          <AlertDialogTitle>작업 #{task.id}을 삭제할까요?</AlertDialogTitle>
           <AlertDialogDescription className="break-words">
             {task.description ? (
               <>
@@ -2891,7 +2891,7 @@ function CategoryManagementSheet({
     try {
       await api.updateTaskCategory(task.id, category?.id);
       onTaskMoved(task.id, category);
-      toast.success(`작업 #${task.id}을(를) "${category?.name ?? "미분류"}"(으)로 옮겼습니다.`);
+      toast.success(`작업 #${task.id}을 "${category?.name ?? "미분류"}"(으)로 옮겼습니다.`);
     } catch (error) {
       toast.error(`작업을 옮기지 못했습니다: ${(error as Error).message}`);
     } finally {

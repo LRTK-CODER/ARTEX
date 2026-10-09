@@ -377,7 +377,7 @@ function TaskDetailInner() {
               <AlertDialogTrigger asChild>{archiveTrigger}</AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>작업 #{task.id}을(를) 보관할까요?</AlertDialogTitle>
+                  <AlertDialogTitle>작업 #{task.id}을 보관할까요?</AlertDialogTitle>
                   <AlertDialogDescription>
                     작업 그래프, 관련 기록, 이 작업에만 속한 자산과 트래픽, 작업 파일, LLM 기록을 압축해 콜드 스토리지로
                     옮깁니다. 보관이 끝나면 작업 목록의 "보관됨" 탭에서 복원할 수 있습니다.

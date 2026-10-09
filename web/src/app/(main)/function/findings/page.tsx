@@ -738,8 +738,8 @@ export default function FindingsPage() {
       const result = await api.deepenFinding(deepenFinding.finding_id, deepenDescription.trim());
       toast.success(
         result.queued
-          ? `심화 검증 의도 #${result.intent_id}을(를) 작업 대기열에 넣었습니다`
-          : `우선순위가 높은 워커 의도 #${result.intent_id}을(를) 만들었습니다`,
+          ? `심화 검증 의도 #${result.intent_id}을 작업 대기열에 넣었습니다`
+          : `우선순위가 높은 워커 의도 #${result.intent_id}을 만들었습니다`,
       );
       refreshAfterMutation(deepenFinding);
       setDeepenFinding(null);

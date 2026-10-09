@@ -321,7 +321,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       return next;
     });
 
-  // 하나를 재실행한다: open으로 되돌리면(로컬 state를 낙관적으로 갱신하고 3초 폴링이 보정한다) 워커가 다시 맡아 처음부터 실행한다.
+  // 하나를 재실행한다: open으로 되돌리면(로컬 state를 낙관적으로 갱신하고 3초 폴링이 보정한다) 워커가 다시 할당받아 처음부터 실행한다.
   const rerunOne = async (id: string) => {
     markRerun(id, true);
     try {
@@ -1008,7 +1008,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
       </div>
 
       {/* Blocked intents — 오류가 났거나 막힌(예: LLM 네트워크 문제) 의도를 한 번에 재실행한다. open으로 되돌리면
-          워커가 다시 맡아 처음부터 실행한다(그래프에 이미 쓴 데이터는 남는다). 작업이 끝났거나 일시 중지 상태면 자동으로 다시 시작한다. */}
+          워커가 다시 할당받아 처음부터 실행한다(그래프에 이미 쓴 데이터는 남는다). 작업이 끝났거나 일시 중지 상태면 자동으로 다시 시작한다. */}
       {blocked.length > 0 && (
         <Card className="border-red-500/30">
           <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">

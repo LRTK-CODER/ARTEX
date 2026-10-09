@@ -140,7 +140,7 @@ export default function LLMRecordsPage() {
   const [rawView, setRawView] = React.useState(false);
 
   const hasRaw = !!(detail?.raw_request || detail?.raw_response);
-  // 토글은 사용자의 선택을 유지하되, 원본이 없는 이전 기록으로 바꾸면 빈 화면 대신 파싱 보기로 자동으로 돌아간다.
+  // 토글은 사용자의 선택을 유지하되, 원본이 없는 이전 기록으로 바꾸면 빈 화면 대신 정규화 보기로 자동으로 돌아간다.
   const showRaw = rawView && hasRaw;
   // 원본 요청 본문은 JSON이라 pretty-print는 배치만 바꾸고 의미는 바꾸지 않아 읽기 쉽다. 원본 응답은 SSE
   // 프레임이고 tryFormatJSON은 파싱하지 못하면 그대로 돌려주므로 양쪽이 한 함수를 함께 쓴다.
@@ -508,7 +508,7 @@ export default function LLMRecordsPage() {
                 </Badge>
               )}
               {/* 원본 보기 토글. 이전 기록에는 원본이 없어 조용히 되돌리지 않고 비활성화한다. 그래야
-                  ‘원본과 파싱 결과가 같다’처럼 보이지 않는다. */}
+                  ‘원본과 정규화 결과가 같다’처럼 보이지 않는다. */}
               <Button
                 variant={showRaw ? "secondary" : "ghost"}
                 size="sm"

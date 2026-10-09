@@ -137,7 +137,7 @@
 | Agent | 에이전트 | agent | |
 | 主 Agent | 메인 에이전트 | main agent | |
 | 规划 | 계획 | planning | |
-| 领取 | 맡기 | claim | 워커가 의도·작업을 맡는 것. 예: "의도를 맡는다" |
+| 领取 | 할당받다 | claim | 워커가 의도·작업을 할당받는다. 예: "의도를 할당받는다" |
 | 派生 | 파생 | derive | |
 | 产出 | 결과물 | output | 동사일 때는 "만들어 내다" |
 | 达成 | 달성 | achieve | |
@@ -336,7 +336,7 @@ web 기능 화면(`web/src/app/(main)/function/**`)을 옮기며 정한 말이�
 | 待采纳 / 已采纳 / 已替代 | 반영 대기 / 반영됨 / 대체됨 | pending / adopted / superseded | 제약 조건 상태 |
 | 生效中 | 적용 중 | active | |
 | 排队中 / 已暂停 / 已创建 | 대기 중 / 일시 중지됨 / 생성됨 | queued / paused / created | |
-| 待领取 | 맡기 대기 | unclaimed | "领取 → 맡기"를 따른다 |
+| 待领取 | 할당 대기 | unclaimed | "领取 → 할당받다"를 따른다 |
 | 重跑 | 재실행 | rerun | |
 | 优雅收尾 | 정상 마무리 | graceful wrap-up | |
 | 终局判定 | 최종 판정 | final verdict | |

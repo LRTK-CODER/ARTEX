@@ -113,7 +113,7 @@ function DataSourceCard({
       toast.success("ScopeSentry 데이터 소스를 만들었습니다. 주소와 키를 입력하세요.");
       onChanged();
     } catch (e) {
-      toast.error(`만들지 못했습니다: ${(e as Error).message}`);
+      toast.error(`데이터 소스를 만들지 못했습니다: ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -278,7 +278,7 @@ function SyncWorkbench() {
 
   const runSync = async () => {
     if (selected.size === 0)
-      return toast.error(`${dimension === "project" ? "프로젝트" : "작업"}을(를) 하나 이상 선택하세요`);
+      return toast.error(`${dimension === "project" ? "프로젝트를" : "작업을"} 하나 이상 선택하세요`);
     if (chosenTypes.length === 0) return toast.error("자산 유형을 하나 이상 선택하세요");
     setSyncing(true);
     setResult(null);
