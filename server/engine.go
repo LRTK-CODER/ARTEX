@@ -26,14 +26,14 @@ func isFKViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
-// dropReason classifies why an activity write was dropped, so the log can be
-// grouped/analysed by cause rather than by raw error text.
+// dropReason은 활동 기록이 버려진 이유를 분류해, 로그를 원본 오류 문구가 아니라
+// 원인별로 묶어 볼 수 있게 한다.
 func dropReason(err error) string {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23503":
-			return "fk_violation(23503, parent exploration missing)"
+			return "fk_violation(23503, 상위 탐색 없음)"
 		case "23505":
 			return "unique_violation(23505)"
 		default:
@@ -499,7 +499,7 @@ func (e *Engine) SteerWork(intentID int64, msg string) error {
 	running := e.work[intentID] != nil
 	e.workMu.Unlock()
 	if !running {
-		return fmt.Errorf("no work is running intent %d (it may have finished or not been claimed)", intentID)
+		return fmt.Errorf("no work is running for intent %d (it may have finished or not been claimed)", intentID)
 	}
 	e.steerMu.Lock()
 	e.steerBox[intentID] = append(e.steerBox[intentID], msg)
@@ -524,10 +524,10 @@ func (e *Engine) drainSteer(intentID int64) (string, bool) {
 	return msg, true
 }
 
-// steerHooks wraps the guard's hook runner so the planner can steer a running work:
-// before each tool call it drains a queued course-correction (if any) and blocks the
-// call, handing the message back to the model — which re-plans its next step instead
-// of running the tool. No queued message → the guard behaves exactly as before.
+// steerHooks는 가드의 hook 실행기를 감싸 플래너가 실행 중인 작업의 방향을 틀 수 있게 한다.
+// 도구 호출마다 대기 중인 방향 수정 메시지가 있으면 꺼내 그 호출을 막고 메시지를 모델에
+// 돌려준다. 모델은 도구를 실행하는 대신 다음 단계를 다시 계획한다. 대기 메시지가 없으면
+// 가드는 전과 똑같이 동작한다.
 // 'thinking-only 회차'(공회전)의 이어 가기도 맡는다. Stop 참고.
 type steerHooks struct {
 	inner harness.HookRunner
@@ -629,7 +629,7 @@ func (e *Engine) KillWork(intentID int64) error {
 	run := e.work[intentID]
 	e.workMu.Unlock()
 	if run == nil {
-		return fmt.Errorf("no work is running intent %d (it may have finished or not been claimed)", intentID)
+		return fmt.Errorf("no work is running for intent %d (it may have finished or not been claimed)", intentID)
 	}
 	run.cancel(agent.AbortKilledByPlanner)
 	return nil

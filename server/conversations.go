@@ -440,8 +440,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	if _, err := pg.AppendConvActivity(c.ID, ua); err != nil {
 		log.Printf("[conv %d] append user msg failed: %v", c.ID, err)
 	}
-	// 옛 중국어 기본 제목으로 저장된 기존 대화도 첫 메시지로 제목을 바꾼다.
-	if c.Title == "" || c.Title == "새 대화" || c.Title == "新对话" {
+	if isDefaultConvTitle(c.Title) {
 		title := firstLine(msg, 40)
 		if title == "" {
 			title = "첨부 파일 메시지"
@@ -828,4 +827,10 @@ func firstLine(s string, max int) string {
 		s = string([]rune(s)[:max]) + "…"
 	}
 	return s
+}
+
+// isDefaultConvTitle은 첫 메시지로 제목을 바꿔도 되는 기본 제목인지 판단한다.
+func isDefaultConvTitle(title string) bool {
+	// "新对话"는 옛 중국어 기본 제목이다. 기존 설치 호환, 지우지 않는다.
+	return title == "" || title == "새 대화" || title == "新对话"
 }

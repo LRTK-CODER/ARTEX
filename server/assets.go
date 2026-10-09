@@ -346,8 +346,8 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		// task_id scopes the DSL search to a task's assets (the task detail
-		// '테스트 자산' search); 0 means the global asset view.
+		// task_id는 DSL 검색을 한 작업의 자산으로 좁힌다(작업 상세의
+		// '테스트 자산' 검색). 0이면 전체 자산 화면이다.
 		taskID, _ := strconv.ParseInt(q.Get("task_id"), 10, 64)
 		total, err = as.CountDSL(dsl, typ, taskID)
 		if err == nil && offset < total {

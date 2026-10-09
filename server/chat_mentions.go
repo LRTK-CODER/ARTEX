@@ -23,6 +23,12 @@ var chatMentionKinds = map[string]string{
 	"IP": "ip", "应用": "app", "域名": "root_domain", "子域名": "subdomain", "服务": "service",
 }
 
+// chatMentionLabels는 오류 문구에 쓰는 화면용 한국어 이름이다. 프로토콜 값은 바꾸지 않는다.
+var chatMentionLabels = map[string]string{
+	"漏洞": "취약점", "资产": "자산", "企业": "기업", "接口": "엔드포인트",
+	"IP": "IP", "应用": "앱", "域名": "도메인", "子域名": "하위 도메인", "服务": "서비스",
+}
+
 type chatMentionRef struct {
 	Kind string
 	ID   int64
@@ -111,7 +117,7 @@ func composeChatMentionMessage(pg *db.DB, message string) (string, error) {
 			return "", err
 		}
 		if data == nil {
-			return "", &chatMentionInputError{fmt.Sprintf("참조한 %s #%d 기록이 없거나 유형이 맞지 않습니다. 지우고 다시 선택하세요", ref.Name, ref.ID)}
+			return "", &chatMentionInputError{fmt.Sprintf("참조한 %s #%d 기록이 없거나 유형이 맞지 않습니다. 지우고 다시 선택하세요", chatMentionLabels[ref.Name], ref.ID)}
 		}
 		blob, err := json.Marshal(data)
 		if err != nil {

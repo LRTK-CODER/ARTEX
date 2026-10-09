@@ -277,6 +277,8 @@ func TestChatMentionCatalogAndContext(t *testing.T) {
 	}
 	if _, err := composeChatMentionMessage(pg, "@[漏洞#9223372036854775807]"); err == nil {
 		t.Fatal("accepted missing record")
+	} else if !strings.Contains(err.Error(), "참조한 취약점 #") || strings.Contains(err.Error(), "漏洞") {
+		t.Fatalf("missing record message should use the Korean label: %v", err)
 	}
 	for _, kind := range []string{"finding", "company", "asset", ""} {
 		r := httptest.NewRequest("GET", "/api/chat/mentions?kind="+kind+"&q="+url.QueryEscape("참조"), nil)
@@ -347,5 +349,13 @@ func TestChatMentionConversationReceivesServerDetails(t *testing.T) {
 	after, _, _ := s.m.pg.ConvActivityList(c.ID, 0, 100)
 	if len(items) != len(after) {
 		t.Fatal("invalid reference persisted a turn")
+	}
+}
+
+func TestChatMentionLabelsCoverKinds(t *testing.T) {
+	for name := range chatMentionKinds {
+		if chatMentionLabels[name] == "" {
+			t.Errorf("no display label for mention kind %q", name)
+		}
 	}
 }

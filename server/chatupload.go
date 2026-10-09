@@ -36,13 +36,13 @@ type chatAttachment struct {
 	Abs string `json:"abs,omitempty"`
 }
 
-// chatUpload implements method-1 file support: it saves one or more files into a chat's
-// working dir under uploads/, so the agent opens them with its existing Read/Bash tools
-// and the sent message carries their paths. No LLM-layer change, no multimodal.
+// chatUpload는 파일 첨부의 첫 번째 방식이다. 파일 하나 이상을 대화 작업 디렉터리의
+// uploads/ 아래에 저장해, 에이전트가 기존 Read/Bash 도구로 열고 보낸 메시지에 그 경로가
+// 실리게 한다. LLM 계층은 바꾸지 않고 멀티모달도 쓰지 않는다.
 //
-// POST /api/chat/upload?scope=task|session|staging&id=<id>, multipart field "file"
-// (repeatable). Returns {attachments:[{name,path,size,abs}]}. Target dir mirrors the
-// agent CWD layout:
+// POST /api/chat/upload?scope=task|session|staging&id=<id>, multipart 필드 "file"
+// (여러 번 가능). {attachments:[{name,path,size,abs}]}를 돌려준다. 저장 디렉터리는
+// 에이전트 CWD 구조를 따른다:
 //
 //	scope=task    → <workDir>/tasks/<id>/uploads/
 //	scope=session → <workDir>/sessions/<id>/uploads/
