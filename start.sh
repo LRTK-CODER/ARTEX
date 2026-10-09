@@ -1,27 +1,27 @@
 #!/bin/sh
-# ARTEX 守护启动脚本（Linux / macOS / Docker ENTRYPOINT）
+# ARTEX 감시 시작 스크립트(Linux / macOS / Docker ENTRYPOINT)
 #
-# 用法：
-#   ./start.sh                       前台运行（Ctrl-C 停止）
-#   nohup ./start.sh >artex.log 2>&1 &   后台常驻
-#   ./start.sh -addr :9000           额外参数原样透传给 artex
+# 사용법:
+#   ./start.sh                       포그라운드로 실행(Ctrl-C로 중지)
+#   nohup ./start.sh >artex.log 2>&1 &   백그라운드에서 계속 실행
+#   ./start.sh -addr :9000           추가 인자는 그대로 artex에 넘긴다
 #
-# 它只做一件事：把 artex 跑起来，进程退出后按退出码决定要不要再拉起。
+# 하는 일은 하나다: artex를 실행하고, 프로세스가 끝나면 종료 코드를 보고 다시 띄울지 정한다.
 #
-#   0      用户正常停止        → 退出循环
-#   75     程序请求重启        → 立刻重跑（页面点了"一键更新"或"回滚"）
-#   其他   崩溃                → 退避后重跑（1→2→4…最多 60 秒）
+#   0      사용자가 정상 중지       → 반복을 끝낸다
+#   75     프로그램이 다시 시작 요청 → 바로 다시 실행한다(화면에서 '원클릭 업데이트'나 '롤백'을 눌렀다)
+#   그 밖  비정상 종료              → 백오프 뒤 다시 실행한다(1→2→4…최대 60초)
 #
-# 刻意不在这里做下载、SHA256 校验或换装：那些逻辑在 sh 和 bat 上要写两套，
-# 而它们恰恰是最不能出错的一环——一旦换上跑不起来的二进制，本脚本会忠实地
-# 反复拉起它，用户只能上机器手工救。所以校验/换装全部留在 Go 里（selfupdate 包），
-# 由 artex 自己在启动时完成，脚本保持傻瓜化。
+# 다운로드, SHA256 검사, 바이너리 교체는 일부러 여기서 하지 않는다. 그 로직을 sh와 bat에 두 벌 써야 하는데,
+# 그 부분이야말로 틀리면 안 되는 곳이다. 실행되지 않는 바이너리로 바꿔 버리면 이 스크립트는 그것을
+# 계속 다시 띄우고, 사용자는 서버에 접속해 손으로 복구할 수밖에 없다. 그래서 검사·교체는 모두 Go(selfupdate 패키지)에 두고
+# artex가 시작할 때 직접 하며, 스크립트는 단순하게 둔다.
 set -u
 
 cd "$(dirname "$0")" || exit 1
 
 BIN=./artex
-[ -x "$BIN" ] || { echo "[artex] 找不到可执行文件 $BIN" >&2; exit 1; }
+[ -x "$BIN" ] || { echo "[artex] 실행 파일을 찾을 수 없습니다: $BIN" >&2; exit 1; }
 
 RESTART_CODE=75
 MAX_DELAY=60
@@ -29,11 +29,11 @@ MAX_DELAY=60
 child=0
 stopping=0
 
-# 转发停止信号给 artex 本体。
+# 중지 신호를 artex 본체에 전달한다.
 #
-# Docker 下这是必需的：docker stop 只把 SIGTERM 发给 PID 1（也就是本脚本），
-# 不会发给子进程。不转发的话 artex 收不到信号、做不了优雅关闭，10 秒后被 SIGKILL
-# 硬杀，正在跑的任务直接断在半路。
+# Docker에서는 꼭 필요하다: docker stop은 SIGTERM을 PID 1(곧 이 스크립트)에만 보내고
+# 하위 프로세스에는 보내지 않는다. 전달하지 않으면 artex가 신호를 받지 못해 정상 종료를 하지 못하고, 10초 뒤 SIGKILL로
+# 강제 종료되어 실행 중인 작업이 중간에 끊긴다.
 forward() {
 	stopping=1
 	if [ "$child" -ne 0 ]; then
@@ -47,8 +47,8 @@ while :; do
 	"$BIN" "$@" &
 	child=$!
 
-	# 信号会打断 wait 并让它返回 >128。此时子进程其实还在做优雅关闭，
-	# 必须再 wait 一次才能拿到它真正的退出码。
+	# 신호가 wait를 끊어 128보다 큰 값을 돌려준다. 이때 하위 프로세스는 아직 정상 종료 중이므로
+	# wait를 한 번 더 해야 실제 종료 코드를 얻는다.
 	wait "$child"
 	code=$?
 	if [ "$code" -gt 128 ]; then
@@ -58,22 +58,22 @@ while :; do
 	child=0
 
 	if [ "$stopping" -eq 1 ]; then
-		echo "[artex] 已停止"
+		echo "[artex] 중지했습니다"
 		exit 0
 	fi
 
 	case "$code" in
 		0)
-			echo "[artex] 正常退出"
+			echo "[artex] 정상 종료했습니다"
 			exit 0
 			;;
 		"$RESTART_CODE")
-			# 更新/回滚已就绪：重跑后 artex 会在启动时完成换装（见 selfupdate.Bootstrap）。
-			echo "[artex] 请求重启（应用新版本）…"
+			# 업데이트·롤백이 준비됐다: 다시 실행하면 artex가 시작할 때 바이너리를 교체한다(selfupdate.Bootstrap 참고).
+			echo "[artex] 다시 시작을 요청받았습니다. 새 버전을 적용합니다…"
 			delay=1
 			;;
 		*)
-			echo "[artex] 异常退出 (code=$code)，${delay}s 后重启" >&2
+			echo "[artex] 비정상 종료했습니다(code=$code). ${delay}초 뒤 다시 시작합니다" >&2
 			sleep "$delay"
 			delay=$((delay * 2))
 			[ "$delay" -gt "$MAX_DELAY" ] && delay=$MAX_DELAY

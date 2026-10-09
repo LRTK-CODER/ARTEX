@@ -2,63 +2,63 @@
 
 # ARTEX
 
-AI 自主渗透测试系统（Go 后端 + Next.js 前端）
+AI 자율 침투 테스트 시스템(Go 백엔드 + Next.js 프런트엔드)
 
 
-🌐 **在线 Demo**： [https://artex-demo.vercel.app/](https://artex-demo.vercel.app/)
+🌐 **온라인 데모**: [https://artex-demo.vercel.app/](https://artex-demo.vercel.app/)
 
 </div>
 
 ---
 
-## 截图预览
+## 화면 미리 보기
 
-> 完整交互见[在线 Demo](https://artex-demo.vercel.app/)。
+> 전체 동작은 [온라인 데모](https://artex-demo.vercel.app/)에서 확인합니다.
 
-| 仪表盘（总览 / Token 消耗 / 活动流） | 任务列表 |
+| 대시보드(개요 / 토큰 사용량 / 활동 피드) | 작업 목록 |
 | :---: | :---: |
-| ![仪表盘](screenshots/dashboard.png) | ![任务](screenshots/tasks.png) |
+| ![대시보드](screenshots/dashboard.png) | ![작업](screenshots/tasks.png) |
 
-| 任务 · 执行过程（会话 / 工具调用） | 探索链路 |
+| 작업 · 실행 과정(세션 / 도구 호출) | 탐색 경로 |
 | :---: | :---: |
-| ![执行过程](screenshots/sessions.png) | ![探索链路](screenshots/graph.png) |
+| ![실행 과정](screenshots/sessions.png) | ![탐색 경로](screenshots/graph.png) |
 
-| 发现 | 资产 |
+| 발견 사항 | 자산 |
 | :---: | :---: |
-| ![发现](screenshots/findings.png) | ![资产](screenshots/assets.png) |
+| ![발견 사항](screenshots/findings.png) | ![자산](screenshots/assets.png) |
 
-| 资产覆盖图（力导向布局 · 已测高亮 · 节点折叠展开） |
+| 자산 커버리지 그래프(포스 기반 배치 · 테스트 완료 강조 · 노드 접기·펼치기) |
 | :---: |
-| ![资产覆盖图](screenshots/assets_test.png) |
+| ![자산 커버리지 그래프](screenshots/assets_test.png) |
 
-| 流量录制 | 人在环路对话 |
+| 트래픽 기록 | 사람이 개입하는 대화 |
 | :---: | :---: |
-| ![流量](screenshots/traffic.png) | ![对话](screenshots/chat.png) |
+| ![트래픽](screenshots/traffic.png) | ![대화](screenshots/chat.png) |
 
-| Agent 管理 | LLM 配置 |
+| 에이전트 관리 | LLM 프로필 |
 | :---: | :---: |
-| ![Agent](screenshots/agents.png) | ![LLM](screenshots/llm.png) |
+| ![에이전트](screenshots/agents.png) | ![LLM](screenshots/llm.png) |
 
-| 拦截审批 | 后端日志 |
+| 차단 승인 심사 | 백엔드 로그 |
 | :---: | :---: |
-| ![拦截](screenshots/intercept.png) | ![日志](screenshots/logs.png) |
+| ![차단](screenshots/intercept.png) | ![로그](screenshots/logs.png) |
 
 
 ---
 
-## 审批记录详情
+## 승인 심사 기록 상세
 
-全局「审批记录」、任务内「拦截审批」及对话中的审批卡片均支持展开查看详情。展示结构参考
-[AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX 的组件和主题：
+전역 '승인 심사 기록', 작업 안의 '차단 승인 심사', 대화 속 승인 심사 카드는 모두 펼쳐서 상세를 볼 수 있다. 표시 구조는
+[AegisHook의 승인 심사 상세 컴포넌트](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)를 참고하고, ARTEX의 컴포넌트와 테마를 그대로 쓴다.
 
 
-## 资产同步（ScopeSentry）
+## 자산 동기화(ScopeSentry)
 
-支持从 [ScopeSentry](https://github.com/Autumn-27/ScopeSentry) 直接同步资产数据，免去重复收集：
+[ScopeSentry](https://github.com/Autumn-27/ScopeSentry)에서 자산 데이터를 바로 동기화해 중복 수집을 줄일 수 있다.
 
-- 在「**资产同步**」页填 ScopeSentry 的地址与 API Key，接入数据源；
-- 按**项目**或**任务**维度选择要同步的目标与资产类型（域名 / 子域 / IP / 端口 / 站点 / 端点…）；
-- 一键导入并按公司资产范围归并，直接进入 ARTEX 的资产图供 agent 探索使用。
+- '**자산 동기화**' 페이지에 ScopeSentry의 주소와 API Key를 입력해 데이터 소스를 연결한다.
+- **프로젝트**나 **작업** 단위로 동기화할 대상과 자산 유형(도메인 / 하위 도메인 / IP / 포트 / 사이트 / 엔드포인트…)을 고른다.
+- 한 번에 가져와 기업 자산 범위에 맞춰 묶으면, 바로 ARTEX의 자산 그래프에 들어가 에이전트가 탐색에 쓴다.
 
 ---
 
@@ -70,11 +70,11 @@ LLM 프로필에서 인증 방식을 **Claude 구독**으로 선택해 저장한
 
 OML에서 확인한 Claude Code 구독 OAuth 요청 조건을 적용한 기능이다. 제공자 정책·모델 권한은 달라질 수 있으므로 배포 전에 실제 구독 계정으로 로그인·연결 테스트·대화·연결 해제를 확인한다.
 
-## 安装
+## 설치
 
-> 依赖数据库 **PostgreSQL**；探索需配置 **LLM**（`ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`，也可在 UI 里配）。
+> 데이터베이스 **PostgreSQL**이 필요하다. 탐색에는 **LLM** 설정이 필요하다(`ANTHROPIC_API_KEY` 또는 `OPENAI_API_KEY`, UI에서도 설정할 수 있다).
 
-### 方式一：一键安装脚本（推荐）
+### 방법 1: 일괄 설치 스크립트(권장)
 
 ```bash
 git clone https://github.com/LRTK-CODER/ARTEX.git
@@ -82,28 +82,28 @@ cd ARTEX
 ./install.sh
 ```
 
-脚本会：检测 Docker → 让你选 **① 全部 Docker** 或 **② 本地编译运行**：
+스크립트는 Docker를 감지한 뒤 **① 전부 Docker** 또는 **② 로컬 컴파일 실행**을 고르게 한다.
 
 스크립트는 Docker를 설치하지 않는다. ① 또는 ②에서 Docker로 PostgreSQL을 띄우려면 먼저 [공식 설치 문서](https://docs.docker.com/engine/install/)대로 Docker와 Docker Compose 플러그인을 설치한다. 없으면 이 링크를 보여 주고 멈춘다.
 
-- **① 全部 Docker**：填一个 Postgres 密码（可回车随机）→ 自动写 `.env` → `docker compose up -d`。
-- **② 本地运行**：选数据库（连已有 / 用 Docker 起一个）→ 生成 `config.json` → `go` 编译内嵌单二进制 → 启动。
+- **① 전부 Docker**: Postgres 비밀번호를 하나 입력하면(엔터를 치면 무작위) `.env`를 자동으로 쓰고 `docker compose up -d`를 실행한다.
+- **② 로컬 실행**: 데이터베이스를 고르고(기존 연결 / Docker로 하나 띄우기) `config.json`을 만든 뒤 `go`로 프런트엔드를 내장한 단일 바이너리를 컴파일해 실행한다.
 
-装好后打开 **http://localhost:8787**（首次进入 `/setup` 设置管理员密码）。
+설치가 끝나면 **http://localhost:8787**을 연다(처음에는 `/setup`에서 관리자 비밀번호를 설정한다).
 
-### 方式二：Docker Compose（手动）
+### 방법 2: Docker Compose(수동)
 
 ```bash
 git clone https://github.com/LRTK-CODER/ARTEX.git
 cd ARTEX
-cp .env.example .env          # 填 POSTGRES_PASSWORD、可选 ANTHROPIC_API_KEY
-docker compose up -d          # 拉取 ghcr.io/lrtk-coder/artex 镜像 + postgres
+cp .env.example .env          # POSTGRES_PASSWORD 입력, ANTHROPIC_API_KEY는 선택
+docker compose up -d          # ghcr.io/lrtk-coder/artex 이미지 + postgres 받기
 # → http://localhost:8787
 ```
 
 이미지는 이 포크의 릴리스 워크플로가 GHCR(`ghcr.io/lrtk-coder/artex`)에 올린다. 첫 push 뒤 GitHub 패키지 설정에서 공개 범위를 정한다. 비공개로 두면 받기 전에 `docker login ghcr.io`가 필요하다.
 
-镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills`、`./data` 与 `./keys` 以绑定挂载持久化。
+이미지에는 자주 쓰는 도구(ripgrep/curl/vim/npm/nmap…)가 들어 있고, `./skills`·`./data`·`./keys`는 바인드 마운트로 보존된다.
 손으로 띄울 때는 `keys/`를 먼저 만든다: `mkdir -p keys && chmod 700 keys`(`install.sh`는 알아서 만든다).
 
 ### 서버 키 디렉터리와 백업
@@ -136,45 +136,45 @@ chmod 600 keys/*.key
 docker compose pull artex && docker compose up -d --force-recreate artex
 ```
 
-远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。
-旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的
-`/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按
-`Authorization=Bearer <token>` 填写。
+원격 MCP는 시스템 설정에서 `http`(Streamable HTTP) 또는 `sse`(이전 버전 SSE)를 고를 수 있다.
+이전 버전 SSE 서비스는 보통 `GET /sse`로 이벤트 스트림을 열고, 서비스가 돌려주는
+`/message?sessionId=...`로 JSON-RPC 요청을 받는다. 설정할 때는 URL에 `/sse`를 넣고, 요청 헤더에
+`Authorization=Bearer <token>`을 넣는다.
 
-### 方式三：下载预编译二进制（Releases）
+### 방법 3: 미리 컴파일한 바이너리 내려받기(Releases)
 
-到 [Releases](https://github.com/LRTK-CODER/ARTEX/releases) 下载对应平台的 zip，解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`：
+[Releases](https://github.com/LRTK-CODER/ARTEX/releases)에서 플랫폼에 맞는 zip을 내려받아 풀면 `artex` + `start.sh`(Windows는 `start.bat`) + `skills/` + `config.example.json`이 나온다.
 
 ```bash
-cp config.example.json config.json   # 填好 database 连接
+cp config.example.json config.json   # database 연결을 채운다
 ./start.sh                           # → http://localhost:8787
 ```
 
-> 请用 `start.sh` / `start.bat` 启动，而不是直接跑 `./artex`。它是个守护脚本：程序退出后按退出码决定是否重新拉起，**页面上的[一键更新](#方式一页面一键更新推荐)靠它完成换装**。直接运行 `./artex` 时更新完就不会被拉起了。
-> 后台常驻：`nohup ./start.sh >artex.log 2>&1 &`。
+> `./artex`를 바로 실행하지 말고 `start.sh` / `start.bat`로 띄운다. 이것은 감시 스크립트로, 프로그램이 종료되면 종료 코드에 따라 다시 띄울지 정하고, **화면의 [원클릭 업데이트](#방법-1-화면-원클릭-업데이트-권장)가 이 스크립트로 교체를 끝낸다**. `./artex`를 바로 실행하면 업데이트 뒤에 다시 띄워지지 않는다.
+> 백그라운드 상주: `nohup ./start.sh >artex.log 2>&1 &`.
 
-### 方式四：从源码编译单二进制
+### 방법 4: 소스에서 단일 바이너리 컴파일
 
 ```bash
-# 1) 前端静态导出
+# 1) 프런트엔드 정적 export
 cd web && npm ci && npm run build:static && cd ..
-# 2) 拷进内嵌目录
+# 2) 내장 디렉터리로 복사
 cp -r web/out server/webui/dist
-# 3) 编译（-tags embedui 才内嵌前端）
+# 3) 컴파일(-tags embedui 를 줘야 프런트엔드를 내장한다)
 CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 ./start.sh
 ```
 
-### 方式五：构建跨平台 Release 压缩包
+### 방법 5: 교차 플랫폼 Release 압축 파일 빌드
 
-`build.sh` 会先构建并嵌入前端，再使用 Go linker 去除调试信息，并将发布文件压缩为 zip。Release 模式默认生成 Linux amd64/arm64、macOS amd64/arm64 和 Windows amd64 的 zip 包：
+`build.sh`는 먼저 프런트엔드를 빌드해 내장한 뒤 Go 링커로 디버그 정보를 지우고 배포 파일을 zip으로 압축한다. Release 모드는 기본으로 Linux amd64/arm64, macOS amd64/arm64, Windows amd64의 zip을 만든다.
 
 ```bash
 ./build.sh --release
-# 产物：dist/artex-0.3.3-*.zip
+# 결과물: dist/artex-0.3.3-*.zip
 ```
 
-UPX 自解压二进制可能与部分 Linux 内核、虚拟化环境或安全策略不兼容，因此默认不启用。可用 `ARTEX_TARGETS` 自定义目标；确认目标运行环境兼容时，可显式传入 `--upx` 进一步缩小二进制：
+UPX 자체 압축 해제 바이너리는 일부 Linux 커널, 가상화 환경, 보안 정책과 맞지 않을 수 있어 기본으로 켜지 않는다. `ARTEX_TARGETS`로 대상을 지정할 수 있고, 대상 실행 환경이 호환되는 것을 확인하면 `--upx`를 명시해 바이너리를 더 줄일 수 있다.
 
 ```bash
 ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
@@ -183,24 +183,24 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ---
 
-## 更新升级
+## 업데이트
 
-> 升级只换程序、不动数据：Postgres 数据卷 `pgdata`、`./data`（SQLite 等）、`./keys`（jwt.key / oauth.key）、`./skills` 都会保留。**数据库迁移无需手动执行**——`artex` 每次启动会幂等重跑 `schema.sql`（含 `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`），即“重启即迁移”。升级前仍建议先备份 `./data`、`./keys` 与数据库。从键文件仍在容器内的旧版 Docker 升级时，见[서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업)。
+> 업데이트는 프로그램만 바꾸고 데이터는 건드리지 않는다. Postgres 데이터 볼륨 `pgdata`, `./data`(SQLite 등), `./keys`(jwt.key / oauth.key), `./skills`는 모두 유지된다. **데이터베이스 마이그레이션은 손으로 실행하지 않아도 된다.** `artex`는 시작할 때마다 `schema.sql`(`ADD COLUMN` / `CREATE INDEX IF NOT EXISTS` 포함)을 멱등하게 다시 돌린다. 곧 '다시 시작하면 마이그레이션'이다. 그래도 업데이트 전에는 `./data`·`./keys`와 데이터베이스를 먼저 백업하는 것이 좋다. 키 파일이 아직 컨테이너 안에 있는 이전 버전 Docker에서 올릴 때는 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업)을 본다.
 
-### 方式一：页面一键更新（推荐）
+### 방법 1: 화면 원클릭 업데이트(권장)
 
-在 **系统配置** 页（侧边栏「系统配置」→ `/system/settings`）的**版本与更新**卡片里，可以直接检查并安装新版本，无需登录服务器。
+**시스템 설정** 페이지(사이드바 '시스템 설정' → `/system/settings`)의 **버전과 업데이트** 카드에서 서버에 로그인하지 않고도 새 버전을 바로 확인하고 설치할 수 있다.
 
-点「更新」后：下载当前平台的发布包 → 比对 Release 的 `SHA256SUMS` → 用 `-h` 冒烟测试新二进制 → 暂存为 `artex.new` → 程序退出，由 `start.sh` / `start.bat` 重新拉起并完成换装。页面会自动等到新版本上线后刷新。
+'업데이트'를 누르면 현재 플랫폼의 배포 파일을 내려받아 Release의 `SHA256SUMS`와 대조하고, `-h`로 새 바이너리를 스모크 테스트한 뒤 `artex.new`로 임시 저장한다. 그다음 프로그램이 종료되면 `start.sh` / `start.bat`이 다시 띄우며 교체를 끝낸다. 화면은 새 버전이 올라올 때까지 기다렸다가 자동으로 새로 고친다.
 
-- **失败不会留下坏程序**：校验或冒烟不通过就丢弃暂存件、继续跑当前版本；换装后的新版若连续 3 次启动失败，会自动回滚到 `artex.old`（失败的那个留作 `artex.failed` 供排查）。
-- **随时可回退**：上一版本保留为 `artex.old`，卡片上有「回滚到上一版本」。注意数据库结构不会回退。
-- **更新会中断正在运行的任务**——更新即重启，请在空闲时进行。
-- **开发构建不给更新**：版本号是 `dev` 或 `git describe` 带后缀时禁用，避免正式版覆盖掉本地调试的二进制。
-- **Docker 下只换程序、不换镜像**：镜像里的 playwright / nmap 等工具链不会跟着升级，且 `docker compose up -d` 重建容器后会退回镜像自带的版本。要连镜像一起升级仍请用 `docker compose pull artex && docker compose up -d artex`。
-- 访问 GitHub 需要代理时，在同一页面配置**全局代理**即可，更新链路会走它。更新只从 GitHub 域名下载并强制 HTTPS。
+- **실패해도 망가진 프로그램이 남지 않는다**: 검증이나 스모크 테스트를 통과하지 못하면 임시 파일을 버리고 현재 버전을 계속 돌린다. 교체한 새 버전이 3번 연속으로 시작에 실패하면 `artex.old`로 자동 롤백한다(실패한 것은 조사용으로 `artex.failed`로 남긴다).
+- **언제든 되돌릴 수 있다**: 이전 버전은 `artex.old`로 남고, 카드에 '이전 버전으로 롤백'이 있다. 단, 데이터베이스 구조는 되돌아가지 않는다.
+- **업데이트는 실행 중인 작업을 중단한다**: 업데이트가 곧 다시 시작이므로 쉴 때 한다.
+- **개발 빌드에는 업데이트를 주지 않는다**: 버전 번호가 `dev`이거나 `git describe`에 접미사가 붙으면 비활성화해, 정식 버전이 로컬에서 디버깅하는 바이너리를 덮어쓰지 않게 한다.
+- **Docker에서는 프로그램만 바꾸고 이미지는 바꾸지 않는다**: 이미지 안의 playwright / nmap 같은 도구는 함께 올라가지 않고, `docker compose up -d`로 컨테이너를 다시 만들면 이미지에 든 버전으로 돌아간다. 이미지까지 함께 올리려면 `docker compose pull artex && docker compose up -d artex`를 쓴다.
+- GitHub 접속에 프록시가 필요하면 같은 페이지에서 **전역 프록시**를 설정하면 업데이트 경로가 그것을 쓴다. 업데이트는 GitHub 도메인에서만 내려받고 HTTPS를 강제한다.
 
-### 方式二：一键更新脚本
+### 방법 2: 일괄 업데이트 스크립트
 
 ```bash
 cd ARTEX
@@ -208,49 +208,49 @@ git pull --ff-only   # 먼저 받는다. 옛 update.sh 로 바로 올리면 서�
 ./update.sh
 ```
 
-脚本先可选 `git pull` 拉取最新代码，再让你选 **① Docker 更新** 或 **② 本地编译更新**（与 `install.sh` 对应）：
+스크립트는 먼저 선택적으로 `git pull`로 최신 코드를 받고, **① Docker 업데이트** 또는 **② 로컬 컴파일 업데이트**를 고르게 한다(`install.sh`와 같다).
 
-- **① Docker**：可指定目标镜像 tag（回车沿用 `.env` 的 `ARTEX_TAG`，缺省 `latest`）→ `docker compose pull` → `docker compose up -d`（换新镜像重启即自动迁移）。
+- **① Docker**: 대상 이미지 태그를 지정할 수 있고(엔터를 치면 `.env`의 `ARTEX_TAG`를 쓰고, 없으면 `latest`), `docker compose pull` → `docker compose up -d`를 실행한다(새 이미지로 다시 시작하면 자동으로 마이그레이션한다).
   - 컨테이너를 다시 만들기 전에 예전 컨테이너의 서버 키를 `./keys`로 꺼낸다. 이 단계가 없는 옛 `update.sh`로 바로 올리면 키를 잃으므로 먼저 `git pull --ff-only`를 한다. 자세한 것은 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업).
   - git pull이 `update.sh`를 바꾸면 고른 메뉴 그대로 새 `update.sh`로 다시 시작한다. git pull 질문에 `n`이라고 답하면 지금 코드로 업데이트를 이어 간다.
-- **② 本地**：重建前端静态产物 → 重新编译 `./artex`（完成后重启进程生效）。
+- **② 로컬**: 프런트엔드 정적 결과물을 다시 빌드하고 `./artex`를 다시 컴파일한다(끝나면 프로세스를 다시 시작해 적용한다).
 
-### 方式三：Docker Compose（手动）
+### 방법 3: Docker Compose(수동)
 
 ```bash
 cd ARTEX
-git pull                       # 更新 compose / 脚本（可选）
+git pull                       # compose / 스크립트 업데이트(선택)
 # 키가 아직 컨테이너 안(/app/*.key)에 있는 예전 설치는 여기서 먼저 키를 ./keys 로 꺼낸다(서버 키 디렉터리와 백업 절 참고)
-# 指定版本：在 .env 设 ARTEX_TAG=v0.2.0；不设则用 latest
+# 버전 지정: .env 에 ARTEX_TAG=v0.2.0 설정, 설정하지 않으면 latest
 docker compose pull artex
-docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema
-docker image prune -f          # 清理旧镜像（可选）
+docker compose up -d artex     # 새 이미지로 다시 시작 → schema 자동 마이그레이션
+docker image prune -f          # 옛 이미지 정리(선택)
 ```
 
-### 方式四：预编译二进制（Releases）
+### 방법 4: 미리 컴파일한 바이너리(Releases)
 
-到 [Releases](https://github.com/LRTK-CODER/ARTEX/releases) 下载新版本 zip，停掉旧进程后覆盖 `artex` 与 `skills/`（保留你的 `config.json` 与 `data/`），重启即可：
+[Releases](https://github.com/LRTK-CODER/ARTEX/releases)에서 새 버전 zip을 내려받고, 옛 프로세스를 멈춘 뒤 `artex`와 `skills/`를 덮어쓰면 된다(`config.json`과 `data/`는 그대로 둔다). 그다음 다시 시작한다.
 
 ```bash
-cp -r <解压目录>/skills ./ && cp <解压目录>/artex ./
+cp -r <압축 푼 디렉터리>/skills ./ && cp <압축 푼 디렉터리>/artex ./
 ./start.sh
 ```
 
-### 方式五：从源码编译
+### 방법 5: 소스에서 컴파일
 
 ```bash
 git pull
 cd web && npm ci && npm run build:static && cd ..
 cp -r web/out server/webui/dist
 CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
-# 重启 ./start.sh
+# ./start.sh 다시 시작
 ```
 
 ---
 
-## 配置
+## 설정
 
-**数据库**（`config.json`，或用环境变量 `ARTEX_PG_DSN` 覆盖）：
+**데이터베이스**(`config.json`, 또는 환경 변수 `ARTEX_PG_DSN`으로 덮어쓰기):
 
 ```json
 {
@@ -262,18 +262,18 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 }
 ```
 
-**LLM**：`export ANTHROPIC_API_KEY=sk-...`（或 `OPENAI_API_KEY`），也可在 UI 的「LLM 配置」页填写。
-可选：`ARTEX_LLM_PROVIDER` / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` / `ARTEX_LLM_PROXY`。
+**LLM**: `export ANTHROPIC_API_KEY=sk-...`(또는 `OPENAI_API_KEY`), UI의 'LLM 프로필' 페이지에서도 입력할 수 있다.
+선택: `ARTEX_LLM_PROVIDER` / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` / `ARTEX_LLM_PROXY`.
 
-**并发**：每个任务的 work agent 数在「系统设置」里配置（默认 3）。
+**동시 실행**: 작업마다 띄우는 work 에이전트 수는 '시스템 설정'에서 설정한다(기본값 3).
 
-**常用参数**：`./start.sh -addr :8787 -proxy :8788`（`-addr` 前端+API，`-proxy` 流量录制代理）。启动脚本会把参数原样透传给 `artex`。
+**자주 쓰는 파라미터**: `./start.sh -addr :8787 -proxy :8788`(`-addr`는 프런트엔드+API, `-proxy`는 트래픽 기록 프록시). 시작 스크립트는 파라미터를 `artex`에 그대로 넘긴다.
 
-### 反向代理部署（HTTPS / 只开放 443）
+### 리버스 프록시 배포(HTTPS / 443만 열기)
 
-前端和 API/SSE 都由同一个后端端口（默认 `:8787`）提供，实时活动流默认走**同源**地址，因此**无需配置 `NEXT_PUBLIC_SSE_BASE`**，公网只开放 443、把 8787 留在内网即可。
+프런트엔드와 API/SSE는 모두 같은 백엔드 포트(기본 `:8787`)가 제공하고, 실시간 활동 피드는 기본으로 **같은 출처** 주소를 쓴다. 그래서 **`NEXT_PUBLIC_SSE_BASE`를 설정하지 않아도 되고**, 공개망에는 443만 열고 8787은 내부망에 두면 된다.
 
-SSE 是长连接 + 持续推送，反代**必须关闭缓冲**，否则浏览器能连上却收不到事件（表现为活动流一直转圈）。Nginx 示例：
+SSE는 장시간 연결 + 지속 전송이므로 리버스 프록시에서 **버퍼링을 반드시 꺼야 한다**. 끄지 않으면 브라우저가 연결은 되어도 이벤트를 받지 못한다(활동 피드가 계속 도는 것으로 나타난다). Nginx 예시:
 
 ```nginx
 server {
@@ -286,7 +286,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # SSE 关键项：关缓冲、长超时、HTTP/1.1
+        # SSE 핵심 항목: 버퍼링 끄기, 긴 타임아웃, HTTP/1.1
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 3600s;
@@ -296,67 +296,67 @@ server {
 }
 ```
 
-> 仅当 SSE 需要走与页面不同的来源（如独立子域）时，才在**构建期**设置 `NEXT_PUBLIC_SSE_BASE`（该变量在 `next build` 时固化进静态包，容器运行时再设无效）。
+> SSE가 페이지와 다른 출처(예: 별도 하위 도메인)를 써야 할 때만 **빌드 시점**에 `NEXT_PUBLIC_SSE_BASE`를 설정한다(이 변수는 `next build` 때 정적 패키지에 고정되므로, 컨테이너 실행 중에 설정해도 적용되지 않는다).
 
 ---
 
 
 
-## 开发
+## 개발
 
-### 手动漏洞复测
+### 수동 취약점 재검사
 
-任务详情的「复测」页签可分页选择本任务的漏洞、查看历次结论和证据，并手动发起复测。启动后保留当前页签，显示转圈图标和「复测中」；确认修复后同步更新漏洞状态。
+작업 상세의 '재검사' 탭에서 이 작업의 취약점을 페이지별로 골라 지난 판정과 증거를 보고, 손으로 재검사를 시작할 수 있다. 시작하면 현재 탭을 그대로 두고 도는 아이콘과 '재검사 중'을 보여 준다. 수정이 확인되면 취약점 상태를 함께 바꾼다.
 
-在漏洞列表每行操作区点击「复测」，或在漏洞详情的「漏洞复测」区域点击「发起复测」，填写可选的修复版本、测试条件或限制，系统会创建独立的复测 Agent 会话，启动后保留当前页面。列表的平铺、按任务分组和资产视图均支持该入口；复测运行时显示转圈图标和「复测中」，需要查看时点击进入对应会话，结束后恢复「复测」。复测无需重新启动原扫描任务，结论分为「仍可复现」「已修复」「无法确认」，每次的结论、证据和会话链接保存在漏洞详情中。
+취약점 목록의 각 행 관리 영역에서 '재검사'를 누르거나, 취약점 상세의 '취약점 재검사' 영역에서 '재검사 시작'을 누르고 선택 항목인 수정 버전·테스트 조건·제약을 입력하면, 시스템이 독립된 재검사 에이전트 세션을 만든다. 시작한 뒤에는 현재 페이지를 그대로 둔다. 목록의 평면 보기, 작업별 그룹 보기, 자산 보기 모두 이 입구를 지원한다. 재검사가 돌 때는 도는 아이콘과 '재검사 중'을 보여 주고, 보려면 눌러 해당 세션으로 들어가며, 끝나면 '재검사'로 돌아간다. 재검사는 원래 스캔 작업을 다시 시작하지 않아도 되고, 판정은 '여전히 재현됨'·'수정됨'·'확인 불가'로 나뉘며, 매번의 판정·증거·세션 링크는 취약점 상세에 저장된다.
 
-新版后端首次启动会预置可编辑的「漏洞复测」（`retester`）Agent，可在 Agent 管理中配置提示词、LLM、运行预算和工具。默认使用其绑定的 LLM，未绑定则使用全局激活配置。复测会话成功完成且结论为「已修复」时，系统自动将漏洞处置状态改为「已修复」；执行中、失败、停止或其他结论保留原状态。原始证据和报告始终保留。也可在状态下拉菜单中手动选择「已修复」。同一漏洞正在复测时复用已有会话，停止、失败或服务重启后可重新发起。
+새 버전 백엔드는 처음 시작할 때 편집할 수 있는 '취약점 재검사'(`retester`) 에이전트를 미리 넣어 둔다. 에이전트 관리에서 프롬프트·LLM·실행 단계 한도·도구를 설정할 수 있다. 기본으로는 연결된 LLM을 쓰고, 연결하지 않았으면 전역 활성 프로필을 쓴다. 재검사 세션이 성공으로 끝나고 판정이 '수정됨'이면, 시스템이 취약점 처리 상태를 자동으로 '수정됨'으로 바꾼다. 실행 중·실패·중지·그 밖의 판정은 원래 상태를 유지한다. 원본 증거와 보고서는 항상 남는다. 상태 드롭다운에서 손으로 '수정됨'을 고를 수도 있다. 같은 취약점을 재검사하는 중이면 기존 세션을 다시 쓰고, 중지·실패·서비스 재시작 뒤에는 다시 시작할 수 있다.
 
-本版历史记录通过漏洞详情和会话查看，暂未纳入漏洞报告导出或任务归档包，也未自动关联流量包。演示模式只生成明确标注的模拟记录，不请求真实目标。
+이 버전의 기록은 취약점 상세와 세션에서 볼 수 있고, 아직 취약점 보고서 내보내기나 작업 보관 파일에는 넣지 않으며 트래픽 기록도 자동으로 연결하지 않는다. 데모 모드는 명확히 표시한 모의 기록만 만들고 실제 대상에는 요청하지 않는다.
 
-### 本地运行与测试
+### 로컬 실행과 테스트
 
 ```bash
-./dev.sh    # 后端(:8787) + 流量代理(:8788) + 前端 next dev(:5173) → http://localhost:5173
+./dev.sh    # 백엔드(:8787) + 트래픽 프록시(:8788) + 프런트엔드 next dev(:5173) → http://localhost:5173
 ```
 
-- 后端：`go run ./cmd/artex`（不带 `-tags embedui` 则不内嵌前端）
-- 前端：`cd web && npm run dev`（`/api` 反代到后端，带热更新）
-- 测试：`go test ./...`
-- Mock 预览（无后端）：`cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
+- 백엔드: `go run ./cmd/artex`(`-tags embedui`를 주지 않으면 프런트엔드를 내장하지 않는다)
+- 프런트엔드: `cd web && npm run dev`(`/api`를 백엔드로 리버스 프록시, 핫 리로드 포함)
+- 테스트: `go test ./...`
+- Mock 미리 보기(백엔드 없음): `cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
 
 ---
 
-## 系统技术架构
+## 시스템 기술 아키텍처
 
-ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
+ARTEX는 **LLM 멀티 에이전트가 이끄는 자율 침투 시스템**이다. Go 모놀리식 백엔드(Next.js 프런트엔드 내장) + PostgreSQL로 되어 있고, 에이전트 기능은 [`norma`](https://github.com/Autumn-27/norma) SDK가 제공한다(`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`). 핵심은 **이중 그래프 아키텍처**와, 그것을 둘러싼 두 자율성 메커니즘, 곧 **worker 사이의 과정 단위 정보 교환**과 **planner의 여러 턴에 걸친 공유 todolist로 안정적인 공격 경로를 만드는 방식**이다.
 
-### 总体分层
+### 전체 계층
 
 ```mermaid
 flowchart TB
-  subgraph FE["前端 Next.js（go:embed 内嵌单二进制）"]
-    UI["仪表盘 · 任务 · 资产 · 覆盖图 · 流量 · 工作空间 · 系统配置"]
+  subgraph FE["프런트엔드 Next.js(go:embed로 단일 바이너리에 내장)"]
+    UI["대시보드 · 작업 · 자산 · 커버리지 그래프 · 트래픽 · 워크스페이스 · 시스템 설정"]
   end
-  subgraph SRV["server（Go net/http）"]
-    API["REST /api/*　JWT 鉴权　SSE"]
-    ENG["engine 调度循环"]
-    MGR["Manager　任务/引擎/store 生命周期"]
+  subgraph SRV["server(Go net/http)"]
+    API["REST /api/*　JWT 인증　SSE"]
+    ENG["engine 스케줄 루프"]
+    MGR["Manager　작업/엔진/store 수명 주기"]
   end
-  subgraph AG["agent（norma SDK）"]
-    GO["goals　目标分解 + 提取范围"]
-    PL["planner　规划者（唯一意图生成者）"]
-    WK["worker　执行者 ×N"]
-    MA["mainagent　人在环路"]
+  subgraph AG["agent(norma SDK)"]
+    GO["goals　목표 분해 + 범위 추출"]
+    PL["planner　플래너(유일한 의도 생성자)"]
+    WK["worker　실행자 ×N"]
+    MA["mainagent　사람 개입"]
   end
   subgraph DB["PostgreSQL"]
-    AGRAPH["资产图　assets / companies / task_scope"]
-    EGRAPH["探索图　exploration_nodes / anchors / activity"]
+    AGRAPH["자산 그래프　assets / companies / task_scope"]
+    EGRAPH["탐색 그래프　exploration_nodes / anchors / activity"]
   end
-  subgraph SUB["支撑子系统"]
-    PROXY["流量记录代理　MITM + CA 留痕"]
-    GUARD["guard / intercept　工具审批门"]
-    ENR["enrich　DNS / HTTP 异步补全"]
+  subgraph SUB["지원 하위 시스템"]
+    PROXY["트래픽 기록 프록시　MITM + CA 기록"]
+    GUARD["guard / intercept　도구 승인 심사 문"]
+    ENR["enrich　DNS / HTTP 비동기 보완"]
     EXT["MCP · skills · memory · report"]
   end
 
@@ -370,7 +370,7 @@ flowchart TB
   WK --> DB
   MA --> DB
   GO --> DB
-  WK -->|"Bash / HTTP 全程留痕"| PROXY
+  WK -->|"Bash / HTTP 전 과정 기록"| PROXY
   WK --> GUARD
   WK --> ENR
   PL -.-> EXT
@@ -378,38 +378,38 @@ flowchart TB
   MA -.-> EXT
 ```
 
-| 层 | 职责 |
+| 계층 | 역할 |
 | --- | --- |
-| **前端** | Next.js 静态导出，`go:embed` 内嵌进单二进制；可视化任务/资产/探索链路/覆盖图，人在环路对话 |
-| **server** | `net/http` 路由 + JWT 鉴权 + SSE；`Manager` 托管任务、引擎、DB store 的生命周期 |
-| **engine** | 每任务一个 `plannerLoop` + N 个 worker goroutine；意图领取、超时/暂停/drain |
-| **agent** | goals / planner / worker / mainagent，`ToolSet` 把双图暴露成 LLM 工具 |
-| **db** | 双图的 Postgres 落地（pgx）；schema 随 `go:embed` 每次启动幂等建表 |
-| **支撑** | 记录型 MITM 代理、审批门、异步补全、MCP/技能/记忆/报告 |
+| **프런트엔드** | Next.js 정적 export, `go:embed`로 단일 바이너리에 내장. 작업/자산/탐색 경로/커버리지 그래프를 시각화하고 사람이 개입하는 대화를 지원 |
+| **server** | `net/http` 라우팅 + JWT 인증 + SSE. `Manager`가 작업·엔진·DB store의 수명 주기를 관리 |
+| **engine** | 작업마다 `plannerLoop` 하나 + worker goroutine N개. 의도 할당받기, 시간 초과/일시 중지/drain |
+| **agent** | goals / planner / worker / mainagent. `ToolSet`이 이중 그래프를 LLM 도구로 드러냄 |
+| **db** | 이중 그래프의 Postgres 저장(pgx). schema는 `go:embed`로 시작할 때마다 멱등하게 테이블을 만듦 |
+| **지원** | 기록형 MITM 프록시, 승인 심사 문, 비동기 보완, MCP/스킬/메모리/보고서 |
 
-### 双图架构：探索图 + 资产图
+### 이중 그래프 아키텍처: 탐색 그래프 + 자산 그래프
 
-系统把「**目标是什么**」和「**测到了什么程度**」拆成两张相互独立、又通过锚点相连的图：
+시스템은 '**대상이 무엇인가**'와 '**어느 정도까지 테스트했는가**'를 서로 독립적이면서 앵커로 이어진 두 그래프로 나눈다.
 
-- **资产图（Asset Graph，全局共享）**：跨任务同一份的资产真值库。节点为 `root_domain / subdomain / ip / service / app / endpoint`，归属公司；域名→子域→服务→端点的父子关系与去重 key 全部由程序计算，agent 只提交原始信息。
-- **探索图（Exploration Graph，每任务独立）**：一次任务的“思考与推进”过程。节点为 `goal（目标）/ intent（意图）/ fact（事实）/ finding（漏洞）/ hint（提示）`，靠 `spawns / derived_from / yields / proves` 等边连成**血缘链**，回答“哪个方向派生自哪些事实、产出了什么”。
-- **两图靠锚点相连**：`exploration_anchors(node_id, asset_id)` 把意图/事实/漏洞锚定到具体资产上——于是既能从“探索方向”看它打的是哪些资产，也能从“某个资产”反查它在本任务被哪些意图测过、得出过哪些事实。这也支撑了**资产测试覆盖度**与**资产覆盖图**（范围内资产 + 已测高亮）。
+- **자산 그래프(Asset Graph, 전역 공유)**: 작업을 넘나들며 같은 하나로 쓰는 자산 진실 저장소. 노드는 `root_domain / subdomain / ip / service / app / endpoint`이고 기업에 소속된다. 도메인→하위 도메인→서비스→엔드포인트의 부모·자식 관계와 중복 제거 key는 모두 프로그램이 계산하고, 에이전트는 원본 정보만 제출한다.
+- **탐색 그래프(Exploration Graph, 작업마다 독립)**: 한 작업의 '생각과 진행' 과정. 노드는 `goal(목표) / intent(의도) / fact(사실) / finding(취약점) / hint(힌트)`이고, `spawns / derived_from / yields / proves` 같은 엣지로 **계보 사슬**을 이뤄, '어느 방향이 어떤 사실에서 파생했고 무엇을 만들어 냈는가'에 답한다.
+- **두 그래프는 앵커로 이어진다**: `exploration_anchors(node_id, asset_id)`가 의도/사실/취약점을 구체적인 자산에 앵커로 건다. 그래서 '탐색 방향'에서 그것이 어느 자산을 겨냥하는지 볼 수도 있고, '어떤 자산'에서 그 자산이 이 작업에서 어떤 의도로 테스트됐고 어떤 사실을 얻었는지 거꾸로 찾을 수도 있다. 이것이 **자산 테스트 커버리지**와 **자산 커버리지 그래프**(범위 안 자산 + 테스트 완료 강조)를 뒷받침한다.
 
 ```mermaid
 flowchart LR
-  subgraph EG["探索图（每任务独立 · 推进链）"]
+  subgraph EG["탐색 그래프(작업마다 독립 · 진행 사슬)"]
     direction TB
-    G["goal 目标"]
-    I1["intent 意图 A"]
-    F1["fact 事实"]
-    I2["intent 意图 B"]
-    FD["finding 漏洞"]
+    G["goal 목표"]
+    I1["intent 의도 A"]
+    F1["fact 사실"]
+    I2["intent 의도 B"]
+    FD["finding 취약점"]
     G -->|spawns| I1
     I1 -->|yields| F1
     F1 -->|derived_from| I2
     I2 -->|proves| FD
   end
-  subgraph AG["资产图（全局共享 · 真值库）"]
+  subgraph AG["자산 그래프(전역 공유 · 진실 저장소)"]
     direction TB
     RD["root_domain"]
     SD["subdomain"]
@@ -423,124 +423,124 @@ flowchart LR
   FD -. anchor .-> EP
 ```
 
-> 分工：**planner** 读探索图态势、判目标、只在有未覆盖的新方向时派**意图**进 frontier；**worker** 领**一条意图**、用真实工具执行、把新资产/事实/漏洞写回两图后即停。资产图是共享事实，探索图是每任务的推进链。
+> 역할 분담: **planner**는 탐색 그래프 상황을 읽고 목표를 판단하며, 아직 커버하지 않은 새 방향이 있을 때만 **의도**를 frontier에 내보낸다. **worker**는 **의도 하나**를 할당받아 실제 도구로 실행하고, 새 자산/사실/취약점을 두 그래프에 쓴 뒤 멈춘다. 자산 그래프는 공유된 사실이고, 탐색 그래프는 작업마다의 진행 사슬이다.
 
-### 引擎与意图生命周期（一次探索的闭环）
+### 엔진과 의도 수명 주기(한 번의 탐색 폐곡선)
 
-引擎是**事件驱动**的闭环：图一变就唤醒 planner，planner 派意图，worker 领意图执行并写回，写回又触发下一轮——直到目标被证明（`prove_goal`）。
+엔진은 **이벤트 기반** 폐곡선이다. 그래프가 바뀌면 planner를 깨우고, planner가 의도를 내보내면 worker가 의도를 할당받아 실행하고 써넣으며, 써넣으면 다시 다음 턴을 촉발한다. 목표가 증명될 때까지(`prove_goal`) 이어진다.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant EV as 图变更 debounce
+  participant EV as 그래프 변경 debounce
   participant P as planner
-  participant FR as frontier 意图队列
+  participant FR as frontier 의도 큐
   participant W as worker
-  participant PX as 记录代理
-  participant DB as 双图 + activity
+  participant PX as 기록 프록시
+  participant DB as 이중 그래프 + activity
 
-  EV-->>P: 唤醒
-  P->>DB: 读态势(graph_overview 预取 + coverage/scope)
-  P->>FR: 派 0..N 个意图(带 asset_ids)
-  Note over P,FR: 大多数唤醒派 0 个——无新方向即结束
-  W->>FR: claimNext 领一条意图
-  W->>DB: 取意图 asset_ids 的原始资产作为初始信息
-  W->>PX: 真实工具执行(Kali / Bash / HTTP)
-  PX-->>W: 响应(全程留痕 + CA 验证)
-  W->>DB: 写回 fact / asset / finding + 每步 activity
-  DB-->>EV: 图变更
-  EV-->>P: 再次唤醒(闭环)
+  EV-->>P: 깨우기
+  P->>DB: 상황 읽기(graph_overview 미리 가져오기 + coverage/scope)
+  P->>FR: 의도 0..N개 내보내기(asset_ids 포함)
+  Note over P,FR: 대부분의 깨우기는 0개 — 새 방향이 없으면 끝
+  W->>FR: claimNext로 의도 하나 할당받기
+  W->>DB: 의도 asset_ids의 원본 자산을 초기 정보로 가져오기
+  W->>PX: 실제 도구 실행(Kali / Bash / HTTP)
+  PX-->>W: 응답(전 과정 기록 + CA 검증)
+  W->>DB: fact / asset / finding + 단계별 activity 써넣기
+  DB-->>EV: 그래프 변경
+  EV-->>P: 다시 깨우기(폐곡선)
 ```
 
-### worker 间的过程级信息交换
+### worker 사이의 과정 단위 정보 교환
 
-一次深入的探索里，很多有价值的观察（某个报错、某段响应、某个隐藏参数）出现在一个 worker 的**执行过程**中，却未必被写成正式 fact。为避免重复劳动、让链路上的 worker 能站在彼此的肩膀上，worker 具备**跨 work 检索过程**的能力：
+깊은 탐색에서는 값진 관찰(어떤 오류, 어떤 응답 일부, 숨은 파라미터 하나)이 한 worker의 **실행 과정**에서 나오지만 정식 fact로 적히지는 않을 때가 많다. 중복 작업을 피하고 경로 위의 worker가 서로의 성과 위에 설 수 있도록, worker는 **다른 work의 과정을 검색하는** 기능을 갖는다.
 
-- `search_all_worker_traces(q)`：在**本任务其他 work 的执行过程**里按关键字检索（自动排除自己这条意图的步骤），命中项带 `intent_id`；
-- `list_worker_traces` / `get_worker_trace(intent_id, step_ids=[…])`：先看有哪些 work 跑过，再取某个 work 具体几步的完整内容做细节交换。
+- `search_all_worker_traces(q)`: **이 작업의 다른 work 실행 과정**에서 키워드로 검색한다(자기 의도의 단계는 자동으로 제외). 일치 항목에는 `intent_id`가 붙는다.
+- `list_worker_traces` / `get_worker_trace(intent_id, step_ids=[…])`: 먼저 어떤 work가 돌았는지 보고, 그다음 어떤 work의 특정 몇 단계 전체 내용을 가져와 세부를 주고받는다.
 
-这样即便探索图上还没有对应的 fact，后续 worker 也能复用他人过程中的观察——**信息在 worker 之间以“执行过程”为粒度流动**，而边界不变（每个 worker 仍只做自己领到的那条意图）。
+이렇게 하면 탐색 그래프에 아직 해당 fact가 없어도 뒤의 worker가 다른 사람의 과정 속 관찰을 다시 쓸 수 있다. **정보는 worker 사이에서 '실행 과정' 단위로 흐르고**, 경계는 그대로다(각 worker는 여전히 자기가 할당받은 의도 하나만 한다).
 
 ```mermaid
 flowchart LR
-  WA["worker A（意图 #12）"] -->|"每步 activity"| ACT[("探索图 · activity 过程库")]
-  WB["worker B（意图 #34）"] -->|"每步 activity"| ACT
-  WC["worker C（意图 #56）"] ==>|"1) search_all_worker_traces(q)"| ACT
-  ACT ==>|"2) 命中 A/B 的步骤（排除自己）"| WC
+  WA["worker A(의도 #12)"] -->|"단계별 activity"| ACT[("탐색 그래프 · activity 과정 저장소")]
+  WB["worker B(의도 #34)"] -->|"단계별 activity"| ACT
+  WC["worker C(의도 #56)"] ==>|"1) search_all_worker_traces(q)"| ACT
+  ACT ==>|"2) A/B의 단계 일치(자기는 제외)"| WC
   WC ==>|"3) get_worker_trace(id, step_ids)"| ACT
-  ACT ==>|"4) 返回完整过程内容"| WC
+  ACT ==>|"4) 전체 과정 내용 반환"| WC
 ```
 
-### planner 多轮共享 todolist → 稳定的攻击链路
+### planner의 여러 턴 공유 todolist → 안정적인 공격 경로
 
-真实攻击链往往是**有前后依赖的多步序列**（如：发现注入点 → 拿到凭据 → 横向 → 提权），一次性把这些并行派下去只会乱套。planner 因此持有一份**按任务保留、跨唤醒共享的规划待办（todolist）**：
+실제 공격 경로는 흔히 **앞뒤 의존이 있는 여러 단계의 순서**다(예: 인젝션 지점 발견 → 자격 증명 획득 → 측면 이동 → 권한 상승). 이를 한꺼번에 병렬로 내보내면 뒤섞일 뿐이다. 그래서 planner는 **작업마다 유지하고 깨우기 사이에 공유하는 계획 할 일 목록(todolist)**을 가진다.
 
-- planner 是事件驱动的——图一变就被唤醒，但**每次唤醒是全新会话**；共享的 todolist 让它把一条串行利用链**记录一次**、然后在后续多轮里**按依赖逐步派意图**，而不是把整条链在一轮里全部前置展开；
-- 每轮只对「前置步骤已完成、其依赖的 fact 已存在」的下一步派意图，并随进展更新清单（把已被 fact 满足的步骤标完成）。
+- planner는 이벤트 기반이다. 그래프가 바뀌면 깨어나지만 **깨어날 때마다 새로운 세션**이다. 공유 todolist 덕분에 한 직렬 익스플로잇 경로를 **한 번 기록**하고, 뒤의 여러 턴에서 **의존에 따라 단계별로 의도를 내보낸다**. 경로 전체를 한 턴에 미리 펼치지 않는다.
+- 매 턴마다 '앞 단계가 끝났고 그것이 의존하는 fact가 이미 있는' 다음 단계에만 의도를 내보내고, 진행에 따라 목록을 갱신한다(fact로 충족된 단계는 완료로 표시).
 
 ```mermaid
 flowchart TB
-  subgraph TODO["共享 todolist（按任务保留 · 跨唤醒常驻）"]
+  subgraph TODO["공유 todolist(작업마다 유지 · 깨우기 사이 상주)"]
     direction LR
-    T1["1 注入点　[已完成]"]
-    T2["2 取凭据　[进行中]"]
-    T3["3 横向　[待前置]"]
-    T4["4 提权　[待前置]"]
-    T1 -.前置满足.-> T2 -.-> T3 -.-> T4
+    T1["1 인젝션 지점　[완료]"]
+    T2["2 자격 증명 획득　[진행 중]"]
+    T3["3 측면 이동　[앞 단계 대기]"]
+    T4["4 권한 상승　[앞 단계 대기]"]
+    T1 -.앞 단계 충족.-> T2 -.-> T3 -.-> T4
   end
-  R1["第 1 轮唤醒　派意图①"] --> T1
-  R2["第 2 轮（①产出 fact）　派意图②"] --> T2
-  R3["第 3 轮（②产出 fact）　派意图③"] --> T3
+  R1["1번째 턴 깨우기　의도① 내보내기"] --> T1
+  R2["2번째 턴(①이 fact 생성)　의도② 내보내기"] --> T2
+  R3["3번째 턴(②가 fact 생성)　의도③ 내보내기"] --> T3
 ```
 
-于是攻击链在“事件驱动 + 无状态会话”的环境下依然**稳定推进、不重复、不错序**——这是 ARTEX 能自主走完多步利用链的关键。
+그래서 공격 경로는 '이벤트 기반 + 무상태 세션' 환경에서도 **안정적으로 진행되고, 중복되지 않으며, 순서가 어긋나지 않는다**. 이것이 ARTEX가 여러 단계의 익스플로잇 경로를 자율적으로 끝까지 밟을 수 있는 핵심이다.
 
 ---
 
-## 交流群
+## 교류 그룹
 
-扫码关注微信公众号 **SecSentry**，在公众号后台私信即可入群交流。
+위챗 공식 계정 **SecSentry**를 스캔해 팔로우하고, 공식 계정 백오피스에서 쪽지를 보내면 그룹에 들어가 교류할 수 있다.
 
 <div align="center">
 
-<img src="screenshots/wx.png" alt="微信公众号 SecSentry" width="480" />
+<img src="screenshots/wx.png" alt="위챗 공식 계정 SecSentry" width="480" />
 
 </div>
 
 ---
-## 参考
+## 참고
 
 https://github.com/oritera/Cairn
 
 
-## 许可与免责声明
+## 라이선스와 면책 조항
 
-### 开源协议
+### 오픈 소스 라이선스
 
-本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 授权，完整条款见仓库根目录的 [LICENSE](LICENSE) 文件。
+이 프로젝트는 **GNU Affero General Public License v3.0(AGPL-3.0)**으로 배포한다. 전체 조항은 저장소 루트의 [LICENSE](LICENSE) 파일에 있다.
 
-这意味着任何人都可以自由使用、修改和分发本项目，但**衍生作品必须同样以 AGPL-3.0 开源**；特别地，**若你修改本项目并通过网络（如部署为在线服务）向用户提供，也必须向这些用户公开对应的完整源码**。
+누구나 이 프로젝트를 자유롭게 쓰고, 고치고, 배포할 수 있지만 **파생 작업물도 똑같이 AGPL-3.0으로 공개해야 한다**. 특히 **이 프로젝트를 고쳐 네트워크를 통해(예: 온라인 서비스로 배포) 사용자에게 제공한다면, 그 사용자에게도 해당하는 전체 소스 코드를 공개해야 한다**.
 
-> ⚠️ **重要提示**：开源协议本身不限制软件的使用用途。以下的「使用限制」与「免责声明」是作者对使用者的额外约定与郑重声明，请务必遵守。
+> ⚠️ **중요**: 오픈 소스 라이선스 자체는 소프트웨어의 사용 용도를 제한하지 않는다. 아래의 '사용 제한'과 '면책 조항'은 작성자가 사용자에게 추가로 정한 약속이자 엄중한 선언이므로 반드시 지킨다.
 
-**ARTEX 仅供个人学习、代码研究与本地技术验证使用，不得用于对任何线上系统或网站发起实际测试。**
+**ARTEX는 개인 학습, 코드 연구, 로컬 기술 검증 용도로만 쓰며, 어떤 온라인 시스템이나 웹사이트에도 실제 테스트를 수행해서는 안 된다.**
 
-### 允许使用范围
+### 허용 범위
 
-- 仅可用于**阅读、学习与研究本项目源码**，以及在**本地隔离环境**中进行技术原理验证；
-- 适用于个人学习、学术研究、代码审阅等非攻击性用途。
+- **이 프로젝트의 소스 코드를 읽고, 학습하고, 연구하는** 용도와 **로컬 격리 환경**에서 기술 원리를 검증하는 용도로만 쓸 수 있다.
+- 개인 학습, 학술 연구, 코드 검토 같은 비공격적 용도에 적용된다.
 
-### 禁止事项
+### 금지 사항
 
-- **严禁使用本工具对任何网站、线上服务或联网系统发起扫描、探测、利用或攻击**（无论是否获得授权、是否为自有资产）；
-- 严禁将本工具用于任何实际的渗透测试、攻防对抗或生产环境；
-- 严禁将本工具用于非法入侵、数据窃取、勒索、拒绝服务或任何破坏性、犯罪性活动；
-- 严禁利用本工具从事违反所在国家/地区法律法规的行为。
+- **이 도구로 어떤 웹사이트, 온라인 서비스, 네트워크에 연결된 시스템에도 스캔·탐지·익스플로잇·공격을 수행하는 것을 엄격히 금지한다**(허가 여부, 자기 자산 여부와 무관하다).
+- 이 도구를 실제 침투 테스트, 공격·방어 대항, 운영 환경에 쓰는 것을 엄격히 금지한다.
+- 이 도구를 불법 침입, 데이터 탈취, 금전 요구, 서비스 거부, 그 밖의 파괴적·범죄적 활동에 쓰는 것을 엄격히 금지한다.
+- 이 도구로 거주 국가·지역의 법령을 위반하는 행위를 하는 것을 엄격히 금지한다.
 
-### 合规责任
+### 준수 책임
 
-使用者须自行遵守所在国家/地区关于网络安全、数据保护与计算机犯罪的全部法律法规（在中国大陆包括但不限于《网络安全法》《数据安全法》《个人信息保护法》及相关司法解释）。**因使用本工具产生的一切法律责任与后果，均由使用者自行承担。**
+사용자는 거주 국가·지역의 사이버 보안, 데이터 보호, 컴퓨터 범죄에 관한 모든 법령을 스스로 지켜야 한다(중국 본토에서는 '사이버보안법', '데이터보안법', '개인정보보호법'과 관련 사법 해석을 포함하되 이에 한정되지 않는다). **이 도구를 사용해 생긴 모든 법적 책임과 결과는 사용자 본인이 진다.**
 
-### 免责声明
+### 면책 조항
 
-本项目按“现状（AS IS）”提供，不附带任何明示或默示的担保。作者及贡献者不对使用本工具（无论使用方式是否得当）所导致的任何直接或间接损失、数据丢失、系统损坏或法律纠纷承担责任。**下载、安装或使用本项目，即表示你已阅读、理解并同意上述全部条款。**
+이 프로젝트는 '있는 그대로(AS IS)' 제공되며 명시적이든 묵시적이든 어떤 보증도 하지 않는다. 작성자와 기여자는 이 도구의 사용(사용 방식이 적절한지와 무관하게)으로 생긴 어떤 직접·간접 손해, 데이터 손실, 시스템 손상, 법적 분쟁에도 책임지지 않는다. **이 프로젝트를 내려받거나, 설치하거나, 사용하는 것은 위의 모든 조항을 읽고, 이해하고, 동의했다는 뜻이다.**
