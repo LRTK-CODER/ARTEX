@@ -46,7 +46,7 @@ export function UpdateCard() {
   const [busy, setBusy] = React.useState(false);
 
   // quiet는 백엔드 캐시를 건너뛸지도 정한다. 페이지에 들어올 때의 자동 확인은 캐시를 쓰고(상단 바가 방금 확인했다),
-  // 사용자가 「업데이트 확인」을 직접 누르면 원본을 다시 조회한다. 그러지 않으면 방금 나온 버전이 캐시가 만료돼야 보인다.
+  // 사용자가 '업데이트 확인'을 직접 누르면 원본을 다시 조회한다. 그러지 않으면 방금 나온 버전이 캐시가 만료돼야 보인다.
   const check = React.useCallback((quiet = false) => {
     setChecking(true);
     api
@@ -114,7 +114,7 @@ export function UpdateCard() {
         if (p.phase === "failed") {
           es.close();
           setBusy(false);
-          toast.error("업데이트하지 못했습니다: " + (p.error || p.message));
+          toast.error("업데이트를 설치하지 못했습니다: " + (p.error || p.message));
           return;
         }
         if (p.phase === "staged") {

@@ -75,7 +75,7 @@ export default function SystemSettingsPage() {
         apply(s);
         toast.success("동시 실행 워커 수를 저장했습니다(이후 시작하는 작업부터 적용)");
       })
-      .catch((e) => toast.error("저장하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("동시 실행 워커 수를 저장하지 못했습니다: " + (e as Error).message))
       .finally(() => setSavingWorkers(false));
   };
 
@@ -87,7 +87,7 @@ export default function SystemSettingsPage() {
         apply(s);
         toast.success("Python 인터프리터 설정을 저장했습니다");
       })
-      .catch((e) => toast.error("저장하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("Python 인터프리터 설정을 저장하지 못했습니다: " + (e as Error).message))
       .finally(() => setSaving(false));
   };
   const detectPython = () => {
@@ -136,7 +136,7 @@ export default function SystemSettingsPage() {
       })
       .catch((e) => {
         setAgentTrafficBinding(!v);
-        toast.error(`저장하지 못했습니다: ${(e as Error).message}`);
+        toast.error(`트래픽 자동 연결 설정을 저장하지 못했습니다: ${(e as Error).message}`);
       })
       .finally(() => setSaving(false));
   };
@@ -163,7 +163,7 @@ export default function SystemSettingsPage() {
       })
       .catch((e) => {
         setNoaCompaction(!v); // revert on failure
-        toast.error(`저장하지 못했습니다: ${(e as Error).message}`);
+        toast.error(`noa 컨텍스트 압축 설정을 저장하지 못했습니다: ${(e as Error).message}`);
       });
   };
 
@@ -177,7 +177,7 @@ export default function SystemSettingsPage() {
         toast.success("웹 검색 설정을 저장했습니다");
       })
       .catch((e) => {
-        toast.error("저장하지 못했습니다: " + (e as Error).message);
+        toast.error("웹 검색 설정을 저장하지 못했습니다: " + (e as Error).message);
         api
           .settings()
           .then(apply)
@@ -195,7 +195,7 @@ export default function SystemSettingsPage() {
         setBraveKeyInput("");
         toast.success("Brave API 키를 저장했습니다");
       })
-      .catch((e) => toast.error("저장하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("Brave API 키를 저장하지 못했습니다: " + (e as Error).message))
       .finally(() => setSavingKey(false));
   };
 
@@ -208,7 +208,7 @@ export default function SystemSettingsPage() {
         setTavilyKeyInput("");
         toast.success("Tavily API 키를 저장했습니다");
       })
-      .catch((e) => toast.error("저장하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("Tavily API 키를 저장하지 못했습니다: " + (e as Error).message))
       .finally(() => setSavingTavilyKey(false));
   };
 
@@ -222,7 +222,7 @@ export default function SystemSettingsPage() {
           proxyInput.trim() ? "아웃바운드 프록시를 저장했습니다" : "아웃바운드 프록시를 지웠습니다(직접 연결로 바꿈)",
         );
       })
-      .catch((e) => toast.error("저장하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("아웃바운드 프록시를 저장하지 못했습니다: " + (e as Error).message))
       .finally(() => setSavingProxy(false));
   };
 
@@ -236,7 +236,7 @@ export default function SystemSettingsPage() {
           globalProxyInput.trim() ? "전역 프록시를 저장했습니다" : "전역 프록시를 지웠습니다(직접 연결로 바꿈)",
         );
       })
-      .catch((e) => toast.error("저장하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("전역 프록시를 저장하지 못했습니다: " + (e as Error).message))
       .finally(() => setSavingGlobalProxy(false));
   };
 
@@ -253,9 +253,9 @@ export default function SystemSettingsPage() {
       })
       .then((r) => {
         if (r.ok) toast.success(`검색 테스트 성공 · ${r.backend}에서 결과 ${r.count}건을 받았습니다`);
-        else toast.error("검색 테스트를 하지 못했습니다: " + (r.error || "알 수 없는 오류"));
+        else toast.error("검색을 테스트하지 못했습니다: " + (r.error || "알 수 없는 오류"));
       })
-      .catch((e) => toast.error("검색 테스트를 하지 못했습니다: " + (e as Error).message))
+      .catch((e) => toast.error("검색을 테스트하지 못했습니다: " + (e as Error).message))
       .finally(() => setTesting(false));
   };
 
@@ -385,8 +385,8 @@ export default function SystemSettingsPage() {
               작업 제약 조건 넣기
             </CardTitle>
             <CardDescription>
-              켜면 작업마다 <b>작업 제약 조건</b>(작업 개요의 「작업 제약 조건」에서 관리하는 allow/deny 항목)을 해당
-              에이전트의 시스템 프롬프트에 붙여 탐색 범위를 정합니다(예: 「현재 포트만 테스트」, 「무차별 대입 금지」).
+              켜면 작업마다 <b>작업 제약 조건</b>(작업 개요의 '작업 제약 조건'에서 관리하는 allow/deny 항목)을 해당
+              에이전트의 시스템 프롬프트에 붙여 탐색 범위를 정합니다(예: '현재 포트만 테스트', '무차별 대입 금지').
               <br />
               <b>플래너(planner)</b>와 <b>워커(worker)</b>에 넣을지 따로 정할 수 있습니다. 기본값은 둘 다 켜짐입니다.
               바꾸면 바로 적용되고(다음 실행 주기에 읽음) 에이전트를 다시 만들 필요가 없습니다. 끄면 그 에이전트는 제약
@@ -520,8 +520,8 @@ export default function SystemSettingsPage() {
                   WebFetch가 가져옵니다.
                 </p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  위 조건을 만족하는지는 직접 확인하세요. 시스템이 막지 않습니다. 아래 「검색 테스트」 버튼으로 실제로
-                  한 번 실행해 확인할 수 있습니다.
+                  위 조건을 만족하는지는 직접 확인하세요. 시스템이 막지 않습니다. 아래 '검색 테스트' 버튼으로 실제로 한
+                  번 실행해 확인할 수 있습니다.
                 </p>
               </div>
             )}
@@ -620,7 +620,7 @@ export default function SystemSettingsPage() {
             {webSearch && (
               <div className="flex items-center justify-between gap-4 border-t pt-4">
                 <p className="text-muted-foreground text-xs">
-                  현재 설정(출처 + 프록시 + 키)으로 「test」를 실제로 한 번 검색해 쓸 수 있는지 확인합니다.
+                  현재 설정(출처 + 프록시 + 키)으로 'test'를 실제로 한 번 검색해 쓸 수 있는지 확인합니다.
                 </p>
                 <Button
                   type="button"

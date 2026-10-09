@@ -1,11 +1,11 @@
 "use client";
 
-// LLM 재시도 설정의 공용 부품: 다섯 단계 재시도 각각의 「횟수 + 간격」.
+// LLM 재시도 설정의 공용 부품: 다섯 단계 재시도 각각의 '횟수 + 간격'.
 //
 // 다섯 단계는 안쪽부터: 연결(SDK) → 빈 응답(SDK) → 같은 제공자 안전 구간 → 장애 조치 회로 차단기 → 탐색 의도 재실행.
 // 앞의 세 단계는 엔드포인트에 따라 달라지므로 LLM 프로필마다 전역 기본값을 덮어쓸 수 있다. 뒤의 두 단계는 프로세스 단위라 전역에 하나뿐이다.
 //
-// 모든 입력은 백엔드 db.RetryRule과 같은 「비워 두면 설정 안 함」 의미를 따른다:
+// 모든 입력은 백엔드 db.RetryRule과 같은 '비워 두면 설정 안 함' 의미를 따른다:
 //   횟수   비움/0 = 내장 기본값 | -1 = 이 단계 재시도 끄기 | >0 = 이 횟수 사용
 //   간격   비움/0 = 이 단계의 원래 지수 백오프 | >0 = 이 고정 간격(밀리초) 사용
 
@@ -177,7 +177,7 @@ export function RetryRuleFields({
   idPrefix: string;
   value: LLMRetryRule;
   onChange: (r: LLMRetryRule) => void;
-  /** true = 프로필 편집 패널의 간단한 형태: 자세한 설명은 빼고 「어떤 오류가 이 단계로 오는지」 한 줄만 남긴다 */
+  /** true = 프로필 편집 패널의 간단한 형태: 자세한 설명은 빼고 '어떤 오류가 이 단계로 오는지' 한 줄만 남긴다 */
   compact?: boolean;
 }) {
   const meta = RETRY_LAYERS[layer];
@@ -245,9 +245,9 @@ export function ProfileRetryFields({
       <div className="grid gap-0.5">
         <Label className="text-sm">재시도 덮어쓰기</Label>
         <p className="text-muted-foreground text-xs">
-          이 프로필에만 적용되고 「재시도와 백오프」의 전역 기본값을 덮어씁니다. 칸을 비우면 전역 값을 따르고, 횟수에
-          -1을 넣으면 이 단계 재시도를 끕니다. 간격을 넣으면 지수 백오프 대신 고정 간격을 씁니다. 회로 차단기와 탐색
-          의도 재실행은 프로세스 단위라 전역 설정 탭에서만 바꿀 수 있습니다.
+          이 프로필에만 적용되고 '재시도와 백오프'의 전역 기본값을 덮어씁니다. 칸을 비우면 전역 값을 따르고, 횟수에 -1을
+          넣으면 이 단계 재시도를 끕니다. 간격을 넣으면 지수 백오프 대신 고정 간격을 씁니다. 회로 차단기와 탐색 의도
+          재실행은 프로세스 단위라 전역 설정 탭에서만 바꿀 수 있습니다.
         </p>
       </div>
       {(["connect", "empty", "stream"] as const).map((k) => (
@@ -265,7 +265,7 @@ export function ProfileRetryFields({
   );
 }
 
-/** 「재시도와 백오프」 탭: 다섯 단계의 전역 기본값. */
+/** '재시도와 백오프' 탭: 다섯 단계의 전역 기본값. */
 export function RetryPolicyPanel() {
   const [policy, setPolicy] = React.useState<LLMRetryPolicy>(ZERO_POLICY);
   const [loading, setLoading] = React.useState(true);
@@ -296,7 +296,7 @@ export function RetryPolicyPanel() {
       setPolicy({ ...ZERO_POLICY, ...saved });
       toast.success("저장했습니다. 바로 적용됩니다(지금 진행 중인 호출은 이전 값을 씁니다)");
     } catch (e) {
-      toast.error(`저장하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`재시도 설정을 저장하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setSaving(false);
     }

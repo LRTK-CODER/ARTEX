@@ -60,7 +60,7 @@ export default function NotifyPage() {
         setDigestMin(m.digest_interval_min);
       })
       .catch((e) => toast.error("알림 발송 설정을 읽지 못했습니다: " + (e as Error).message));
-    // 채널 목록을 불러오지 못하면 알려야 한다. 조용히 실패하면 「채널이 하나도 없음」으로 보여
+    // 채널 목록을 불러오지 못하면 알려야 한다. 조용히 실패하면 '채널이 하나도 없음'으로 보여
     // 사용자는 설정이 사라졌다고 여기고, 오류를 바로 보는 것보다 더 당황한다.
     api
       .notifyChannels()
@@ -110,14 +110,14 @@ export default function NotifyPage() {
   // buildConfig는 폼 상태를 채널 config로 바꾼다.
   //
   // 규칙은 하나이고 값은 두 종류다:
-  //   - 마스킹 값("__masked__...")은 그대로 돌려보낸다 → 백엔드는 「이 필드는 바뀌지 않았으니 DB의 원래 값을 유지」로 읽는다
-  //   - 나머지는 모두 사용자 입력대로 제출한다. 빈 문자열은 「이 필드를 비운다」는 뜻이다
+  //   - 마스킹 값("__masked__...")은 그대로 돌려보낸다 → 백엔드는 '이 필드는 바뀌지 않았으니 DB의 원래 값을 유지'로 읽는다
+  //   - 나머지는 모두 사용자 입력대로 제출한다. 빈 문자열은 '이 필드를 비운다'는 뜻이다
   //
-  // 자격 증명 필드를 따로 다루지 않는 이유(예: 「자격 증명이 비어 있으면 건너뛴다」)는, 그러면 사용자가
-  // 잘못 넣은 키를 **지울 수 없기** 때문이다. 화면에 「이것을 지우겠다」를 나타낼 동작이 없어진다.
+  // 자격 증명 필드를 따로 다루지 않는 이유(예: '자격 증명이 비어 있으면 건너뛴다')는, 그러면 사용자가
+  // 잘못 넣은 키를 **지울 수 없기** 때문이다. 화면에 '이것을 지우겠다'를 나타낼 동작이 없어진다.
   // 지금 규칙에서는 입력 칸을 비우면 그 필드가 비워지므로 뜻이 하나이고 사용자가 다룰 수 있다.
-  // 마스킹 값은 입력 칸에 나타나지 않으므로(ConfigField 참고) 「칸에 글자가 있다」는 늘
-  // 「사용자가 직접 입력했다」와 같다.
+  // 마스킹 값은 입력 칸에 나타나지 않으므로(ConfigField 참고) '칸에 글자가 있다'는 늘
+  // '사용자가 직접 입력했다'와 같다.
   function buildConfig(): Record<string, unknown> {
     const defs = CHANNEL_FIELDS[form.kind] ?? [];
     const out: Record<string, unknown> = {};
@@ -190,7 +190,7 @@ export default function NotifyPage() {
       }
       load();
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("알림 채널을 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -204,7 +204,7 @@ export default function NotifyPage() {
       toast.success(`테스트 메시지를 보냈습니다(${r.latency_ms} ms). 받는 쪽에서 확인하세요`);
     } catch (e) {
       // 백엔드는 채널이 돌려준 원래 오류를 그대로 전달한다. 설정 문제를 찾는 유일한 단서라 그대로 보여 준다.
-      toast.error("테스트하지 못했습니다: " + (e as Error).message, { duration: 12000 });
+      toast.error("알림 채널을 테스트하지 못했습니다: " + (e as Error).message, { duration: 12000 });
     } finally {
       setTesting(false);
     }
@@ -217,7 +217,7 @@ export default function NotifyPage() {
       setOpen(false);
       load();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + (e as Error).message);
+      toast.error("알림 채널을 삭제하지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -226,7 +226,7 @@ export default function NotifyPage() {
       await api.notifyUpdateChannel(ch.id, { enabled: !ch.enabled });
       load();
     } catch (e) {
-      toast.error("변경하지 못했습니다: " + (e as Error).message);
+      toast.error("알림 채널 사용 여부를 바꾸지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -237,7 +237,7 @@ export default function NotifyPage() {
       setMeta((m) => (m ? { ...m, enabled: on } : m));
       toast.success(on ? "알림 발송을 켰습니다" : "알림 발송을 일시 중지했습니다");
     } catch (e) {
-      toast.error("변경하지 못했습니다: " + (e as Error).message);
+      toast.error("알림 전체 사용 여부를 바꾸지 못했습니다: " + (e as Error).message);
     } finally {
       setGlobalSaving(false);
     }
@@ -253,7 +253,7 @@ export default function NotifyPage() {
       toast.success("저장했습니다");
       load();
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("알림 설정을 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setGlobalSaving(false);
     }
@@ -318,7 +318,7 @@ export default function NotifyPage() {
               onChange={(e) => setBaseURL(e.target.value)}
             />
             <p className="text-muted-foreground text-xs">
-              메시지의 「상세 보기」 버튼이 가리키는 주소입니다. 비워 두면 버튼을 넣지 않습니다.
+              메시지의 '상세 보기' 버튼이 가리키는 주소입니다. 비워 두면 버튼을 넣지 않습니다.
             </p>
           </div>
           <div className="grid gap-2">
@@ -332,7 +332,7 @@ export default function NotifyPage() {
               value={digestMin}
               onChange={(e) => setDigestMin(e.target.value)}
             />
-            <p className="text-muted-foreground text-xs">「다이제스트」 모드 채널에만 적용됩니다.</p>
+            <p className="text-muted-foreground text-xs">'다이제스트' 모드 채널에만 적용됩니다.</p>
           </div>
           <div className="sm:col-span-2">
             <Button onClick={saveGlobal} disabled={globalSaving}>
@@ -371,7 +371,7 @@ export default function NotifyPage() {
                     <CardTitle className="truncate text-base">{ch.name}</CardTitle>
                     {/* 카드 전체를 누르면 편집으로 들어가므로 이 두 컨트롤은 각자 이벤트 전파를 막아야 한다.
                         그러지 않으면 스위치·삭제가 편집까지 실행한다. stopPropagation은 div로 감싸지 않고
-                        컨트롤 자신에 단다. div로 감싸면 「상호작용할 것처럼 보이지만 역할이 없는」
+                        컨트롤 자신에 단다. div로 감싸면 '상호작용할 것처럼 보이지만 역할이 없는'
                         정적 요소가 생겨 a11y 경고가 나고 의미상으로도 맞지 않는다. */}
                     <div className="ml-auto flex items-center gap-2">
                       <Switch
@@ -493,8 +493,8 @@ export default function NotifyPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  「높음 이상은 실시간, 나머지는 다이제스트」로 보내려면 채널을 두 개 만드세요: 실시간 + 최저 심각도
-                  높음, 다이제스트 + 심각도 제한 없음.
+                  '높음 이상은 실시간, 나머지는 다이제스트'로 보내려면 채널을 두 개 만드세요: 실시간 + 최저 심각도 높음,
+                  다이제스트 + 심각도 제한 없음.
                 </p>
               </div>
 

@@ -189,7 +189,7 @@ function SkillsOverview({
     return (
       <div className="flex h-full items-center justify-center">
         <p className="text-sm text-muted-foreground">
-          스킬이 없습니다. 왼쪽의 「새 스킬」이나 「압축 파일 업로드」를 눌러 시작하세요
+          스킬이 없습니다. 왼쪽의 '새 스킬'이나 '압축 파일 업로드'를 눌러 시작하세요
         </p>
       </div>
     );
@@ -423,7 +423,7 @@ export default function SkillsPage() {
           return;
         }
       } else {
-        toast.error("업로드하지 못했습니다: " + msg);
+        toast.error("스킬을 업로드하지 못했습니다: " + msg);
       }
     } finally {
       setUploading(false);
@@ -566,7 +566,7 @@ export default function SkillsPage() {
       if (selected?.skill === skill && selected.path === path) setSelected(null);
       load();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + (e as Error).message);
+      toast.error("파일을 삭제하지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -577,7 +577,7 @@ export default function SkillsPage() {
       if (selected?.skill === name) setSelected(null);
       load();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + (e as Error).message);
+      toast.error("스킬을 삭제하지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -602,7 +602,7 @@ export default function SkillsPage() {
       toast.success("저장했습니다");
       setDirty(false);
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("파일을 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -613,12 +613,12 @@ export default function SkillsPage() {
     setDetailMcps(next);
     try {
       await api.updateSkillMeta(skillName, { mcps: next });
-      toast.success(`「${mcpName}」${mcpOn ? "을(를) 연결했습니다" : " 연결을 해제했습니다"}`);
+      toast.success(`'${mcpName}'${mcpOn ? "을(를) 연결했습니다" : " 연결을 해제했습니다"}`);
       load();
     } catch (e) {
       // roll back on error
       setDetailMcps(detailMcps);
-      toast.error("변경하지 못했습니다: " + (e as Error).message);
+      toast.error("스킬의 MCP 연결을 바꾸지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -626,11 +626,11 @@ export default function SkillsPage() {
     const on = (visibility[skillName] ?? []).includes(agentId);
     try {
       await api.toggleSkillVisibility(agentId, skillName, !on);
-      toast.success(`「${agentName}」${on ? "에서 숨겼습니다" : "에 공개했습니다"}`);
+      toast.success(`'${agentName}'${on ? "에서 숨겼습니다" : "에 공개했습니다"}`);
       const ids = await api.skillVisibility(skillName);
       setVisibility((v) => ({ ...v, [skillName]: ids }));
     } catch (e) {
-      toast.error("변경하지 못했습니다: " + (e as Error).message);
+      toast.error("스킬 공개 범위를 바꾸지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -982,7 +982,7 @@ export default function SkillsPage() {
               })}
 
               {skills.length === 0 && (
-                <p className="p-3 text-xs text-muted-foreground">스킬이 없습니다. 「새 스킬」을 눌러 시작하세요</p>
+                <p className="p-3 text-xs text-muted-foreground">스킬이 없습니다. '새 스킬'을 눌러 시작하세요</p>
               )}
             </div>
           </ScrollArea>
@@ -1089,7 +1089,7 @@ export default function SkillsPage() {
                       <span className="ml-1 font-normal">(스킬을 불러올 때만 그 도구를 공개·사용 가능하게 함)</span>
                     </Label>
                     {mcpOptions.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">MCP가 없습니다. 「MCP」 페이지에서 추가하세요.</p>
+                      <p className="text-xs text-muted-foreground">MCP가 없습니다. 'MCP' 페이지에서 추가하세요.</p>
                     ) : (
                       <div className="flex flex-wrap gap-x-4 gap-y-2">
                         {mcpOptions.map((m) => (
@@ -1162,9 +1162,9 @@ export default function SkillsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pendingDelete?.kind === "skill" && `스킬 「${pendingDelete.skill}」을(를) 삭제할까요?`}
-              {pendingDelete?.kind === "dir" && `폴더 「${pendingDelete.path}」을(를) 삭제할까요?`}
-              {pendingDelete?.kind === "file" && `파일 「${pendingDelete.path}」을(를) 삭제할까요?`}
+              {pendingDelete?.kind === "skill" && `스킬 '${pendingDelete.skill}'을(를) 삭제할까요?`}
+              {pendingDelete?.kind === "dir" && `폴더 '${pendingDelete.path}'을(를) 삭제할까요?`}
+              {pendingDelete?.kind === "file" && `파일 '${pendingDelete.path}'을(를) 삭제할까요?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete?.kind === "skill"
@@ -1287,7 +1287,7 @@ export default function SkillsPage() {
                 스킬을 불러올 때만 고른 MCP의 도구를 공개하고 사용할 수 있게 합니다.
               </p>
               {mcpOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground">MCP가 없습니다. 「MCP」 페이지에서 추가하세요.</p>
+                <p className="text-xs text-muted-foreground">MCP가 없습니다. 'MCP' 페이지에서 추가하세요.</p>
               ) : (
                 <div className="flex flex-col gap-2">
                   {mcpOptions.map((m) => (

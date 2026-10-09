@@ -160,11 +160,11 @@ function ToolEditor({
         agents: bound,
         enabled,
       });
-      toast.success(`도구 「${tool.key}」을(를) 저장했습니다`);
+      toast.success(`도구 '${tool.key}'을(를) 저장했습니다`);
       onSaved();
       onClose();
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("도구를 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -172,7 +172,7 @@ function ToolEditor({
   async function reset() {
     try {
       await api.resetTool(tool.key);
-      toast.success(`「${tool.key}」을(를) 코드 기본값으로 되돌렸습니다`);
+      toast.success(`'${tool.key}'을(를) 코드 기본값으로 되돌렸습니다`);
       onSaved();
       onClose();
     } catch (e) {
@@ -185,7 +185,7 @@ function ToolEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
         {trafficGated && (
           <div className="border-amber-500/40 bg-amber-500/10 text-muted-foreground rounded-md border px-3 py-2 text-xs">
-            이 도구는 <b>트래픽 캡처</b>가 필요합니다. 「시스템 설정」에서 트래픽 캡처를 먼저 켜야 에이전트에 연결하고
+            이 도구는 <b>트래픽 캡처</b>가 필요합니다. '시스템 설정'에서 트래픽 캡처를 먼저 켜야 에이전트에 연결하고
             사용할 수 있습니다.
           </div>
         )}
@@ -468,7 +468,7 @@ export default function ToolsPage() {
                 <p className="text-muted-foreground py-6 text-center text-sm">
                   {query.trim()
                     ? "일치하는 사용자 지정 도구가 없습니다"
-                    : "(사용자 지정 도구가 없습니다. 오른쪽 위의 「새 사용자 지정 도구」를 누르세요)"}
+                    : "(사용자 지정 도구가 없습니다. 오른쪽 위의 '새 사용자 지정 도구'를 누르세요)"}
                 </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -685,7 +685,7 @@ function CustomToolDialog({
       toast.success(isNew ? "사용자 지정 도구를 만들었습니다" : "저장했습니다");
       onSaved();
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("사용자 지정 도구를 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -697,7 +697,7 @@ function CustomToolDialog({
       toast.success("삭제했습니다");
       onSaved();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + (e as Error).message);
+      toast.error("사용자 지정 도구를 삭제하지 못했습니다: " + (e as Error).message);
     }
   }
   // runTest dry-runs the CURRENT form (unsaved) with the sample params, so a

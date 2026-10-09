@@ -153,7 +153,7 @@ export default function AssetInterceptPage() {
   }
 
   async function handleDelete(rule: AssetInterceptRule) {
-    if (!window.confirm(`자산 차단 규칙 「${rule.pattern}」을(를) 삭제할까요?`)) return;
+    if (!window.confirm(`자산 차단 규칙 '${rule.pattern}'을(를) 삭제할까요?`)) return;
     try {
       await api.deleteAssetInterceptRule(rule.id);
       toast.success("규칙을 삭제했습니다");

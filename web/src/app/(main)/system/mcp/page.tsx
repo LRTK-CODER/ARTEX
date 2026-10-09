@@ -180,7 +180,7 @@ export default function MCPPage() {
       if (!editing) setOpen(false);
       load();
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("MCP 서버를 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -208,7 +208,7 @@ export default function MCPPage() {
       setOpen(false);
       load();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + (e as Error).message);
+      toast.error("MCP 서버를 삭제하지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -217,7 +217,7 @@ export default function MCPPage() {
       await api.saveMcpServer({ ...s, enabled: !s.enabled });
       load();
     } catch (e) {
-      toast.error("변경하지 못했습니다: " + (e as Error).message);
+      toast.error("MCP 서버 사용 여부를 바꾸지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -225,10 +225,10 @@ export default function MCPPage() {
     const on = (visibility[serverId] ?? []).includes(agentId);
     try {
       await api.toggleVisibility(agentId, "mcp", serverId, !on);
-      toast.success(`「${agentName}」${on ? "에서 숨겼습니다" : "에 공개했습니다"}`);
+      toast.success(`'${agentName}'${on ? "에서 숨겼습니다" : "에 공개했습니다"}`);
       load();
     } catch (e) {
-      toast.error("변경하지 못했습니다: " + (e as Error).message);
+      toast.error("MCP 공개 범위를 바꾸지 못했습니다: " + (e as Error).message);
     }
   }
 

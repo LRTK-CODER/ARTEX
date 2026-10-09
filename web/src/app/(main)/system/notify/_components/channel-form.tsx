@@ -14,7 +14,7 @@ import { type FieldDef, type FieldKind, SEVERITY_OPTIONS } from "./channel-field
 
 // asText는 임의의 설정값을 입력 칸에 쓸 수 있는 문자열로 바꾼다.
 // config는 JSON에서 오므로 값이 string / number / boolean / array / null일 수 있다.
-// 여기서는 「텍스트 칸에 넣을 수 있는가」만 본다. 실제 직렬화는 buildConfig가 맡는다.
+// 여기서는 '텍스트 칸에 넣을 수 있는가'만 본다. 실제 직렬화는 buildConfig가 맡는다.
 function asText(v: unknown): string {
   if (typeof v === "string") return v;
   if (v === null || v === undefined) return "";
@@ -31,7 +31,7 @@ function inputType(kind: FieldKind): "text" | "password" | "number" {
 // ConfigField는 필드 정의에 맞는 컨트롤을 그린다.
 //
 // 여기서 신경 쓸 것은 마스킹된 필드 처리 하나뿐이다. 입력 칸에 마스킹 값 자체를 **보여 주지 않고**
-// 「저장됨」 안내 한 줄만 보여 준다. 그러면 화면의 규칙이 하나가 된다. 칸에 글자가 있으면 사용자가 입력한 것이고,
+// '저장됨' 안내 한 줄만 보여 준다. 그러면 화면의 규칙이 하나가 된다. 칸에 글자가 있으면 사용자가 입력한 것이고,
 // 빈 칸은 빈 값이다. "__masked__:…abc123"을 입력 칸에 넣으면 사용자는 직접 지워야 하는
 // 자리표시 텍스트로 여겨 오히려 자격 증명을 실수로 지우기 쉽다.
 export function ConfigField({

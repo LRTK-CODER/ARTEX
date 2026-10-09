@@ -42,10 +42,10 @@ function AgentGridCard({ agent, onOpen, onDeleted }: { agent: Agent; onOpen: () 
   async function del() {
     try {
       await api.deleteAgent(agent.key);
-      toast.success(`에이전트「${agent.name}」을(를) 삭제했습니다`);
+      toast.success(`에이전트 '${agent.name}'을(를) 삭제했습니다`);
       onDeleted();
     } catch (e) {
-      toast.error("삭제하지 못했습니다: " + (e as Error).message);
+      toast.error("에이전트를 삭제하지 못했습니다: " + (e as Error).message);
     }
   }
   return (
@@ -92,7 +92,7 @@ function AgentGridCard({ agent, onOpen, onDeleted }: { agent: Agent; onOpen: () 
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>에이전트「{agent.name}」을(를) 삭제할까요?</AlertDialogTitle>
+              <AlertDialogTitle>에이전트 '{agent.name}'을(를) 삭제할까요?</AlertDialogTitle>
               <AlertDialogDescription>
                 이 에이전트의 프롬프트, 변수, 공개 범위, 도구 연결도 함께 삭제합니다. 삭제는 되돌릴 수 없습니다.
               </AlertDialogDescription>
@@ -119,7 +119,7 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
     setBusy(true);
     try {
       const a = await api.createAgent(key.trim(), name.trim(), description.trim());
-      toast.success(`에이전트「${a.name}」을(를) 만들었습니다`);
+      toast.success(`에이전트 '${a.name}'을(를) 만들었습니다`);
       setOpen(false);
       setKey("");
       setName("");

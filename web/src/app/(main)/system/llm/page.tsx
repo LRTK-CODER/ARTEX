@@ -73,8 +73,8 @@ function cooldownText(secs: number) {
   return `${Math.ceil(secs / 60)}min`;
 }
 
-// 카드에 보여 줄 프로필의 「정상 여부」. 키가 없는 프로필은 요청을 아예 보낼 수 없으므로 차단보다 먼저 알린다.
-// 나머지 상태는 장애 조치의 회로 차단기 기록에서 온다(장애 조치가 꺼져 있으면 새 기록이 생기지 않으므로 그때 「정상」 = 알려진 장애 없음).
+// 카드에 보여 줄 프로필의 '정상 여부'. 키가 없는 프로필은 요청을 아예 보낼 수 없으므로 차단보다 먼저 알린다.
+// 나머지 상태는 장애 조치의 회로 차단기 기록에서 온다(장애 조치가 꺼져 있으면 새 기록이 생기지 않으므로 그때 '정상' = 알려진 장애 없음).
 type Health = { label: string; cls: string; hint?: string };
 function healthOf(p: LLMProfile, m?: LLMPoolMember): Health {
   // 구독 프로필은 키가 없으므로 키 대신 로그인 상태를 먼저 본다.
@@ -149,7 +149,7 @@ function PoolSheet({
         toast.success("대체 설정을 업데이트했습니다");
       }
     } catch (e) {
-      toast.error(`설정하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`장애 조치·대체 설정을 저장하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -161,13 +161,13 @@ function PoolSheet({
       await onReload();
       toast.success(id ? "이 프로필을 복구했습니다" : "모든 프로필을 복구했습니다");
     } catch (e) {
-      toast.error(`복구하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`프로필을 복구하지 못했습니다: ${(e as Error).message}`);
     }
   }
 
   const enabled = pool?.enabled ?? false;
   const chain = pool?.chain ?? [];
-  // 장애 조치에 참여하는 프로필(「장애 조치 제외」로 표시한 것은 뺀다). 순서는 백엔드가 실제로 시도하는 순서다.
+  // 장애 조치에 참여하는 프로필('장애 조치 제외'로 표시한 것은 뺀다). 순서는 백엔드가 실제로 시도하는 순서다.
   const inChain = chain.filter((m) => m.active || !m.excluded);
   const tripped = chain.filter((m) => m.state === "tripped");
 
@@ -408,7 +408,7 @@ function ProfileSheet({
         toast.error(`모델을 불러오지 못했습니다: ${r.error ?? "받은 모델이 없습니다"}`);
       }
     } catch (e) {
-      toast.error(`모델을 불러오다 오류가 났습니다: ${(e as Error).message}`);
+      toast.error(`모델 목록을 불러오지 못했습니다: ${(e as Error).message}`);
     } finally {
       setLoadingModels(false);
     }
@@ -438,9 +438,9 @@ function ProfileSheet({
         toast.success(`연결 성공 · ${r.latency_ms ?? "?"}ms · ${r.model ?? model}`, {
           description: r.reply ? `응답: ${r.reply}` : undefined,
         });
-      else toast.error(`연결하지 못했습니다: ${r.error ?? "알 수 없는 오류"}`);
+      else toast.error(`LLM에 연결하지 못했습니다: ${r.error ?? "알 수 없는 오류"}`);
     } catch (e) {
-      toast.error(`테스트하다 오류가 났습니다: ${(e as Error).message}`);
+      toast.error(`연결을 테스트하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setTesting(false);
     }
@@ -482,7 +482,7 @@ function ProfileSheet({
       const needsLogin = isOAuth && profile?.auth_type !== authType;
       if (needsLogin)
         toast.success(`저장했습니다: ${name.trim()}. 이제 ${isClaude ? "Claude" : "ChatGPT"}에 로그인하세요`);
-      else if (isNew) toast.success(`만들었습니다: ${name.trim()}(카드에서 「활성으로 설정」을 눌러 사용하세요)`);
+      else if (isNew) toast.success(`만들었습니다: ${name.trim()}(카드에서 '활성으로 설정'을 눌러 사용하세요)`);
       else
         toast.success(
           profile?.is_default ? "저장했습니다. 활성 프로필이라 재시작 없이 바로 적용됩니다" : "저장했습니다",
@@ -490,7 +490,7 @@ function ProfileSheet({
       onSaved(String(id), needsLogin);
       onOpenChange(false);
     } catch (e) {
-      toast.error(`저장하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`LLM 프로필을 저장하지 못했습니다: ${(e as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -513,7 +513,7 @@ function ProfileSheet({
           </SheetTitle>
           <SheetDescription>
             {isNew
-              ? "만든 뒤 자동으로 활성화되지 않습니다. 카드에서 「활성으로 설정」을 눌러 사용하세요."
+              ? "만든 뒤 자동으로 활성화되지 않습니다. 카드에서 '활성으로 설정'을 눌러 사용하세요."
               : "바꾼 뒤 저장을 누르세요. 활성 프로필은 저장하면 모든 에이전트에 바로 적용됩니다."}
           </SheetDescription>
         </SheetHeader>
@@ -718,8 +718,8 @@ function ProfileSheet({
               <div className="grid gap-0.5">
                 <Label className="text-sm">장애 조치 제외</Label>
                 <p className="text-muted-foreground text-xs">
-                  켜면 장애 조치 대상으로 쓰지 않습니다(에이전트 / 작업이 직접 지정하면 여전히 씁니다). 「특정 에이전트
-                  전용이라 다른 프로필이 실패했을 때 쓰이면 안 되는」 비싼 프로필에 알맞습니다.
+                  켜면 장애 조치 대상으로 쓰지 않습니다(에이전트 / 작업이 직접 지정하면 여전히 씁니다). '특정 에이전트
+                  전용이라 다른 프로필이 실패했을 때 쓰이면 안 되는' 비싼 프로필에 알맞습니다.
                 </p>
               </div>
               <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="장애 조치 제외" />
@@ -745,7 +745,7 @@ function ProfileSheet({
                 </Label>
                 <p className="text-muted-foreground text-xs">
                   응답 한 번에 만들 최대 토큰 수이며 요청마다 함께 보냅니다. 0(기본값) = 이 필드를 보내지 않고 서버
-                  기본값을 따릅니다. 위의 「컨텍스트 창」과는 다릅니다. 그것은 모델의 전체 용량이고 압축 임계값을 계산할
+                  기본값을 따릅니다. 위의 '컨텍스트 창'과는 다릅니다. 그것은 모델의 전체 용량이고 압축 임계값을 계산할
                   때 로컬에서만 씁니다. 너무 작게 잡으면 추론 모델이 사고 단계에서 잘려 답을 한 글자도 내지 못합니다.
                 </p>
               </div>
@@ -861,7 +861,7 @@ export default function LLMPage() {
   const [pool, setPool] = React.useState<LLMPoolStatus | null>(null);
   const [poolOpen, setPoolOpen] = React.useState(false);
   // 패널의 열림 상태와 내용을 따로 둔다. 닫을 때 editing을 그대로 두지 않으면 닫는 애니메이션 동안 제목이
-  // 「편집 X」에서 「새로 만들기」로 깜박인다. editing = null은 새로 만들기다.
+  // '편집 X'에서 '새로 만들기'로 깜박인다. editing = null은 새로 만들기다.
   const [editOpen, setEditOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<LLMProfile | null>(null);
   const openEditor = React.useCallback((p: LLMProfile | null) => {
@@ -917,7 +917,7 @@ export default function LLMPage() {
       toast.success(`활성으로 설정했습니다: ${name}`);
       await load();
     } catch (e) {
-      toast.error(`활성으로 설정하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`활성 프로필로 설정하지 못했습니다: ${(e as Error).message}`);
     }
   }
 
@@ -931,7 +931,7 @@ export default function LLMPage() {
       toast.success(`삭제했습니다: ${p.name}`);
       await load();
     } catch (e) {
-      toast.error(`삭제하지 못했습니다: ${(e as Error).message}`);
+      toast.error(`LLM 프로필을 삭제하지 못했습니다: ${(e as Error).message}`);
     }
   }
 
@@ -1063,7 +1063,7 @@ export default function LLMPage() {
             })}
             {profiles.length === 0 && (
               <div className="col-span-full rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
-                LLM 프로필이 아직 없습니다. 오른쪽 위의 「새로 만들기」를 눌러 첫 프로필을 만드세요.
+                LLM 프로필이 아직 없습니다. 오른쪽 위의 '새로 만들기'를 눌러 첫 프로필을 만드세요.
               </div>
             )}
           </div>

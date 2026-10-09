@@ -164,7 +164,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ---- LLM fallback judge card ----
 
-const FOLLOW_ACTIVE = "0"; // profile_id 0 = 현재 사용 중인 설정·기본 설정을 따름
+const FOLLOW_ACTIVE = "0"; // profile_id 0 = 활성 프로필을 따름
 
 const defaultJudge = (): JudgeConfig => ({
   enabled: false,
@@ -225,7 +225,7 @@ function JudgeCard() {
       toast.success("모델 승인 심사 설정을 저장했습니다");
       await load(); // 다시 읽는다: 프롬프트를 비웠으면 내장 템플릿이 다시 채워진다
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("모델 승인 심사 설정을 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -261,7 +261,7 @@ function JudgeCard() {
             <p className="text-xs text-muted-foreground mt-0.5">
               <span className="font-medium text-foreground">차단 범위</span> 안에 있고{" "}
               <span className="font-medium text-foreground">어떤 차단 규칙과도 일치하지 않은</span> 명령만 모델이 의미를
-              보고 판정합니다(허용 / 수동 승인 요청 / 차단)
+              보고 판정합니다(허용 / 승인 요청 / 차단)
             </p>
           </div>
         </div>
@@ -271,7 +271,7 @@ function JudgeCard() {
         </div>
       </div>
 
-      {/* 승인 심사 토큰 사용량 통계(전역 누적, 모델 설정별 통계와 별개) */}
+      {/* 승인 심사 토큰 사용량 통계(전역 누적, 프로필별 통계와 별개) */}
       {cfg.enabled && usage && (
         <Card>
           <CardContent className="p-4">
@@ -279,7 +279,7 @@ function JudgeCard() {
               <div>
                 <p className="text-sm font-medium">승인 심사 토큰 사용량</p>
                 <p className="text-xs text-muted-foreground">
-                  모델 승인 심사의 누적 사용량입니다. 따로 집계하며(worker=judge) 모델 설정별 통계와 섞지 않습니다
+                  모델 승인 심사의 누적 사용량입니다. 따로 집계하며(worker=judge) 프로필별 통계와 섞지 않습니다
                 </p>
               </div>
               <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={loadUsage}>
@@ -345,7 +345,7 @@ function JudgeCard() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={FOLLOW_ACTIVE}>현재 사용 중인 설정 따르기</SelectItem>
+                      <SelectItem value={FOLLOW_ACTIVE}>활성 프로필 따르기</SelectItem>
                       {profiles.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}({p.model})
@@ -375,7 +375,7 @@ function JudgeCard() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="allow">허용</SelectItem>
-                      <SelectItem value="ask">수동 승인 요청</SelectItem>
+                      <SelectItem value="ask">승인 요청</SelectItem>
                       <SelectItem value="deny">차단</SelectItem>
                     </SelectContent>
                   </Select>
@@ -386,7 +386,7 @@ function JudgeCard() {
 
               <div className="space-y-4">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  수동 승인(모델이 「수동 승인 요청」으로 판정했을 때)
+                  수동 승인(모델이 "승인 요청"으로 판정했을 때)
                 </p>
                 <Field label="승인 대기 시간 제한(초)">
                   <Input
@@ -608,7 +608,7 @@ export default function InterceptPage() {
       setScopeTools([...enabledTools]);
       setScopeOpen(false);
     } catch (e) {
-      toast.error("저장하지 못했습니다: " + (e as Error).message);
+      toast.error("승인 심사 대상 도구를 저장하지 못했습니다: " + (e as Error).message);
     } finally {
       setScopeSaving(false);
     }
@@ -669,7 +669,7 @@ export default function InterceptPage() {
       <Tabs defaultValue="rules" className="flex-1">
         <TabsList>
           <TabsTrigger value="rules">차단 규칙</TabsTrigger>
-          <TabsTrigger value="judge">모델 설정</TabsTrigger>
+          <TabsTrigger value="judge">모델 승인 심사</TabsTrigger>
         </TabsList>
 
         {/* ---- tab: 차단 규칙 ---- */}
@@ -761,7 +761,7 @@ export default function InterceptPage() {
           </Card>
         </TabsContent>
 
-        {/* ---- tab: 모델 설정 ---- */}
+        {/* ---- tab: 모델 승인 심사 ---- */}
         <TabsContent value="judge" className="mt-4">
           <JudgeCard />
         </TabsContent>

@@ -42,7 +42,7 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       key: "secret",
       label: "서명 키",
       kind: "password",
-      help: "봇 보안 설정에서 「서명」을 골랐을 때 입력하세요. 「사용자 지정 키워드」를 골랐거나 보안 설정을 켜지 않았으면 비워 두세요",
+      help: "봇 보안 설정에서 '서명'을 골랐을 때 입력하세요. '사용자 지정 키워드'를 골랐거나 보안 설정을 켜지 않았으면 비워 두세요",
     },
   ],
   feishu: [
@@ -56,7 +56,7 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       key: "secret",
       label: "서명 검증 키",
       kind: "password",
-      help: "봇에서 「서명 검증」을 켰을 때 입력하세요. 아니면 비워 두세요",
+      help: "봇에서 '서명 검증'을 켰을 때 입력하세요. 아니면 비워 두세요",
     },
   ],
   wecom: [
@@ -114,7 +114,7 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       label: "포트",
       kind: "number",
       placeholder: "587",
-      help: "587은 STARTTLS를 씁니다. 465는 「암시적 TLS」를 켜세요",
+      help: "587은 STARTTLS를 씁니다. 465는 '암시적 TLS'를 켜세요",
     },
     { key: "username", label: "계정", kind: "text" },
     { key: "password", label: "비밀번호 / 앱 비밀번호", kind: "password" },
@@ -167,7 +167,7 @@ export const emptyForm = (kind: string): ChannelForm => ({
   onStatusChange: false,
 });
 
-// parseKV는 「한 줄에 KEY=VALUE 하나」 형식의 텍스트 영역을 파싱한다.
+// parseKV는 '한 줄에 KEY=VALUE 하나' 형식의 텍스트 영역을 파싱한다.
 export function parseKV(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of text.split("\n")) {
