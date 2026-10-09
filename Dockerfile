@@ -5,27 +5,52 @@
 # 构建上下文的 dist/<TARGETARCH>/artex。这样多架构构建时 arm64 只需模拟 apt 层，
 # 不再模拟 Next/Go 编译，速度快得多。
 #
-# 本地手动构建镜像时，先自行准备二进制：
+# 로컬에서 이미지를 직접 빌드할 때는 바이너리를 먼저 만든다:
 #   cd web && npm run build:static && cd ..
-#   cp -r web/out server/webui/dist
+#   mkdir -p server/webui && cp -r web/out server/webui/dist
 #   CGO_ENABLED=0 GOARCH=amd64 go build -tags embedui -o dist/amd64/artex ./cmd/artex
 #   docker build -t artex:local .
+
+# Node는 공식 이미지에서 복사한다. 공식 이미지는 Node 릴리스 키로 서명을 검증한 tarball로
+# 만들어지고, 여기서는 태그와 digest를 함께 적어 빌드마다 같은 이미지를 쓴다.
+# Debian 패키지(bookworm은 18)는 Playwright 요구(>=20)에 맞지 않는다.
+FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
+
 FROM python:3.12-slim-bookworm
 ARG TARGETARCH
 # 常用工具：ripgrep / curl / vim，加一批 recon 常备件（按需增删）。
-# Node 从 NodeSource 装 20.x：bookworm 自带的 apt nodejs 是 18，Playwright 要求 >=20。
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
-# 预装 Playwright MCP 与 CLI（全局），运行时不再 npx 联网下载。
-# @playwright/mcp：browser MCP 直接 `npx @playwright/mcp`（已全局装好，无需 -y/@latest）。
-# @playwright/cli：提供 playwright-cli，装完顺带 --help 验证可执行。
-# 再装 playwright（提供浏览器管理），装完用 --with-deps 预置 chromium 及其系统依赖，
-# 这样容器内 MCP/CLI 首次启动即可用，不再联网下载浏览器。
-RUN npm install -g @playwright/mcp@latest @playwright/cli@latest playwright@latest \
+# 두 이미지 모두 Debian bookworm(glibc)이라 node 바이너리를 그대로 옮길 수 있다.
+# npm·npx는 실행 링크가 복사되지 않으므로 공식 이미지와 같은 상대 경로로 다시 만든다.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version && npx --version
+# Playwright MCP·CLI는 docker/playwright의 lockfile대로 npm ci로 설치한다.
+# npm ci는 lockfile의 integrity 해시를 검사하므로 빌드마다 같은 패키지가 들어온다.
+# 설치한 패키지와 실행 파일을 전역 위치(/usr/local/lib/node_modules, /usr/local/bin)에
+# 링크해 예전 `npm install -g`와 같은 자리에서 보이게 한다. 내장 browser MCP는
+# `npx @playwright/mcp`로 뜨는데, npx는 PATH가 아니라 전역 node_modules와 전역 bin을 본다.
+# 마지막 npx 실행은 동작 확인이면서, 그 패키지 메타데이터를 npm 캐시에 남겨
+# 레지스트리에 닿지 않는 컨테이너에서도 npx가 캐시로 해석하게 한다(예전 이미지와 같은 동작).
+# NODE_PATH: 어느 디렉터리에서든 require('playwright')가 된다.
+# 이어서 chromium과 그 시스템 의존 패키지를 미리 넣어 컨테이너 첫 실행에 받지 않게 한다.
+COPY docker/playwright/package.json docker/playwright/package-lock.json /opt/playwright/
+ENV NODE_PATH=/opt/playwright/node_modules
+RUN cd /opt/playwright && npm ci --omit=dev \
+    && mkdir -p /usr/local/lib/node_modules/@playwright \
+    && for pkg in @playwright/mcp @playwright/cli playwright; do \
+         ln -s "/opt/playwright/node_modules/$pkg" "/usr/local/lib/node_modules/$pkg"; \
+       done \
+    && for bin in playwright-mcp playwright-cli playwright; do \
+         ln -s "/opt/playwright/node_modules/.bin/$bin" "/usr/local/bin/$bin"; \
+       done \
+    && npm cache clean --force \
+    && cd / && npx --no-install @playwright/mcp --help >/dev/null \
     && playwright-cli --help \
     && playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
