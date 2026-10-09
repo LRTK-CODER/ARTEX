@@ -10,6 +10,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -78,10 +79,10 @@ type Config struct {
 	// Retry 是该配置解析后的重试参数(profile 覆盖 → 全局策略 → 内置默认,由
 	// server 侧解析)。三层的含义见 RetryConfig;零值 = 完全沿用内置默认。
 	Retry RetryConfig
-	// AuthType 이 db.AuthChatGPTOAuth 면 APIKey 대신 OAuthTokens 의 토큰으로 Codex 백엔드를 부른다.
+	// 구독 인증은 APIKey 대신 OAuthTokens로 제공자별 고정 백엔드를 부른다.
 	// 빈 값은 db.AuthAPIKey 다.
 	AuthType db.AuthType
-	// OAuthTokens 는 db.AuthChatGPTOAuth 일 때 필요하다. 다른 방식에서는 쓰지 않는다.
+	// OAuthTokens 는 ChatGPT·Claude 구독 인증일 때 필요하다.
 	OAuthTokens OAuthTokenSource
 }
 
@@ -283,10 +284,19 @@ func (c Config) NewProvider() (llm.Provider, error) {
 		if baseURL == "" {
 			baseURL = CodexBaseURL
 		}
+	case db.AuthClaudeOAuth:
+		if c.OAuthTokens == nil || c.Format != llm.FormatAnthropic {
+			return nil, errors.New("llm: Claude OAuth requires anthropic format and a token source")
+		}
+		tokens = c.OAuthTokens
+		apiKey = "claude-oauth"
+		if baseURL == "" {
+			baseURL = ClaudeBaseURL
+		}
 	default:
 		return nil, fmt.Errorf("llm: unknown auth type %q", c.AuthType)
 	}
-	client, err := quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey, tokens)
+	client, err := oauthHTTPClient(c.Proxy, c.SessionHeaderKey, tokens, c.AuthType)
 	if err != nil {
 		return nil, err
 	}
@@ -309,10 +319,18 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	lc.RetryInterval = c.Retry.ConnectInterval
 	lc.EmptyResponseRetries = c.Retry.EmptyAttempts
 	lc.EmptyResponseInterval = c.Retry.EmptyInterval
+	if c.AuthType == db.AuthClaudeOAuth {
+		// 구독 요청은 transport의 401 갱신 한 번 외에는 자동으로 다시 보내지 않는다.
+		lc.MaxRetries, lc.EmptyResponseRetries = -1, -1
+	}
 	if c.RatePerSecond > 0 || c.RatePerMinute > 0 {
 		lc.RateLimit = &llm.RateLimit{PerSecond: c.RatePerSecond, PerMinute: c.RatePerMinute}
 	}
-	return llm.NewProvider(lc)
+	p, err := llm.NewProvider(lc)
+	if err == nil && c.AuthType == db.AuthClaudeOAuth {
+		p = claudeProvider{Provider: p}
+	}
+	return p, err
 }
 
 // IsQuotaExhaustedMessage 는 잔액·결제·크레딧·쿼터·구독 한도가 소진됐다고 명시한 신호만
@@ -435,6 +453,10 @@ func requestBodySnapshot(req *http.Request) string {
 // base transport 와 quotaAwareTransport 사이에 oauthTransport 를 끼운다. quotaAwareTransport 가
 // 바깥이라 llmrec 캡처는 토큰을 싣기 전의 Norma 원본 본문을 보고, 헤더는 기록하지 않는다.
 func quotaAwareHTTPClient(proxy, sessionHeaderKey string, tokens OAuthTokenSource) (*http.Client, error) {
+	return oauthHTTPClient(proxy, sessionHeaderKey, tokens, db.AuthChatGPTOAuth)
+}
+
+func oauthHTTPClient(proxy, sessionHeaderKey string, tokens OAuthTokenSource, authType db.AuthType) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	proxy = strings.TrimSpace(proxy)
 	if proxy == "" {
@@ -455,9 +477,18 @@ func quotaAwareHTTPClient(proxy, sessionHeaderKey string, tokens OAuthTokenSourc
 	}
 	var base http.RoundTripper = transport
 	if tokens != nil {
-		base = oauthTransport{base: transport, tokens: tokens}
+		if authType == db.AuthClaudeOAuth {
+			base = claudeTransport{base: transport, tokens: tokens}
+		} else {
+			base = oauthTransport{base: transport, tokens: tokens}
+		}
 	}
-	return &http.Client{Transport: quotaAwareTransport{base: base, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey)}}, nil
+	client := &http.Client{Transport: quotaAwareTransport{base: base, sessionHeaderKey: strings.TrimSpace(sessionHeaderKey)}}
+	if tokens != nil {
+		// 구독 Bearer 토큰은 리다이렉트 대상에 전달하지 않는다.
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	return client, nil
 }
 
 // logTestConnection prints the raw HTTP status code(s) and response body of a

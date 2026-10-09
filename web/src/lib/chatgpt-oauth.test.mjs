@@ -50,6 +50,13 @@ test("missing or unknown codes fall back to the generic message", () => {
   }
 });
 
+test("Claude 오류는 제공자와 콜백 주소를 Claude에 맞춘다", () => {
+  assert.match(loginErrorMessage("not_oauth_profile", "claude"), /Claude/);
+  assert.match(loginErrorMessage("callback_url_mismatch", "claude"), /localhost:53692\/callback/);
+  assert.doesNotMatch(loginErrorMessage("callback_url_mismatch", "claude"), /1455/);
+  assert.equal(loginErrorMessage("unknown", "claude"), UNKNOWN_LOGIN_ERROR);
+});
+
 test("errorCode reads only string codes", () => {
   const withCode = Object.assign(new Error("서버 문구"), { code: "flow_expired" });
   assert.equal(errorCode(withCode), "flow_expired");

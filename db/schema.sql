@@ -453,14 +453,14 @@ ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_retry_check CHECK (
     retry_connect_attempts >= -1 AND retry_empty_attempts >= -1 AND retry_stream_attempts >= -1
     AND retry_connect_interval_ms >= 0 AND retry_empty_interval_ms >= 0 AND retry_stream_interval_ms >= 0);
 
--- 인증 방식: api_key(기본, 기존 동작) 또는 chatgpt_oauth(ChatGPT 구독 OAuth). 구 DB에도 채운다.
+-- 인증 방식: API 키·ChatGPT 구독·Claude 구독. 구 DB에도 채운다.
 -- format CHECK와 같이 매번 지우고 다시 만들어 멱등을 지킨다.
 ALTER TABLE llm_profiles ADD COLUMN IF NOT EXISTS auth_type TEXT NOT NULL DEFAULT 'api_key';
 ALTER TABLE llm_profiles DROP CONSTRAINT IF EXISTS llm_profiles_auth_type_check;
 ALTER TABLE llm_profiles ADD  CONSTRAINT llm_profiles_auth_type_check
-    CHECK (auth_type IN ('api_key','chatgpt_oauth'));
+    CHECK (auth_type IN ('api_key','chatgpt_oauth','claude_oauth'));
 
--- chatgpt_oauth 프로필의 토큰. access_token·refresh_token은 데이터 디렉터리 키 파일로
+-- 구독 OAuth 프로필의 토큰. access_token·refresh_token은 키 디렉터리의 oauth.key로
 -- 암호화한 암호문만 담는다(db/oauth_credentials.go). 프로필을 지우면 함께 지운다.
 CREATE TABLE IF NOT EXISTS llm_oauth_credentials (
     profile_id    BIGINT PRIMARY KEY REFERENCES llm_profiles(id) ON DELETE CASCADE,

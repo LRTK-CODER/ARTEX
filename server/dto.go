@@ -617,13 +617,13 @@ type LLMProfileDTO struct {
 	// 0=继承全局策略 | -1=关闭该层重试 | >0=次数；interval_ms: 0=用默认指数退避 |
 	// >0=改用该固定毫秒间隔。全 0 = 完全跟随全局，即历史行为。
 	Retry db.RetryOverride `json:"retry"`
-	// AuthType 은 api_key 또는 chatgpt_oauth 다.
+	// AuthType은 API 키·ChatGPT 구독·Claude 구독 인증 방식이다.
 	AuthType db.AuthType `json:"auth_type"`
-	// OAuth 는 chatgpt_oauth 프로필의 연결 상태다. 다른 방식이면 빠진다. 토큰은 싣지 않는다.
+	// OAuth는 구독 프로필의 연결 상태다. API 키 방식이면 빠진다. 토큰은 싣지 않는다.
 	OAuth *LLMProfileOAuthDTO `json:"oauth,omitempty"`
 }
 
-// LLMProfileOAuthDTO 는 화면에 보일 ChatGPT 구독 연결 상태다.
+// LLMProfileOAuthDTO는 화면에 보일 구독 연결 상태다.
 type LLMProfileOAuthDTO struct {
 	Connected bool      `json:"connected"`
 	ExpiresAt time.Time `json:"expires_at,omitzero"`

@@ -67,7 +67,7 @@ type LLMProfile struct {
 	Retry RetryOverride `json:"retry"`
 	// AuthType 은 요청을 어떻게 인증할지 정한다. 빈 값은 저장할 때 AuthAPIKey 로 본다.
 	AuthType AuthType `json:"auth_type"`
-	// OAuth 는 chatgpt_oauth 프로필의 연결 상태다. ListProfiles 만 채운다.
+	// OAuth 는 구독 프로필의 연결 상태다. ListProfiles 만 채운다.
 	// 토큰은 싣지 않는다. 토큰은 OAuthCredentials 로만 읽는다.
 	OAuth *OAuthStatus `json:"oauth,omitempty"`
 }
@@ -80,7 +80,12 @@ const (
 	AuthAPIKey AuthType = "api_key"
 	// AuthChatGPTOAuth 는 llm_oauth_credentials 의 ChatGPT 구독 OAuth 토큰으로 인증한다.
 	AuthChatGPTOAuth AuthType = "chatgpt_oauth"
+	// AuthClaudeOAuth 는 Claude 구독 계정의 OAuth 토큰으로 인증한다.
+	AuthClaudeOAuth AuthType = "claude_oauth"
 )
+
+// IsOAuth 는 API 키 대신 암호화된 구독 자격 증명이 필요한 인증 방식인지 알려 준다.
+func (a AuthType) IsOAuth() bool { return a == AuthChatGPTOAuth || a == AuthClaudeOAuth }
 
 // OAuthStatus 는 목록·UI에 보이는 OAuth 연결 상태다. 토큰을 담지 않는다.
 type OAuthStatus struct {
@@ -119,7 +124,7 @@ func scanProfile(sc interface{ Scan(...any) error }, into *string, p *LLMProfile
 	return sc.Scan(append(dests, extra...)...)
 }
 
-// ListProfiles 는 키 없이 힌트만 담은 프로필 목록을 돌려준다. chatgpt_oauth 프로필에는
+// ListProfiles 는 키 없이 힌트만 담은 프로필 목록을 돌려준다. 구독 OAuth 프로필에는
 // 연결 여부·만료 시각·플랜(OAuth)을 채운다. 토큰 열은 읽지 않는다.
 func (d *DB) ListProfiles() ([]*LLMProfile, error) {
 	rows, err := d.Query(`SELECT ` + profileCols + `,c.expires_at,COALESCE(c.plan_type,'')
@@ -137,7 +142,7 @@ ORDER BY llm_profiles.id`)
 		if err := scanProfile(rows, &p.APIKeyHint, &p, &expiresAt, &planType); err != nil {
 			return nil, err
 		}
-		if p.AuthType == AuthChatGPTOAuth {
+		if p.AuthType.IsOAuth() {
 			p.OAuth = &OAuthStatus{Connected: expiresAt.Valid, ExpiresAt: expiresAt.Time, PlanType: planType}
 		}
 		out = append(out, &p)
@@ -175,7 +180,7 @@ func (d *DB) ProfileByID(id int64) (*LLMProfile, error) {
 func (d *DB) PoolProfiles() ([]*LLMProfile, error) {
 	rows, err := d.Query(`SELECT ` + profileColsKey + ` FROM llm_profiles
 WHERE (COALESCE(api_key,'') <> ''
-       OR (auth_type='chatgpt_oauth' AND EXISTS (SELECT 1 FROM llm_oauth_credentials c WHERE c.profile_id=llm_profiles.id)))
+       OR (auth_type IN ('chatgpt_oauth','claude_oauth') AND EXISTS (SELECT 1 FROM llm_oauth_credentials c WHERE c.profile_id=llm_profiles.id)))
   AND (is_default OR NOT pool_exclude)
 ORDER BY is_default DESC, priority DESC, id ASC`)
 	if err != nil {
@@ -195,9 +200,38 @@ ORDER BY is_default DESC, priority DESC, id ASC`)
 
 // SaveProfile inserts (id==0) or updates a profile. Empty apiKey on update keeps existing.
 // 빈 AuthType 은 새로 만들 때 AuthAPIKey 이고, 수정할 때는 기존 값을 지킨다.
-// 저장 뒤의 인증 방식이 chatgpt_oauth 면 API 키와 힌트를 같은 문장에서 NULL 로 둔다. 쓰지 않을 비밀값을
+// 저장 뒤의 인증 방식이 구독 OAuth면 API 키와 힌트를 같은 문장에서 NULL 로 둔다. 쓰지 않을 비밀값을
 // 남기지 않으려는 것이고, 따로 지우면 저장과 지우기 사이에 실패해 키가 남을 수 있다.
 func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {
+	tx, err := d.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback() // 커밋 뒤에는 아무 일도 하지 않는다.
+	if p.ID != 0 && p.AuthType != "" {
+		var previous AuthType
+		err := tx.QueryRow(`SELECT auth_type FROM llm_profiles WHERE id=$1 FOR UPDATE`, p.ID).Scan(&previous)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+		if previous != "" && previous != p.AuthType {
+			// 제공자를 바꾼 프로필이 다른 제공자의 토큰으로 연결된 것으로 보이지 않게 한다.
+			if _, err := tx.Exec(`DELETE FROM llm_oauth_credentials WHERE profile_id=$1`, p.ID); err != nil {
+				return 0, err
+			}
+		}
+	}
+	id, err := saveProfile(tx, p)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func saveProfile(tx *sql.Tx, p *LLMProfile) (int64, error) {
 	hint := p.APIKeyHint
 	if len(p.APIKey) >= 4 {
 		hint = "…" + p.APIKey[len(p.APIKey)-4:]
@@ -209,29 +243,29 @@ func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {
 			authType = AuthAPIKey
 		}
 		var id int64
-		err := d.QueryRow(`INSERT INTO llm_profiles(name,format,base_url,proxy,model,api_key,api_key_hint,rate_per_second,rate_per_minute,context_window_k,reasoning_effort,priority,pool_exclude,thinking_type,streaming,max_tokens,max_tokens_field,session_header_key,retry_connect_attempts,retry_connect_interval_ms,retry_empty_attempts,retry_empty_interval_ms,retry_stream_attempts,retry_stream_interval_ms,auth_type)
+		err := tx.QueryRow(`INSERT INTO llm_profiles(name,format,base_url,proxy,model,api_key,api_key_hint,rate_per_second,rate_per_minute,context_window_k,reasoning_effort,priority,pool_exclude,thinking_type,streaming,max_tokens,max_tokens_field,session_header_key,retry_connect_attempts,retry_connect_interval_ms,retry_empty_attempts,retry_empty_interval_ms,retry_stream_attempts,retry_stream_interval_ms,auth_type)
 VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),$5,`+keyUnlessOAuth("$25", "NULLIF($6,'')")+`,`+keyUnlessOAuth("$25", "NULLIF($7,'')")+`,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING id`,
 			p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.APIKey, hint, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
 			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, authType).Scan(&id)
 		return id, err
 	}
 	if p.APIKey == "" {
-		_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,rate_per_second=$6,rate_per_minute=$7,context_window_k=$8,reasoning_effort=$9,priority=$10,pool_exclude=$11,thinking_type=$12,streaming=$13,max_tokens=$14,max_tokens_field=$15,session_header_key=$16,retry_connect_attempts=$17,retry_connect_interval_ms=$18,retry_empty_attempts=$19,retry_empty_interval_ms=$20,retry_stream_attempts=$21,retry_stream_interval_ms=$22,auth_type=COALESCE(NULLIF($23,''),auth_type),
+		_, err := tx.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,rate_per_second=$6,rate_per_minute=$7,context_window_k=$8,reasoning_effort=$9,priority=$10,pool_exclude=$11,thinking_type=$12,streaming=$13,max_tokens=$14,max_tokens_field=$15,session_header_key=$16,retry_connect_attempts=$17,retry_connect_interval_ms=$18,retry_empty_attempts=$19,retry_empty_interval_ms=$20,retry_stream_attempts=$21,retry_stream_interval_ms=$22,auth_type=COALESCE(NULLIF($23,''),auth_type),
 api_key=`+keyUnlessOAuth("COALESCE(NULLIF($23,''),auth_type)", "api_key")+`,api_key_hint=`+keyUnlessOAuth("COALESCE(NULLIF($23,''),auth_type)", "api_key_hint")+` WHERE id=$24`,
 			p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
 			r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, string(p.AuthType), p.ID)
 		return p.ID, err
 	}
-	_, err := d.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,api_key=`+keyUnlessOAuth("COALESCE(NULLIF($25,''),auth_type)", "$6")+`,api_key_hint=`+keyUnlessOAuth("COALESCE(NULLIF($25,''),auth_type)", "$7")+`,rate_per_second=$8,rate_per_minute=$9,context_window_k=$10,reasoning_effort=$11,priority=$12,pool_exclude=$13,thinking_type=$14,streaming=$15,max_tokens=$16,max_tokens_field=$17,session_header_key=$18,retry_connect_attempts=$19,retry_connect_interval_ms=$20,retry_empty_attempts=$21,retry_empty_interval_ms=$22,retry_stream_attempts=$23,retry_stream_interval_ms=$24,auth_type=COALESCE(NULLIF($25,''),auth_type) WHERE id=$26`,
+	_, err := tx.Exec(`UPDATE llm_profiles SET name=$1,format=$2,base_url=NULLIF($3,''),proxy=NULLIF($4,''),model=$5,api_key=`+keyUnlessOAuth("COALESCE(NULLIF($25,''),auth_type)", "$6")+`,api_key_hint=`+keyUnlessOAuth("COALESCE(NULLIF($25,''),auth_type)", "$7")+`,rate_per_second=$8,rate_per_minute=$9,context_window_k=$10,reasoning_effort=$11,priority=$12,pool_exclude=$13,thinking_type=$14,streaming=$15,max_tokens=$16,max_tokens_field=$17,session_header_key=$18,retry_connect_attempts=$19,retry_connect_interval_ms=$20,retry_empty_attempts=$21,retry_empty_interval_ms=$22,retry_stream_attempts=$23,retry_stream_interval_ms=$24,auth_type=COALESCE(NULLIF($25,''),auth_type) WHERE id=$26`,
 		p.Name, p.Format, p.BaseURL, p.Proxy, p.Model, p.APIKey, hint, p.RatePerSecond, p.RatePerMinute, p.ContextWindowK, p.ReasoningEffort, p.Priority, p.PoolExclude, p.ThinkingType, p.Streaming, p.MaxTokens, p.MaxTokensField, p.SessionHeaderKey,
 		r.Connect.Attempts, r.Connect.IntervalMS, r.Empty.Attempts, r.Empty.IntervalMS, r.Stream.Attempts, r.Stream.IntervalMS, string(p.AuthType), p.ID)
 	return p.ID, err
 }
 
-// keyUnlessOAuth 는 인증 방식 식 authExpr 이 chatgpt_oauth 면 NULL, 아니면 value 인 SQL 식이다.
+// keyUnlessOAuth 는 구독 인증이면 API 키를 NULL로 지우는 SQL 식이다.
 // UPDATE 의 SET 식은 바뀌기 전 행을 보므로 authExpr 에 저장 뒤의 값을 계산하는 식을 넘긴다.
 func keyUnlessOAuth(authExpr, value string) string {
-	return "CASE WHEN " + authExpr + "='" + string(AuthChatGPTOAuth) + "' THEN NULL ELSE " + value + " END"
+	return "CASE WHEN " + authExpr + " IN ('chatgpt_oauth','claude_oauth') THEN NULL ELSE " + value + " END"
 }
 
 var (

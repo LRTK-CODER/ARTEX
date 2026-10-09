@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # 태그와 공식 이미지의 멀티 아키텍처 인덱스 digest를 함께 적어 같은 이미지를 받는다. 갱신은 Dependabot이 한다.
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-artex}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}

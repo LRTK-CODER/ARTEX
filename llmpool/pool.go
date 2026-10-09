@@ -96,6 +96,9 @@ func (p *Pool) Stream(ctx context.Context, req llm.CompletionRequest) iter.Seq2[
 					return // caller stopped consuming (cancel / early exit)
 				}
 				if err != nil {
+					if noReplay(err) {
+						p.health.Trip(m.ID, trimErr(err), isHardFailure(err))
+					}
 					return // terminal error already handed to the caller
 				}
 			}
@@ -139,7 +142,11 @@ func (p *Pool) Complete(ctx context.Context, req llm.CompletionRequest) (llm.Mes
 		if !shouldFailover(ctx, err) {
 			// Non-failover error (e.g. ctx cancel, deterministic 4xx): surface as-is
 			// without tripping health, matching Stream's non-failover path.
-			p.health.Pass(m.ID)
+			if noReplay(err) {
+				p.health.Trip(m.ID, trimErr(err), isHardFailure(err))
+			} else {
+				p.health.Pass(m.ID)
+			}
 			return llm.Message{}, "", llm.Usage{}, err
 		}
 		lastErr = err
@@ -229,7 +236,7 @@ func statusOf(err error) int {
 // pollute the run's termination diagnosis. Never on 400 either: a malformed or
 // over-long request fails identically everywhere.
 func shouldFailover(ctx context.Context, err error) bool {
-	if err == nil {
+	if err == nil || noReplay(err) {
 		return false
 	}
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -246,6 +253,12 @@ func shouldFailover(ctx context.Context, err error) bool {
 		return true
 	}
 	return false
+}
+
+// noReplay 는 제공자별 재전송 금지 정책을 좁은 오류 인터페이스로 받아 의존 방향을 지킨다.
+func noReplay(err error) bool {
+	var policy interface{ NoReplay() bool }
+	return errors.As(err, &policy) && policy.NoReplay()
 }
 
 // isHardFailure reports whether the failure is deterministic (the profile will

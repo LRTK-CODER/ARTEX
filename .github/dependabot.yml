@@ -44,6 +44,7 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "/web"
+      - "/docker/playwright"
       - "/skills/api-recon/scripts"
     schedule:
       interval: "weekly"

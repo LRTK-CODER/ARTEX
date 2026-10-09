@@ -109,6 +109,9 @@ type loginFlow struct {
 	expiresAt time.Time
 	pkce      llmauth.PKCE
 	state     string
+	// owner 는 Claude 흐름을 시작한 웹 세션의 해시이며 토큰 원문은 보관하지 않는다.
+	owner        [32]byte
+	isCompleting bool
 
 	status  deviceLoginStatus
 	errCode loginErrorCode
@@ -516,16 +519,20 @@ func (s *Server) disconnectChatGPT(w http.ResponseWriter, r *http.Request) {
 // saveChatGPTLogin 은 로그인으로 받은 토큰과 플랜을 저장한다. 요청이 끊겨도 저장이 끝나게
 // 서버 수명 ctx 로 저장한다.
 func (s *Server) saveChatGPTLogin(profileID int64, tokens llmauth.Tokens) error {
+	return s.saveSubscriptionLogin(profileID, db.AuthChatGPTOAuth, tokens)
+}
+
+func (s *Server) saveSubscriptionLogin(profileID int64, authType db.AuthType, tokens llmauth.Tokens) error {
 	ctx, cancel := context.WithTimeout(s.ctxOrBackground(), loginSaveTimeout)
 	defer cancel()
-	err := s.m.pg.SaveOAuthCredentials(ctx, s.oauth.cipher, db.OAuthCredentials{
+	err := s.m.pg.SaveOAuthCredentialsForAuth(ctx, s.oauth.cipher, db.OAuthCredentials{
 		ProfileID:    profileID,
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
 		ExpiresAt:    tokens.ExpiresAt,
 		AccountID:    tokens.AccountID,
 		PlanType:     tokens.PlanType,
-	})
+	}, authType)
 	if err != nil {
 		return err
 	}
