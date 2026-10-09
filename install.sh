@@ -12,24 +12,14 @@ rand(){ head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24; }
 # shellcheck source=docker-keys.sh
 . ./docker-keys.sh
 
-# ── docker 环境检测 / 自动安装 ───────────────────
+# ── docker 환경 확인 ───────────────────
+# Docker는 설치하지 않는다. 내려받은 스크립트를 root로 실행하면 검사 없이 패키지 저장소가 등록되므로
+# 사용자가 공식 문서대로 직접 설치하게 한다.
 ensure_docker(){
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    ok "已检测到 docker 与 docker compose"; return
+    ok "docker와 docker compose를 찾았다"; return
   fi
-  warn "未检测到 docker / docker compose"
-  case "$(uname -s)" in
-    Linux)
-      if [ "$(ask '自动安装 Docker? (y/n)' y)" = y ]; then
-        curl -fsSL https://get.docker.com | sh
-        sudo usermod -aG docker "$USER" || true
-        ok "Docker 安装完成（用户组变更需重新登录后免 sudo）"
-      else
-        die "请自行安装 docker 后重试"
-      fi ;;
-    Darwin) die "macOS 请安装 Docker Desktop：https://www.docker.com/products/docker-desktop/" ;;
-    *)      die "请自行安装 docker 后重试" ;;
-  esac
+  die "docker / docker compose가 없다. 공식 문서대로 설치한 뒤 다시 실행한다: https://docs.docker.com/engine/install/ (macOS·Windows는 Docker Desktop)"
 }
 
 # ── ① 全部 Docker ───────────────────────────────
