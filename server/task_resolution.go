@@ -19,7 +19,7 @@ type taskLLMResolution struct {
 
 func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMResolution {
 	if p == nil {
-		return taskLLMResolution{Source: source, Reason: "LLM 配置不存在"}
+		return taskLLMResolution{Source: source, Reason: "LLM 프로필이 없습니다"}
 	}
 	id := p.ID
 	result := taskLLMResolution{
@@ -37,12 +37,12 @@ func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMR
 		} else if p.AuthType == db.AuthClaudeOAuth {
 			result.Reason = claudeLoginRequiredMessage
 		} else {
-			result.Reason = "LLM 配置未设置 API Key"
+			result.Reason = "LLM 프로필에 API 키가 설정되지 않았습니다"
 		}
 		return result
 	}
 	if _, _, ok := s.providerForProfile(p.ID); !ok {
-		result.Reason = "LLM 配置格式或参数无效"
+		result.Reason = "LLM 프로필의 형식이나 파라미터가 잘못됐습니다"
 		return result
 	}
 	result.Available = true
@@ -75,7 +75,7 @@ func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution
 	state := t.llmStateSnapshot()
 	if len(state.ProfileIDs) > 0 {
 		if state.ActiveID == nil {
-			return taskLLMResolution{Source: "task_chain", Reason: "任务 LLM 配置链额度已耗尽"}, nil
+			return taskLLMResolution{Source: "task_chain", Reason: "작업 LLM 프로필 체인의 사용 한도를 모두 썼습니다"}, nil
 		}
 		p, err := s.m.pg.ProfileByID(*state.ActiveID)
 		if err != nil {
@@ -98,14 +98,14 @@ func (s *Server) resolveTaskRoleLLM(t *Task, agentKey string) (taskLLMResolution
 	s.cfgMu.Unlock()
 	if on {
 		if name == "" {
-			name = "全局配置"
+			name = "전역 설정"
 		}
 		return taskLLMResolution{
 			Name: name, Format: cfg.Provider(), Model: cfg.Model,
 			Source: "environment", Available: true,
 		}, nil
 	}
-	return taskLLMResolution{Source: "global", Reason: "没有可用的 LLM 配置"}, nil
+	return taskLLMResolution{Source: "global", Reason: "사용 가능한 LLM 프로필이 없습니다"}, nil
 }
 
 func (s *Server) taskLLMResolutionHandler(w http.ResponseWriter, r *http.Request) {

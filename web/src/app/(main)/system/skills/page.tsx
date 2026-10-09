@@ -417,8 +417,8 @@ export default function SkillsPage() {
       load();
     } catch (e) {
       const msg = (e as Error).message;
-      // offer overwrite when the skill already exists
-      if (!overwrite && msg.includes("已存在")) {
+      // 같은 이름의 스킬이 이미 있으면 덮어쓰기를 제안한다
+      if (!overwrite && msg.includes("이미 있습니다")) {
         if (window.confirm(`${msg}\n\n같은 이름의 스킬을 덮어쓸까요?`)) {
           await uploadZip(file, true);
           return;
