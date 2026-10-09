@@ -59,7 +59,7 @@ func TestDoJSONClassifiesHTTPStatus(t *testing.T) {
 			}
 			if got := IsPermanent(err); got != tc.permanent {
 				t.Fatalf("HTTP %d의 permanent 판정 오류: permanent = %v, 기대값 %v (%v)",
-					tc.status, tc.permanent, got, err)
+					tc.status, got, tc.permanent, err)
 			}
 			// 상태 코드가 오류에 나와야 한다. 그러지 않으면 사용자가 자기가 잘못 설정했는지 상대가 죽었는지 판단할 수 없다.
 			// Go의 영어 StatusText가 아니라 숫자를 단언한다. 이 패키지의 문구는 한국어이고
