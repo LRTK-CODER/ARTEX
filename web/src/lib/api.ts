@@ -1197,8 +1197,8 @@ export const api = {
     mcps?: string[];
     instructions?: string;
   }) => post<{ name: string }>("/skills", s),
-  // uploadSkill installs a skill from a .zip (multipart). Surfaces the backend
-  // error text (e.g. 已存在 / 缺少 SKILL.md) so the UI can show a precise message.
+  // uploadSkill은 .zip(multipart)으로 스킬을 설치한다. 백엔드 오류 문구(예: '압축 파일에 SKILL.md가
+  // 없습니다')를 그대로 올려 화면이 정확한 메시지를 보이게 한다.
   uploadSkill: async (file: File, overwrite = false): Promise<{ name: string; files: number }> => {
     if (MOCK) return { name: file.name.replace(/\.zip$/i, ""), files: 1 };
     const fd = new FormData();
