@@ -144,8 +144,8 @@ function fmtBytes(n: number): string {
 }
 
 // UPLOAD_MARKER labels the auto-appended block of uploaded-file paths inside the task
+// description, so re-uploads append under the same block instead of adding a new header.
 const UPLOAD_MARKER = "【업로드한 파일(절대 경로)】";
-const UPLOAD_MARKER = "'업로드한 파일(절대 경로)'";
 
 // appendUploads folds newly-uploaded files' ABSOLUTE paths into the description as a
 // Read/Bash-friendly manifest — the worker opens them by path. Keeps one marked block:
@@ -592,7 +592,9 @@ export default function TasksPage() {
         lastRef.current = "";
         load();
       } catch (error) {
-        toast.error(`${pinned ? "작업 상단 고정을 해제" : "작업을 상단에 고정"}하지 못했습니다: ${(error as Error).message}`);
+        toast.error(
+          `${pinned ? "작업 상단 고정을 해제" : "작업을 상단에 고정"}하지 못했습니다: ${(error as Error).message}`,
+        );
         throw error;
       }
     },
@@ -738,7 +740,9 @@ export default function TasksPage() {
         lastRef.current = "";
         load();
       } catch (error) {
-        toast.error(`작업을 일괄 ${action === "pause" ? "일시 중지" : "재개"}하지 못했습니다: ${(error as Error).message}`);
+        toast.error(
+          `작업을 일괄 ${action === "pause" ? "일시 중지" : "재개"}하지 못했습니다: ${(error as Error).message}`,
+        );
       } finally {
         setBatchControlling(null);
       }

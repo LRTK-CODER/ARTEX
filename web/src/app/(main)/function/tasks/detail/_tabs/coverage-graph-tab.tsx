@@ -685,8 +685,8 @@ function GraphInner({ taskId, coverageEnabled = true }: { taskId: string; covera
           </span>
         </div>
         <p className="text-muted-foreground/80 border-border/60 border-t pt-2 leading-relaxed">
-          포스 기반(force-directed) 배치입니다. 노드를 드래그하고 휠로 확대·축소할 수 있습니다. 회색 '⋯'는 접힌
-          노드이며 클릭하면 더 펼칩니다.
+          포스 기반(force-directed) 배치입니다. 노드를 드래그하고 휠로 확대·축소할 수 있습니다. 회색 '⋯'는 접힌 노드이며
+          클릭하면 더 펼칩니다.
         </p>
       </div>
 
