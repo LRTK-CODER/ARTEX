@@ -34,18 +34,18 @@ func newWorkspaceFixture(t *testing.T) workspaceFixture {
 	t.Helper()
 	tmp := t.TempDir()
 	outside := filepath.Join(tmp, "outside")
-	real := filepath.Join(tmp, "real")
+	realDir := filepath.Join(tmp, "real")
 	data := filepath.Join(tmp, "data")
 	mustMkdir(t, outside)
-	mustMkdir(t, filepath.Join(real, "sub"))
+	mustMkdir(t, filepath.Join(realDir, "sub"))
 	mustWrite(t, filepath.Join(outside, "secret.txt"), workspaceTestSecret)
-	mustWrite(t, filepath.Join(real, "sub", "ok.txt"), "inside")
-	mustSymlink(t, outside, filepath.Join(real, "out"))
-	mustSymlink(t, filepath.Join(real, "sub"), filepath.Join(real, "in"))
-	mustSymlink(t, filepath.Join(real, "out"), filepath.Join(real, "nested"))
-	mustSymlink(t, filepath.Join(outside, "none"), filepath.Join(real, "dangling"))
-	mustSymlink(t, real, data)
-	return workspaceFixture{server: &Server{m: &Manager{dir: data}}, outside: outside, real: real}
+	mustWrite(t, filepath.Join(realDir, "sub", "ok.txt"), "inside")
+	mustSymlink(t, outside, filepath.Join(realDir, "out"))
+	mustSymlink(t, filepath.Join(realDir, "sub"), filepath.Join(realDir, "in"))
+	mustSymlink(t, filepath.Join(realDir, "out"), filepath.Join(realDir, "nested"))
+	mustSymlink(t, filepath.Join(outside, "none"), filepath.Join(realDir, "dangling"))
+	mustSymlink(t, realDir, data)
+	return workspaceFixture{server: &Server{m: &Manager{dir: data}}, outside: outside, real: realDir}
 }
 
 func mustMkdir(t *testing.T, dir string) {
@@ -134,6 +134,10 @@ func TestWorkspaceWriteRoutesConfinedAfterSymlinks(t *testing.T) {
 		mustNotExist string
 		// mustExist 는 요청 뒤에도 남아 있어야 하는 작업 공간 밖 경로(outside 기준)다.
 		mustExist string
+		// goneInside 는 요청 뒤에 없어야 하는 작업 공간 안 경로(real 기준)다.
+		goneInside string
+		// keptInside 는 요청 뒤에도 남아 있어야 하는 작업 공간 안 경로(real 기준)다.
+		keptInside string
 	}{
 		{
 			name: "쓰기: 밖을 가리키는 링크 아래 새 파일",
@@ -169,6 +173,20 @@ func TestWorkspaceWriteRoutesConfinedAfterSymlinks(t *testing.T) {
 				return f.server.wsDelete, workspaceQuery(http.MethodDelete, "/api/workspace/delete", "out/secret.txt")
 			},
 			wantStatus: http.StatusBadRequest, mustExist: "secret.txt",
+		},
+		{
+			name: "삭제: 밖을 가리키는 링크 자체",
+			request: func(f workspaceFixture) (http.HandlerFunc, *http.Request) {
+				return f.server.wsDelete, workspaceQuery(http.MethodDelete, "/api/workspace/delete", "out")
+			},
+			wantStatus: http.StatusOK, mustExist: "secret.txt", goneInside: "out",
+		},
+		{
+			name: "삭제: 안을 가리키는 링크 자체",
+			request: func(f workspaceFixture) (http.HandlerFunc, *http.Request) {
+				return f.server.wsDelete, workspaceQuery(http.MethodDelete, "/api/workspace/delete", "in")
+			},
+			wantStatus: http.StatusOK, goneInside: "in", keptInside: "sub/ok.txt",
 		},
 		{
 			name: "올리기: 밖을 가리키는 링크 디렉터리",
@@ -215,6 +233,16 @@ func TestWorkspaceWriteRoutesConfinedAfterSymlinks(t *testing.T) {
 			if tc.mustExist != "" {
 				if _, err := os.Lstat(filepath.Join(f.outside, tc.mustExist)); err != nil {
 					t.Fatalf("작업 공간 밖 %s 가 사라졌다: %v", tc.mustExist, err)
+				}
+			}
+			if tc.goneInside != "" {
+				if _, err := os.Lstat(filepath.Join(f.real, tc.goneInside)); err == nil {
+					t.Fatalf("작업 공간 안 %s 가 남아 있다", tc.goneInside)
+				}
+			}
+			if tc.keptInside != "" {
+				if _, err := os.Lstat(filepath.Join(f.real, tc.keptInside)); err != nil {
+					t.Fatalf("작업 공간 안 %s 가 사라졌다: %v", tc.keptInside, err)
 				}
 			}
 		})
