@@ -1038,6 +1038,13 @@ export const api = {
   disconnectChatGPT: (profile_id: number) =>
     post<{ connected: boolean }>("/llm/oauth/chatgpt/disconnect", { profile_id }),
 
+  // Claude 구독은 콜백 주소 또는 code#state 붙여 넣기로 완료한다.
+  startClaudeLogin: (profile_id: number) => post<ChatGPTLoginStart>("/llm/oauth/claude/start", { profile_id }),
+  completeClaudeLogin: (profile_id: number, flow_id: string, callback_url: string) =>
+    post<{ connected: boolean }>("/llm/oauth/claude/complete", { profile_id, flow_id, callback_url }),
+  disconnectClaude: (profile_id: number) =>
+    post<{ connected: boolean }>("/llm/oauth/claude/disconnect", { profile_id }),
+
   // ---- agents ----
   agents: () => get<{ agents: Agent[] }>("/agents").then((r) => arr(r.agents)),
   getAgent: (key: string) => get<AgentDetail>(`/agents/${key}`),

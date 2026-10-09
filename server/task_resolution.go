@@ -34,6 +34,8 @@ func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMR
 	if _, ok := s.profileConfig(p); !ok {
 		if p.AuthType == db.AuthChatGPTOAuth {
 			result.Reason = chatGPTLoginRequiredMessage
+		} else if p.AuthType == db.AuthClaudeOAuth {
+			result.Reason = claudeLoginRequiredMessage
 		} else {
 			result.Reason = "LLM 配置未设置 API Key"
 		}

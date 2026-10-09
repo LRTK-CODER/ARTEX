@@ -87,11 +87,10 @@ python3 -m unittest discover -s .claude/hooks/tests   # .claude hook·스크립�
 
 - 데이터베이스는 PostgreSQL이 필요하다. 연결은 `config.json`의 `database`나 환경 변수 `ARTEX_PG_DSN`으로 준다(`ARTEX_PG_DSN`이 우선). `config.json`에는 `database`와 `skill_dir`만 있고, 그 밖의 설정은 환경 변수나 앱 안 설정으로 받는다. 예시는 `config.example.json`.
 - 탐색에는 LLM이 필요하다. 키는 환경 변수 `ANTHROPIC_API_KEY`·`OPENAI_API_KEY`(또는 `ARTEX_LLM_*`)로 주거나 UI에서 설정한다. Docker 배포 변수 예시는 `.env.example`.
-- 서버 키(`jwt.key`, `oauth.key`)는 환경 변수 `ARTEX_KEY_DIR`의 디렉터리에 둔다. 없으면 실행 파일 옆 디렉터리다. 작업 공간(`-data`)과 같거나 그 안이면 서버가 시작하지 않는다. Docker는 `./keys:/app/keys` 볼륨에 둔다. 잃으면 웹 세션과 ChatGPT 구독 로그인이 풀리므로 백업한다.
+- 서버 키(`jwt.key`, `oauth.key`)는 환경 변수 `ARTEX_KEY_DIR`의 디렉터리에 둔다. 없으면 실행 파일 옆 디렉터리다. 작업 공간(`-data`)과 같거나 그 안이면 서버가 시작하지 않는다. Docker는 `./keys:/app/keys` 볼륨에 둔다. 잃으면 웹 세션과 ChatGPT·Claude 구독 로그인이 풀리므로 백업한다.
 - 설치·배포 방법(일괄 스크립트, Docker, 단일 바이너리)은 `README.md`와 `install.sh`에 있다.
 
 ## 검사와 CI
 
 - 커밋할 때 git hook(`.githooks/pre-commit`)이 스테이징된 `*.go`에 gofmt 형식 검사를, 스테이징된 web 파일에 biome 검사를 돌린다. Edit·Write에는 PostToolUse hook(`.claude/hooks/format_code.py`)이 gofmt·biome로 자동 정리한다.
 - GitHub 무료 플랜이라 서버 쪽 브랜치 보호와 PR 필수 검사가 없다. CI는 태그(`v*`)를 밀 때 도는 릴리스 워크플로(`.github/workflows/release.yml`, 교차 컴파일·릴리스·Docker)뿐이다. **PR·push에 도는 CI는 없다.** 그래서 `go vet ./...`, `go test ./...`, `npm run check`는 커밋·PR 전에 스스로 돌린다. 병합 전 재채점은 검증 워커가 `.claude/scripts/pr_gate.py`로 한다(`.claude/skills/pm/SKILL.md`).
-

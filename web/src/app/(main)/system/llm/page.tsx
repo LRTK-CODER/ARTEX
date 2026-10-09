@@ -31,7 +31,7 @@ import { oauthConnection } from "@/lib/chatgpt-oauth";
 import type { LLMAuthType, LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-import { ChatGPTAccount } from "./_components/chatgpt-login";
+import { SubscriptionAccount } from "./_components/chatgpt-login";
 import { ProfileRetryFields, RetryPolicyPanel, ZERO_OVERRIDE } from "./_components/retry";
 
 // 思考开关(thinking.type)与思考强度(reasoning_effort)是两个【互相独立】的字段，
@@ -78,9 +78,13 @@ function cooldownText(secs: number) {
 type Health = { label: string; cls: string; hint?: string };
 function healthOf(p: LLMProfile, m?: LLMPoolMember): Health {
   // 구독 프로필은 키가 없으므로 키 대신 로그인 상태를 먼저 본다.
-  const connection = p.auth_type === "chatgpt_oauth" ? oauthConnection(p.oauth) : null;
+  const connection =
+    p.auth_type === "chatgpt_oauth" || p.auth_type === "claude_oauth" ? oauthConnection(p.oauth) : null;
   if (connection === "disconnected") {
-    return { label: "ChatGPT 연결 안 됨", cls: "border-muted-foreground/40 text-muted-foreground" };
+    return {
+      label: `${p.auth_type === "claude_oauth" ? "Claude" : "ChatGPT"} 연결 안 됨`,
+      cls: "border-muted-foreground/40 text-muted-foreground",
+    };
   }
   if (connection === "needs_login") {
     return { label: "재로그인 필요", cls: "border-amber-500/50 text-amber-600 dark:text-amber-400" };
@@ -376,9 +380,12 @@ function ProfileSheet({
   }, [open, profile]);
 
   const profileId = profile ? Number(profile.id) : undefined;
-  // 구독은 서버가 형식(Responses)·스트리밍·주소를 고정한다. 화면도 같은 값으로 보내고 보인다.
-  const isOAuth = authType === "chatgpt_oauth";
-  const effectiveFormat = isOAuth ? "openai-responses" : format;
+  // 제공자별 서버 규칙과 같은 형식을 보내며 ChatGPT만 스트리밍으로 고정한다.
+  const isChatGPT = authType === "chatgpt_oauth";
+  const isClaude = authType === "claude_oauth";
+  const isOAuth = isChatGPT || isClaude;
+  const subscriptionFormat = isClaude ? "anthropic" : "openai-responses";
+  const effectiveFormat = isOAuth ? subscriptionFormat : format;
   // 로그인·해제 뒤 카드 목록만 새로 읽는다. 참조가 바뀌면 디바이스 폴링이 다시 걸리므로 고정한다.
   const handleAccountChanged = React.useCallback(() => onSaved(profile?.id ?? "", false), [onSaved, profile]);
 
@@ -417,7 +424,7 @@ function ProfileSheet({
         toStore(thinkingType),
         toStore(effort),
         profileId,
-        isOAuth || streaming,
+        isChatGPT || streaming,
         sessionHeaderKey.trim(),
         authType,
       );
@@ -457,7 +464,7 @@ function ProfileSheet({
         reasoning_effort: toStore(effort),
         priority: Number(priority) || 0,
         pool_exclude: poolExclude,
-        streaming: isOAuth || streaming,
+        streaming: isChatGPT || streaming,
         max_tokens: Math.max(0, Number(maxTokens) || 0),
         // 字段名开关只对 openai(Chat Completions) 有意义，其它格式一律回落到默认；
         // 后端也会再做一次同样的归一化，这里只是别让 UI 送出自相矛盾的值。
@@ -467,8 +474,9 @@ function ProfileSheet({
         auth_type: authType,
       });
       // 로그인 API는 저장된 구독 프로필에만 열린다. 방식을 바꿔 저장했으면 화면을 다시 열어 로그인하게 한다.
-      const needsLogin = isOAuth && profile?.auth_type !== "chatgpt_oauth";
-      if (needsLogin) toast.success(`저장했습니다: ${name.trim()}. 이제 ChatGPT에 로그인하세요`);
+      const needsLogin = isOAuth && profile?.auth_type !== authType;
+      if (needsLogin)
+        toast.success(`저장했습니다: ${name.trim()}. 이제 ${isClaude ? "Claude" : "ChatGPT"}에 로그인하세요`);
       else if (isNew) toast.success(`已新建：${name.trim()}（在卡片上「设为激活」以启用）`);
       else toast.success(profile?.is_default ? "已保存，激活配置即时生效，无需重启" : "已保存");
       onSaved(String(id), needsLogin);
@@ -522,13 +530,19 @@ function ProfileSheet({
                 <SelectContent>
                   <SelectItem value="api_key">API Key</SelectItem>
                   <SelectItem value="chatgpt_oauth">ChatGPT 구독</SelectItem>
+                  <SelectItem value="claude_oauth">Claude 구독</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           {isOAuth ? (
-            <ChatGPTAccount profile={profile} onChanged={handleAccountChanged} />
+            <SubscriptionAccount
+              key={`${profile?.id ?? "new"}-${authType}`}
+              profile={profile}
+              onChanged={handleAccountChanged}
+              provider={isClaude ? "claude" : "chatgpt"}
+            />
           ) : (
             <div className="grid gap-2">
               <Label>格式</Label>
@@ -704,7 +718,7 @@ function ProfileSheet({
               </div>
               <Switch checked={poolExclude} onCheckedChange={setPoolExclude} aria-label="不参与轮询" />
             </div>
-            <div className={cn("flex items-center justify-between gap-4 border-t pt-3", isOAuth && "hidden")}>
+            <div className={cn("flex items-center justify-between gap-4 border-t pt-3", isChatGPT && "hidden")}>
               <div className="grid gap-0.5">
                 <Label className="text-sm">流式输出 · streaming</Label>
                 <p className="text-muted-foreground text-xs">
@@ -808,7 +822,14 @@ function ProfileSheet({
             </div>
           </div>
 
-          <ProfileRetryFields value={retry} onChange={setRetry} />
+          {isClaude ? (
+            <p className="text-muted-foreground text-xs">
+              Claude 구독은 인증이 거절된 경우에만 토큰을 갱신하고 한 번 다시 요청합니다. 사용량 제한·서버 오류는
+              자동으로 재시도하지 않습니다.
+            </p>
+          ) : (
+            <ProfileRetryFields value={retry} onChange={setRetry} />
+          )}
         </div>
 
         <div className="flex gap-2 border-t px-4 py-3">
@@ -986,7 +1007,11 @@ export default function LLMPage() {
 
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-6 text-muted-foreground text-xs">
                       {p.api_key_hint && <span>{p.api_key_hint}</span>}
-                      {p.oauth?.plan && <span>ChatGPT {p.oauth.plan}</span>}
+                      {p.oauth?.plan && (
+                        <span>
+                          {p.auth_type === "claude_oauth" ? "Claude" : "ChatGPT"} {p.oauth.plan}
+                        </span>
+                      )}
                       <span>
                         {p.rate_per_second}/s · {p.rate_per_minute}/min
                       </span>
