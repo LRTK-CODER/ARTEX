@@ -16,7 +16,8 @@
 # Debian 패키지(bookworm은 18)는 Playwright 요구(>=20)에 맞지 않는다.
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
 
-FROM python:3.12-slim-bookworm
+# 태그만 적으면 다시 가리킬 수 있으므로 공식 이미지의 멀티 아키텍처 인덱스 digest를 함께 적는다. 갱신은 Dependabot이 한다.
+FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
 ARG TARGETARCH
 # 常用工具：ripgrep / curl / vim，加一批 recon 常备件（按需增删）。
 RUN apt-get update && apt-get install -y --no-install-recommends \
