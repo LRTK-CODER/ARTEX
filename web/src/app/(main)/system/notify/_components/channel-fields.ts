@@ -52,7 +52,12 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
       kind: "text",
       placeholder: "https://open.feishu.cn/open-apis/bot/v2/hook/...",
     },
-    { key: "secret", label: "서명 검증 키", kind: "password", help: "봇에서 「서명 검증」을 켰을 때 입력하세요. 아니면 비워 두세요" },
+    {
+      key: "secret",
+      label: "서명 검증 키",
+      kind: "password",
+      help: "봇에서 「서명 검증」을 켰을 때 입력하세요. 아니면 비워 두세요",
+    },
   ],
   wecom: [
     {
@@ -75,7 +80,12 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
         { value: "GET", label: "GET(본문 없음)" },
       ],
     },
-    { key: "headers", label: "사용자 지정 요청 헤더", kind: "kv", help: "한 줄에 KEY=VALUE 하나. 예: Authorization=Bearer xxx" },
+    {
+      key: "headers",
+      label: "사용자 지정 요청 헤더",
+      kind: "kv",
+      help: "한 줄에 KEY=VALUE 하나. 예: Authorization=Bearer xxx",
+    },
     {
       key: "body_template",
       label: "요청 본문 템플릿",
@@ -110,7 +120,12 @@ export const CHANNEL_FIELDS: Record<string, FieldDef[]> = {
     { key: "password", label: "비밀번호 / 앱 비밀번호", kind: "password" },
     { key: "from", label: "보낸 사람", kind: "text", placeholder: "artex@example.com" },
     { key: "to", label: "받는 사람", kind: "list", help: "여러 주소는 쉼표로 구분하세요" },
-    { key: "tls", label: "암시적 TLS", kind: "switch", help: "465 포트는 켜세요. 587은 끈 채로 두세요(STARTTLS를 자동으로 씁니다)" },
+    {
+      key: "tls",
+      label: "암시적 TLS",
+      kind: "switch",
+      help: "465 포트는 켜세요. 587은 끈 채로 두세요(STARTTLS를 자동으로 씁니다)",
+    },
   ],
 };
 

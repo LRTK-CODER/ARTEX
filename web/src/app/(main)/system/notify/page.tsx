@@ -269,7 +269,8 @@ export default function NotifyPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">알림 발송</h1>
           <p className="text-muted-foreground text-sm">
-            취약점을 찾으면 DingTalk / Feishu(Lark) / WeCom 등의 채널로 알림을 보냅니다 · 채널마다 발송 시점과 필터 규칙을 따로 정할 수 있습니다
+            취약점을 찾으면 DingTalk / Feishu(Lark) / WeCom 등의 채널로 알림을 보냅니다 · 채널마다 발송 시점과 필터
+            규칙을 따로 정할 수 있습니다
           </p>
         </div>
         {meta && (
@@ -316,7 +317,9 @@ export default function NotifyPage() {
               value={baseURL}
               onChange={(e) => setBaseURL(e.target.value)}
             />
-            <p className="text-muted-foreground text-xs">메시지의 「상세 보기」 버튼이 가리키는 주소입니다. 비워 두면 버튼을 넣지 않습니다.</p>
+            <p className="text-muted-foreground text-xs">
+              메시지의 「상세 보기」 버튼이 가리키는 주소입니다. 비워 두면 버튼을 넣지 않습니다.
+            </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="n-digest">다이제스트 주기(분)</Label>
@@ -463,7 +466,8 @@ export default function NotifyPage() {
 
               {fields.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  이 채널의 폼이 아직 정의되지 않았습니다(프런트엔드에 CHANNEL_FIELDS 항목이 없음). 항목을 채운 뒤 다시 시도하세요.
+                  이 채널의 폼이 아직 정의되지 않았습니다(프런트엔드에 CHANNEL_FIELDS 항목이 없음). 항목을 채운 뒤 다시
+                  시도하세요.
                 </p>
               ) : (
                 fields.map((d) => (
@@ -489,7 +493,8 @@ export default function NotifyPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  「높음 이상은 실시간, 나머지는 다이제스트」로 보내려면 채널을 두 개 만드세요: 실시간 + 최저 심각도 높음, 다이제스트 + 심각도 제한 없음.
+                  「높음 이상은 실시간, 나머지는 다이제스트」로 보내려면 채널을 두 개 만드세요: 실시간 + 최저 심각도
+                  높음, 다이제스트 + 심각도 제한 없음.
                 </p>
               </div>
 
@@ -504,7 +509,8 @@ export default function NotifyPage() {
                   onChange={(e) => setF({ ratePerMin: e.target.value })}
                 />
                 <p className="text-muted-foreground text-xs">
-                  비워 두면 채널 기본값을 씁니다. 0은 제한 없음입니다. 제한을 넘어도 메시지를 버리지 않고 발송을 미룹니다.
+                  비워 두면 채널 기본값을 씁니다. 0은 제한 없음입니다. 제한을 넘어도 메시지를 버리지 않고 발송을
+                  미룹니다.
                 </p>
               </div>
 
@@ -549,7 +555,9 @@ export default function NotifyPage() {
                       value={form.excludeText}
                       onChange={(e) => setF({ excludeText: e.target.value })}
                     />
-                    <p className="text-muted-foreground text-xs">제외가 포함보다 우선합니다. 둘 다 일치하면 제외됩니다.</p>
+                    <p className="text-muted-foreground text-xs">
+                      제외가 포함보다 우선합니다. 둘 다 일치하면 제외됩니다.
+                    </p>
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="n-tasks">대상 작업 ID</Label>
@@ -568,7 +576,9 @@ export default function NotifyPage() {
                       value={form.assetIDsText}
                       onChange={(e) => setF({ assetIDsText: e.target.value })}
                     />
-                    <p className="text-muted-foreground text-xs">작업·자산을 비워 두면 제한 없음입니다. 입력하면 취약점과 겹치는 것만 보냅니다.</p>
+                    <p className="text-muted-foreground text-xs">
+                      작업·자산을 비워 두면 제한 없음입니다. 입력하면 취약점과 겹치는 것만 보냅니다.
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Switch
@@ -582,8 +592,8 @@ export default function NotifyPage() {
               </div>
 
               <div className="flex items-center gap-2 text-sm">
-                <Switch checked={form.enabled} onCheckedChange={(v) => setF({ enabled: v })} aria-label="사용" />
-                이 채널 사용
+                <Switch checked={form.enabled} onCheckedChange={(v) => setF({ enabled: v })} aria-label="사용" />이 채널
+                사용
               </div>
             </div>
 

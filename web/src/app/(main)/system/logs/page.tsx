@@ -181,7 +181,9 @@ export default function LogsPage() {
     <div className="flex flex-1 flex-col gap-3">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">시스템 로그</h1>
-        <p className="text-muted-foreground text-sm">백엔드 실시간 로그 스트림(planner / worker / 데이터베이스 / 트래픽 …)</p>
+        <p className="text-muted-foreground text-sm">
+          백엔드 실시간 로그 스트림(planner / worker / 데이터베이스 / 트래픽 …)
+        </p>
       </div>
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">

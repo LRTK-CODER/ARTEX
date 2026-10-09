@@ -146,7 +146,8 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
         <DialogHeader>
           <DialogTitle>새 사용자 지정 에이전트</DialogTitle>
           <DialogDescription>
-            대화형 어시스턴트를 만듭니다. key는 내부 식별자이며 만든 뒤에는 바꿀 수 없습니다. 이름과 설명은 구분하는 데 씁니다.
+            대화형 어시스턴트를 만듭니다. key는 내부 식별자이며 만든 뒤에는 바꿀 수 없습니다. 이름과 설명은 구분하는 데
+            씁니다.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2">
@@ -160,12 +161,19 @@ function CreateAgentDialog({ onCreated }: { onCreated: (key: string) => void }) 
               className="font-mono"
             />
             {key.length > 0 && !keyOk && (
-              <span className="text-destructive text-xs">영문 소문자로 시작하고 영문 소문자·숫자·밑줄만 쓸 수 있습니다</span>
+              <span className="text-destructive text-xs">
+                영문 소문자로 시작하고 영문 소문자·숫자·밑줄만 쓸 수 있습니다
+              </span>
             )}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="agent-name">이름</Label>
-            <Input id="agent-name" placeholder="예: 조사 어시스턴트" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id="agent-name"
+              placeholder="예: 조사 어시스턴트"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="agent-desc">설명</Label>
@@ -209,7 +217,9 @@ export default function AgentsPage() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Agent</h1>
-          <p className="text-muted-foreground text-sm">내장 에이전트의 프롬프트·설정과 사용자 지정 대화 에이전트 만들기·관리</p>
+          <p className="text-muted-foreground text-sm">
+            내장 에이전트의 프롬프트·설정과 사용자 지정 대화 에이전트 만들기·관리
+          </p>
         </div>
         <CreateAgentDialog
           onCreated={(key) => {
