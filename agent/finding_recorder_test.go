@@ -20,7 +20,6 @@ func (failingFindingRecorder) Record(context.Context, db.RecordFindingInput, []d
 
 func TestReportFindingOptionalTrafficWithoutCapture(t *testing.T) {
 	d := testDB(t)
-	defer d.Close()
 	task, err := d.CreateTask("TCP evidence", "fixture", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +54,6 @@ func TestReportFindingAtomicContract(t *testing.T) {
 	FindingTrafficBindingEnabled = func() bool { return true }
 	t.Cleanup(func() { FindingTrafficBindingEnabled = old })
 	d := testDB(t)
-	defer d.Close()
 	task, err := d.CreateTask("report contract", "fixture", nil, 0, 0)
 	if err != nil {
 		t.Fatal(err)
