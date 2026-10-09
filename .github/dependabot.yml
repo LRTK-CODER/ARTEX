@@ -45,6 +45,7 @@ updates:
     directories:
       - "/web"
       - "/docker/playwright"
+      - "/skills/api-recon/scripts"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
