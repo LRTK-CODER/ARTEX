@@ -12,7 +12,7 @@ import (
 // Task is a row in the task registry (1:1 with an exploration).
 type Task struct {
 	ID            int64      `json:"id"`
-	Name          string     `json:"name"` // 可选任务名称;空=未命名
+	Name          string     `json:"name"` // 선택 항목인 작업 이름. 비면 이름 없음
 	CategoryID    *int64     `json:"category_id,omitempty"`
 	CategoryName  string     `json:"category_name,omitempty"`
 	Pinned        bool       `json:"pinned"`
@@ -35,20 +35,22 @@ type Task struct {
 	LLMFailoverReason  string     `json:"llm_failover_reason,omitempty"`
 	SourceTaskIDs      []int64    `json:"source_task_ids,omitempty"`
 	CompanyIDs         []int64    `json:"company_ids,omitempty"`
-	ParentRef          string     `json:"parent_ref,omitempty"` // 父任务 id(编排 spawn 记录;空=顶层)
+	ParentRef          string     `json:"parent_ref,omitempty"` // 부모 작업 id(오케스트레이션 spawn 기록. 비면 최상위)
 	CreatedAt          time.Time  `json:"created_at"`
-	CompletedAt        *time.Time `json:"completed_at,omitempty"` // 进入终态(done/failed/timeout)的时刻;非终态为 nil
-	// 任务级超时(见 docs/任务级超时与收尾设计.md)。
-	TimeoutSeconds int        `json:"timeout_seconds"`        // 0=不限时
-	FirstRunAt     *time.Time `json:"first_run_at,omitempty"` // 首次真正开始运行的时刻(非 created_at);nil=尚未运行
-	DeadlineAt     *time.Time `json:"deadline_at,omitempty"`  // = first_run_at + timeout_seconds;nil=不限或未运行
-	// planner 心跳触发间隔(秒)：距上轮 plan 结束/任务开始满该值且期间无触发 → 触发一轮。
-	// 下限=默认=300(5min)，低于一律抬到 300(在 CreateTask 归一)。见 docs/planner-trigger-impl-plan.md
+	CompletedAt        *time.Time `json:"completed_at,omitempty"` // 종료 상태(done/failed/timeout)가 된 시각. 종료 상태가 아니면 nil
+	// 작업 단위 시간 제한(docs/任务级超时与收尾设计.md 참고).
+	TimeoutSeconds int        `json:"timeout_seconds"`        // 0=제한 없음
+	FirstRunAt     *time.Time `json:"first_run_at,omitempty"` // 처음 실제로 실행을 시작한 시각(created_at 아님). nil=아직 실행 안 함
+	DeadlineAt     *time.Time `json:"deadline_at,omitempty"`  // = first_run_at + timeout_seconds. nil=제한 없음 또는 아직 실행 안 함
+	// planner 하트비트 트리거 간격(초): 지난 plan이 끝나거나 작업이 시작된 뒤 이 시간이 지나도록
+	// 트리거가 없으면 한 번 트리거한다. 최소값=기본값=300(5분)이고, 더 작으면 300으로 올린다
+	// (CreateTask에서 정규화). docs/planner-trigger-impl-plan.md 참고
 	PlanHeartbeatSeconds int `json:"plan_heartbeat_seconds"`
-	// CoverageEnabled 是「资产覆盖度功能」总开关(默认 true)。false 时：不计算/不展示测试
-	// 覆盖度、不自动累积 task_scope(source=auto)、不给 agent 开放 add_task_scope/
-	// list_untested_assets、态势里不注入 coverage 块(scope 字段仍保留)。company 关联
-	// (task_scope kind=company)与此开关无关，永不受影响。见 db/task_scope.go。
+	// CoverageEnabled는 "자산 커버리지 기능"의 전체 스위치다(기본 true). false면 테스트
+	// 커버리지를 계산·표시하지 않고, task_scope(source=auto)를 자동으로 쌓지 않고, 에이전트에
+	// add_task_scope/list_untested_assets를 열지 않고, 상황 정보에 coverage 블록을 넣지 않는다
+	// (scope 필드는 남는다). company 연결(task_scope kind=company)은 이 스위치와 상관없이 항상
+	// 유지된다. db/task_scope.go 참고.
 	CoverageEnabled bool `json:"coverage_enabled"`
 }
 
@@ -69,17 +71,17 @@ type TaskDeletePreparation struct {
 	TrafficHosts  []string
 }
 
-// IsTerminal reports whether a task status is a terminal (finished) state.
-// 单一真源，替换散落各处的 done/failed 硬编码判定。
+// IsTerminal은 작업 상태가 종료(끝난) 상태인지 알려 준다.
+// 여러 곳에 흩어져 있던 done/failed 하드코딩 판정을 대신하는 단일 기준이다.
 func IsTerminal(status string) bool {
 	return status == "done" || status == "failed" || status == "timeout"
 }
 
-// CreateTask creates an exploration + task in one transaction and returns the task.
-// timeoutSeconds is the task-level wall-clock budget (0 = 不限时); deadline_at is
-// stamped later at first real run (see engine), not here.
-// MinPlanHeartbeatSeconds 是 planner 心跳间隔的下限 = 默认 = 10min。
-// 低于它(含缺省 0 / 负值 / 误配的小值)一律抬到 10min，防止把 planner 打爆。
+// CreateTask는 탐색과 작업을 한 트랜잭션에서 만들고 작업을 돌려준다.
+// timeoutSeconds는 작업 단위 실제 시간 한도다(0 = 제한 없음). deadline_at은 여기서가 아니라
+// 처음 실제로 실행할 때 기록한다(engine 참고).
+// MinPlanHeartbeatSeconds는 planner 하트비트 간격의 최소값이자 기본값인 10분이다.
+// 이보다 작으면(빠진 값 0, 음수, 잘못 설정한 작은 값 포함) 10분으로 올려 planner가 과부하되지 않게 한다.
 const MinPlanHeartbeatSeconds = 600
 
 // MaxTaskSourceCount bounds the amount of live inherited context one task can
@@ -144,17 +146,18 @@ func (d *DB) CreateTask(description, goal string, llmProfileID *int64, timeoutSe
 // TaskCreateOptions contains the task data that must be committed atomically
 // with the task/exploration row.
 type TaskCreateOptions struct {
-	Name                 string // 可选任务名称;空=未命名
+	Name                 string // 선택 항목인 작업 이름. 비면 이름 없음
 	CategoryID           *int64
 	SourceTaskIDs        []int64
 	CompanyIDs           []int64
 	LLMProfileIDs        []int64
 	TimeoutSeconds       int
 	PlanHeartbeatSeconds int
-	// CoverageEnabled 是「资产覆盖度功能」开关;nil=默认开(true)，让不关心该开关的创建
-	// 路径(编排 spawn、老 API)沿用原行为。仅 web 创建任务时可显式传 false 关闭。
+	// CoverageEnabled는 "자산 커버리지 기능" 스위치다. nil=기본값 켜짐(true)이라 이 스위치를
+	// 신경 쓰지 않는 생성 경로(오케스트레이션 spawn, 이전 API)는 원래 동작을 유지한다. web에서
+	// 작업을 만들 때만 false를 넘겨 끌 수 있다.
 	CoverageEnabled *bool
-	// InterceptRules 是任务级资产拦截规则,创建时随任务在同一事务内写入 task_intercept_rules。
+	// InterceptRules는 작업 단위 자산 차단 규칙이다. 작업을 만들 때 같은 트랜잭션에서 task_intercept_rules에 쓴다.
 	InterceptRules []TaskInterceptRuleInput
 }
 
@@ -184,7 +187,7 @@ func (d *DB) CreateTaskWithOptions(description, goal string, opts TaskCreateOpti
 	// is global and shared, not isolated per task). Being a fact (not a special 'begin' kind) lets every
 	// intent uniformly connect to a fact node, including the first ones.
 	originPayload, _ := json.Marshal(map[string]any{
-		"summary":     "任务起点：" + description + "；目标：" + goal,
+		"summary":     "작업 시작점: " + description + "; 목표: " + goal,
 		"description": description,
 		"goal":        goal,
 	})
@@ -267,7 +270,7 @@ WITH requested(company_id, position) AS (
     FROM unnest($2::bigint[]) WITH ORDINALITY AS requested(company_id, position)
 ), inserted AS (
     INSERT INTO task_scope(task_id, kind, company_id, source, reason)
-    SELECT $1, 'company', companies.id, 'manual', '任务创建时关联企业'
+    SELECT $1, 'company', companies.id, 'manual', '작업 생성 시 연결한 기업'
     FROM requested
     JOIN companies ON companies.id=requested.company_id
     ORDER BY requested.position
@@ -295,7 +298,7 @@ WHERE company_id=ANY($2::bigint[])`, taskID, companyIDs); err != nil {
 	}
 	if _, err := tx.Exec(`
 INSERT INTO task_asset_links(task_id, asset_id, source, source_summary)
-SELECT $1, asset.id, $3, '任务创建时关联企业：' || company.name
+SELECT $1, asset.id, $3, '작업 생성 시 연결한 기업: ' || company.name
 FROM assets asset
 JOIN companies company ON company.id=asset.company_id
 WHERE asset.company_id=ANY($2::bigint[])
@@ -355,7 +358,7 @@ func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	return &t, nil
 }
 
-// SetParentRef records a task's parent task id (编排 agent spawn_task 关联).
+// SetParentRef는 작업의 부모 작업 id를 기록한다(오케스트레이션 에이전트의 spawn_task 연결).
 func (d *DB) SetParentRef(id int64, parentRef string) error {
 	_, err := d.Exec(`UPDATE tasks SET parent_ref=NULLIF($2,'') WHERE id=$1`, id, parentRef)
 	return err
@@ -363,7 +366,7 @@ func (d *DB) SetParentRef(id int64, parentRef string) error {
 
 // ListTasks returns alive tasks with pinned tasks first, then newest ids.
 func (d *DB) ListTasks() ([]*Task, error) {
-	// id 是 BIGSERIAL，同一时刻创建的任务也有稳定且唯一的顺序。
+	// id는 BIGSERIAL이라 같은 시각에 만든 작업도 순서가 안정적이고 하나로 정해진다.
 	rows, err := d.Query(`SELECT ` + taskCols + ` FROM tasks WHERE deleted_at IS NULL
 ORDER BY (pinned_at IS NOT NULL) DESC, pinned_at DESC NULLS LAST, id DESC`)
 	if err != nil {
@@ -503,17 +506,17 @@ UPDATE tasks
 	return n > 0, nil
 }
 
-// StampFirstRun records a task's first-real-run moment and computes its absolute
-// deadline (= now + timeoutSeconds). Idempotent: only stamps when first_run_at is
-// still NULL, so restarts / re-entries keep the original clock. timeoutSeconds<=0
-// leaves deadline_at NULL (不限时). Returns the resulting deadline (nil = 不限/未变).
+// StampFirstRun은 작업이 처음 실제로 실행된 시각을 기록하고 절대 마감 시각(= now +
+// timeoutSeconds)을 계산한다. 멱등이다. first_run_at이 아직 NULL일 때만 기록하므로 재시작이나
+// 재진입해도 원래 시계를 유지한다. timeoutSeconds<=0이면 deadline_at은 NULL(제한 없음)로 둔다.
+// 결과 마감 시각을 돌려준다(nil = 제한 없음 또는 바뀌지 않음).
 func (d *DB) StampFirstRun(id int64, timeoutSeconds int) (*time.Time, error) {
 	var deadline *time.Time
 	err := d.QueryRow(`
 UPDATE tasks
    SET first_run_at = COALESCE(first_run_at, now()),
        deadline_at  = CASE
-           WHEN first_run_at IS NOT NULL THEN deadline_at            -- 已盖过章：不动
+           WHEN first_run_at IS NOT NULL THEN deadline_at            -- 이미 기록됨: 그대로 둔다
            WHEN $2 > 0 THEN now() + make_interval(secs => $2)
            ELSE NULL END
  WHERE id = $1

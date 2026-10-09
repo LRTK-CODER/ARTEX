@@ -370,6 +370,30 @@ web 기능 화면(`web/src/app/(main)/function/**`)을 옮기며 정한 말이�
 | 概览 | 개요 | overview | |
 | 不可撤销 | 되돌릴 수 없습니다 | cannot be undone | "이 작업"은 task로 읽히므로 대상을 쓴다 |
 
+### db 패키지(#108에서 더함)
+
+`db/*.go`와 `db/schema.sql`을 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| [内置] (seed 이름 머리말) | [내장] | [built-in] | 내장 차단 규칙 이름과 메모. `architecture.md`의 표기 |
+| 目标拆解 | 목표 분해 | goal decomposition | 내장 agent `goals`의 표시 이름 |
+| 侦察 | 정보 수집 | reconnaissance | "被动侦察 → 수동적 정보 수집"과 맞춘다 |
+| 误报 | 오탐 | false positive | 보안 업계 표준 |
+| 风险接受 | 위험 수용 | risk accepted | 위험 관리 표준 용어 |
+| 未关联资产 | 자산 없음 | no asset | 자산이 연결되지 않은 발견 사항 묶음. 기업 소속이 없는 "소속 없음"과 구분한다 |
+| 熔断 | 회로 차단기 | circuit breaker | `architecture.md`의 표기 |
+| 指数退避 | 지수 백오프 | exponential backoff | 업계 표준 원어 |
+| 限流 | 속도 제한 | rate limit | 알림 채널 설정은 "발송 속도 제한" |
+| 墙钟 | 실제 경과 시간 | wall-clock time | |
+| 事务 / 保存点 | 트랜잭션 / 세이브포인트 | transaction / savepoint | PostgreSQL 한국어 문서 표기 |
+| 待发 / 重发 | 발송 대기 / 재발송 | pending / resend | 알림 전달 상태 |
+| 批次 | 배치 | batch | digest 모드의 묶음 |
+| 分派 (fan-out) | 분배 | fan-out | 이벤트를 알림 채널별 전달로 나누는 것 |
+| 爆炸半径 | 영향 범위 | blast radius | |
+| 掩码 | 마스킹 | mask | `secure-coding.md`의 표기 |
+| 裸 TLD | 최상위 도메인(TLD)만 | bare TLD | |
+
 ### 화면 시스템(#112에서 더함)
 
 web 시스템 화면(`web/src/app/(main)/system/**`)을 옮기며 정한 말이다.
@@ -420,4 +444,5 @@ web 시스템 화면(`web/src/app/(main)/system/**`)을 옮기며 정한 말이�
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
 - 2026-10-10: web 기능 화면 번역(#111)에서 정한 용어를 "화면 기능" 표로 더한다.
+- 2026-10-10: db 패키지 번역(#108)에서 정한 용어를 "db 패키지" 표로 더한다.
 - 2026-10-10: web 시스템 화면 번역(#112)에서 정한 용어를 "화면 시스템" 표로 더한다.

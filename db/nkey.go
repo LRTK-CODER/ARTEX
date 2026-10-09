@@ -10,8 +10,9 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-// 归一化自然键 (nkey)：移植自旧 graph/id.go，去掉 StableID 哈希（PG 用 BIGSERIAL 主键 +
-// UNIQUE(type, nkey) 去重）。子资产的 nkey 内嵌父资产的 int64 id，把层级编码进键。
+// 정규화 자연 키(nkey): 이전 graph/id.go에서 옮겨 오며 StableID 해시를 뺐다(PG는 BIGSERIAL
+// 기본 키와 UNIQUE(type, nkey)로 중복을 막는다). 자식 자산의 nkey에는 부모 자산의 int64 id가
+// 들어 있어 계층이 키에 담긴다.
 
 func DomainKey(fqdn string) string {
 	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(fqdn)), ".")
@@ -19,11 +20,10 @@ func DomainKey(fqdn string) string {
 
 func IPKey(ip string) string { return strings.TrimSpace(ip) }
 
-// RootDomain returns the registrable domain (eTLD+1) for a host and whether the
-// host itself IS that apex (§3.1). Edge cases (§3.1 边界处理): an IP literal or a
-// host publicsuffix can't classify (localhost / internal / non-ICANN TLD) is
-// returned unchanged as its own root with isApex=true — best-effort, never treated
-// as a subdomain.
+// RootDomain은 host의 등록 가능 도메인(eTLD+1)과 host 자신이 그 apex인지를 돌려준다
+// (§3.1). 경계 처리(§3.1): IP 리터럴이나 publicsuffix가 분류하지 못하는 host(localhost,
+// 내부 이름, ICANN 밖 TLD)는 그대로 자기 자신을 루트로 삼고 isApex=true로 돌려준다.
+// 최선 노력이며 하위 도메인으로 다루지 않는다.
 func RootDomain(host string) (root string, isApex bool) {
 	h := DomainKey(host)
 	if h == "" || net.ParseIP(h) != nil {
@@ -56,9 +56,10 @@ func ParameterKey(endpointID int64, location, name string) string {
 	return itoa(endpointID) + "|" + strings.ToLower(location) + "|" + name
 }
 
-// NormalizeParamName 归一化参数名（endpoint.params 元素的「相同引用」判定）。
-// 规则：lower + trim，不做同义词合并(userId/user_id/uid 视为不同)。写入与查询共享此实现，
-// 保证「按参数名查同公司接口」可复现。
+// NormalizeParamName은 파라미터 이름을 정규화한다(endpoint.params 원소가 "같은 참조"인지 판정).
+// 규칙: 소문자로 바꾸고 앞뒤 공백을 없앤다. 동의어는 합치지 않는다(userId/user_id/uid는 서로
+// 다르다). 쓰기와 조회가 이 구현을 함께 써서 "파라미터 이름으로 같은 기업의 API 찾기"가 같은
+// 결과를 낸다.
 func NormalizeParamName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
