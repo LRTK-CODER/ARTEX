@@ -30,23 +30,24 @@ type chatAttachment struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
-	// Abs 是落盘的绝对路径(m.dir 已是绝对)。建任务前暂存(scope=staging)时前端要用它把
-	// 提示词写进描述;task/session 走 composeAgentMessage 在后端拼路径,不依赖此字段。
+	// Abs 는 저장한 파일의 절대 경로다(m.dir 가 이미 절대 경로다). 작업을 만들기 전에 임시 저장할 때
+	// (scope=staging) 프런트엔드가 이 값으로 프롬프트를 작업 설명에 써 넣는다. task·session 은
+	// composeAgentMessage 가 백엔드에서 경로를 이어 붙이므로 이 필드에 기대지 않는다.
 	Abs string `json:"abs,omitempty"`
 }
 
-// chatUpload implements method-1 file support: it saves one or more files into a chat's
-// working dir under uploads/, so the agent opens them with its existing Read/Bash tools
-// and the sent message carries their paths. No LLM-layer change, no multimodal.
+// chatUpload는 파일 첨부의 첫 번째 방식이다. 파일 하나 이상을 대화 작업 디렉터리의
+// uploads/ 아래에 저장해, 에이전트가 기존 Read/Bash 도구로 열고 보낸 메시지에 그 경로가
+// 실리게 한다. LLM 계층은 바꾸지 않고 멀티모달도 쓰지 않는다.
 //
-// POST /api/chat/upload?scope=task|session|staging&id=<id>, multipart field "file"
-// (repeatable). Returns {attachments:[{name,path,size,abs}]}. Target dir mirrors the
-// agent CWD layout:
+// POST /api/chat/upload?scope=task|session|staging&id=<id>, multipart 필드 "file"
+// (여러 번 가능). {attachments:[{name,path,size,abs}]}를 돌려준다. 저장 디렉터리는
+// 에이전트 CWD 구조를 따른다:
 //
 //	scope=task    → <workDir>/tasks/<id>/uploads/
 //	scope=session → <workDir>/sessions/<id>/uploads/
-//	scope=staging → <workDir>/drafts/<id>/uploads/   (建任务前暂存:任务尚无 ID,
-//	                文件先落这里,前端按返回的 abs 绝对路径写进任务描述)
+//	scope=staging → <workDir>/drafts/<id>/uploads/   (작업을 만들기 전 임시 저장: 작업에 아직 ID가
+//	                없어 파일을 먼저 여기 두고, 프런트엔드가 돌려받은 abs 절대 경로를 작업 설명에 써 넣는다)
 func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 	var sub string
 	taskScoped := false
@@ -59,12 +60,12 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 	case "staging":
 		sub = "drafts"
 	default:
-		writeErr(w, 400, "scope 必须是 task / session / staging")
+		writeErr(w, 400, "scope는 task, session, staging 중 하나여야 합니다")
 		return
 	}
 	id := r.URL.Query().Get("id")
 	if !safeChatID.MatchString(id) {
-		writeErr(w, 400, "非法 id")
+		writeErr(w, 400, "잘못된 id입니다")
 		return
 	}
 	if taskScoped {
@@ -73,7 +74,7 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !s.engine.beginTaskOperation(id) {
-			writeErr(w, http.StatusConflict, "任务正在删除，无法上传附件")
+			writeErr(w, http.StatusConflict, "작업을 삭제하는 중이라 첨부 파일을 업로드할 수 없습니다")
 			return
 		}
 		defer s.engine.decInflight(id)
@@ -87,18 +88,18 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 	defer root.Close()
 	rel := filepath.Join(sub, id, "uploads")
 	if err := root.MkdirAll(rel, 0o755); err != nil {
-		writeErr(w, 500, "建目录失败: "+err.Error())
+		writeErr(w, 500, "업로드 디렉터리를 만들지 못했습니다: "+err.Error())
 		return
 	}
 	dir := filepath.Join(s.m.dir, rel)
 	r.Body = http.MaxBytesReader(w, r.Body, maxChatUpload)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeErr(w, 400, "解析上传失败或超出大小限制: "+err.Error())
+		writeErr(w, 400, "업로드를 파싱하지 못했거나 크기 제한을 넘었습니다: "+err.Error())
 		return
 	}
 	files := r.MultipartForm.File["file"]
 	if len(files) == 0 {
-		writeErr(w, 400, "缺少上传文件(表单字段 file)")
+		writeErr(w, 400, "업로드할 파일이 없습니다(폼 필드 file)")
 		return
 	}
 	out := make([]chatAttachment, 0, len(files))
@@ -109,7 +110,7 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		base, err := saveUniqueUpload(root, rel, hdr, name)
 		if err != nil {
-			writeErr(w, 500, "保存失败: "+err.Error())
+			writeErr(w, 500, "첨부 파일을 저장하지 못했습니다: "+err.Error())
 			return
 		}
 		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: filepath.Join(dir, base)})
@@ -149,9 +150,9 @@ func composeAgentMessage(msg string, atts []chatAttachment, baseDir string) stri
 	}
 	var b strings.Builder
 	b.WriteString(msg)
-	b.WriteString("\n\n【用户上传的附件】(绝对路径，需要时用 Read/Bash 查看)：")
+	b.WriteString("\n\n[Files uploaded by the user] (absolute paths; open them with Read/Bash when needed):")
 	for _, a := range atts {
-		fmt.Fprintf(&b, "\n- %s（%s）", filepath.Join(baseDir, a.Path), humanBytes(a.Size))
+		fmt.Fprintf(&b, "\n- %s (%s)", filepath.Join(baseDir, a.Path), humanBytes(a.Size))
 	}
 	return b.String()
 }
