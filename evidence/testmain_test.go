@@ -29,8 +29,9 @@ func runEvidenceSuite(m *testing.M) int {
 	defer lockDB.Close()
 	conn, err := lockDB.Conn(ctx)
 	if err != nil {
-		// 데이터베이스가 아직 없으면 db.Open 이 만든다. 막 만든 DB 는 다른 패키지가
-		// 쓰고 있을 수 없으므로 lock 전에 스키마를 적용해도 겹칠 상대가 없다.
+		// 데이터베이스가 아직 없으면 lock 을 잡을 DB 가 없으므로 db.Open 으로 먼저 만든다.
+		// 이 단계는 lock 밖이다. `go test ./...` 에서 다른 패키지(db·agent·server·llmrec)도
+		// 같은 순간 DB 를 만들거나 스키마를 적용할 수 있어 겹칠 상대가 없다고 장담할 수 없다.
 		pg, openErr := db.Open(dsn)
 		if openErr != nil {
 			panic(openErr)

@@ -17,7 +17,7 @@ func TestTaskCategoryBatchRoute(t *testing.T) {
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}
-	defer m.Close()
+	t.Cleanup(func() { m.Close() })
 
 	td := t.TempDir()
 	s := newTestServer(t, m, td, td, td)
