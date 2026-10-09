@@ -1934,9 +1934,9 @@ func (t *Traffic) query(host, contains, bodyContains string, page, limit int) ([
 		cond, arg, ok := t.ftsFilter(b)
 		if !ok {
 			if !t.fts {
-				return nil, fmt.Errorf("full-text index is not enabled on this instance, cannot search by body")
+				return nil, fmt.Errorf("이 인스턴스는 전문 색인을 사용하지 않아 본문으로 검색할 수 없습니다")
 			}
-			return nil, fmt.Errorf("body search keyword needs at least %d characters (got %d)", minTrigram, utf8.RuneCountInString(b))
+			return nil, fmt.Errorf("본문 검색어는 %d자 이상이어야 합니다(현재 %d자)", minTrigram, utf8.RuneCountInString(b))
 		}
 		q += ` AND ` + cond
 		args = append(args, arg)
@@ -1966,12 +1966,12 @@ func (t *Traffic) query(host, contains, bodyContains string, page, limit int) ([
 func normalizeSearchHost(raw string) (host, port string, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", "", errors.New("host is required")
+		return "", "", errors.New("host는 필수 파라미터입니다")
 	}
 	if strings.Contains(raw, "://") {
 		u, parseErr := url.Parse(raw)
 		if parseErr != nil || u.Host == "" {
-			return "", "", fmt.Errorf("cannot parse host: %q", raw)
+			return "", "", fmt.Errorf("host를 파싱할 수 없습니다: %q", raw)
 		}
 		host, port = u.Hostname(), u.Port()
 	} else if h, p, splitErr := net.SplitHostPort(raw); splitErr == nil {
@@ -1983,12 +1983,12 @@ func normalizeSearchHost(raw string) (host, port string, err error) {
 	}
 	host = strings.Trim(strings.TrimSpace(host), "[]")
 	if host == "" {
-		return "", "", fmt.Errorf("cannot parse host: %q", raw)
+		return "", "", fmt.Errorf("host를 파싱할 수 없습니다: %q", raw)
 	}
 	if port != "" {
 		p, parseErr := strconv.Atoi(port)
 		if parseErr != nil || p < 1 || p > 65535 {
-			return "", "", fmt.Errorf("invalid port: %q", port)
+			return "", "", fmt.Errorf("잘못된 포트입니다: %q", port)
 		}
 		port = strconv.Itoa(p)
 	}
@@ -2028,14 +2028,14 @@ func (t *Traffic) Tools() []actool.CoreTool {
 			}
 			_ = json.Unmarshal(in, &a)
 			if strings.TrimSpace(a.Host) == "" {
-				return actool.Errorf("host is required: specify a bare host, host:port, or a full URL to avoid a full-store scan."), nil
+				return actool.Errorf("host는 필수 파라미터입니다. 저장소 전체를 훑지 않도록 호스트, 호스트:포트 또는 전체 URL을 지정하세요."), nil
 			}
 			rows, err := t.query(a.Host, a.Contains, a.BodyContains, a.Page, a.Limit)
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
 			if len(rows) == 0 {
-				return actool.Text("No matching traffic."), nil
+				return actool.Text("일치하는 트래픽이 없습니다"), nil
 			}
 			// 응답 내용은 빼고 위치 파악에 필요한 필드와 응답 코드·길이만 남겨 최소 색인으로 줄인다.
 			type liteRow struct {
@@ -2104,11 +2104,11 @@ func (t *Traffic) Tools() []actool.CoreTool {
 				return actool.Errorf(err.Error()), nil
 			}
 			if len(data) == 0 {
-				return actool.Text(fmt.Sprintf("Offset %d is past the content length (total %d bytes).", a.Offset, total)), nil
+				return actool.Text(fmt.Sprintf("오프셋 %d이(가) 내용 길이를 넘었습니다(전체 %d바이트)", a.Offset, total)), nil
 			}
-			head := fmt.Sprintf("[offset=%d this=%d total=%d]\n", a.Offset, len(data), total)
+			head := fmt.Sprintf("[offset=%d 이번=%d 전체=%d]\n", a.Offset, len(data), total)
 			if isBinaryBody("", data) {
-				return actool.Text(head + "Binary content, first 512 bytes in hex:\n" + hex.EncodeToString(clipBytes(data, 512))), nil
+				return actool.Text(head + "바이너리 내용이라 앞 512바이트를 16진수로 보여 줍니다:\n" + hex.EncodeToString(clipBytes(data, 512))), nil
 			}
 			return actool.Text(head + truncateUTF8(data, len(data))), nil
 		},
@@ -2126,5 +2126,5 @@ func clip(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max] + fmt.Sprintf("\n... [truncated, %d bytes total; full content in the traffic file tree] ...", len(s))
+	return s[:max] + fmt.Sprintf("\n... [잘림, 전체 %d바이트. 전체 내용은 트래픽 파일 트리에 있음] ...", len(s))
 }
