@@ -23,6 +23,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import type { WorkspaceEntry, WorkspaceFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
 function fmtTime(ms: number): string {
-  return new Date(ms).toLocaleString("zh-CN", {
+  return new Date(ms).toLocaleString(DISPLAY_LOCALE, {
     year: "2-digit",
     month: "2-digit",
     day: "2-digit",
@@ -103,7 +104,7 @@ export default function WorkspacePage() {
         load(path);
       })
       .catch((err) => {
-        toast.error(`저장하지 못했습니다: ${(err as Error).message}`);
+        toast.error(`파일을 저장하지 못했습니다: ${(err as Error).message}`);
         setEdit((cur) => (cur ? { ...cur, saving: false } : cur));
       });
   };
@@ -111,7 +112,7 @@ export default function WorkspacePage() {
   const del = (e: WorkspaceEntry) => {
     if (
       !window.confirm(
-        `${e.dir ? "디렉터리" : "파일"} ‘${e.name}’${e.dir ? "를" : "을"} 삭제할까요?${e.dir ? " (안의 모든 내용 포함)" : ""}`,
+        `${e.dir ? "디렉터리" : "파일"} '${e.name}'${e.dir ? "를" : "을"} 삭제할까요?${e.dir ? " (안의 모든 내용 포함)" : ""}`,
       )
     )
       return;
@@ -121,7 +122,7 @@ export default function WorkspacePage() {
         toast.success("삭제했습니다");
         load(path);
       })
-      .catch((err) => toast.error(`삭제하지 못했습니다: ${(err as Error).message}`));
+      .catch((err) => toast.error(`항목을 삭제하지 못했습니다: ${(err as Error).message}`));
   };
 
   const doUpload = (files: FileList | null) => {
@@ -132,7 +133,7 @@ export default function WorkspacePage() {
         toast.success(`파일 ${r.uploaded}개를 업로드했습니다`);
         load(path);
       })
-      .catch((err) => toast.error(`업로드하지 못했습니다: ${(err as Error).message}`))
+      .catch((err) => toast.error(`파일을 업로드하지 못했습니다: ${(err as Error).message}`))
       .finally(() => {
         if (uploadRef.current) uploadRef.current.value = "";
       });
@@ -239,7 +240,7 @@ export default function WorkspacePage() {
                           onClick={() =>
                             api
                               .workspaceDownload(e.path)
-                              .catch((err) => toast.error(`다운로드하지 못했습니다: ${(err as Error).message}`))
+                              .catch((err) => toast.error(`파일을 다운로드하지 못했습니다: ${(err as Error).message}`))
                           }
                         >
                           <DownloadIcon className="size-3.5" />

@@ -87,7 +87,7 @@ function hasSubItems(item: NavMainItem): item is NavMainParentItem {
 
 export function NavMain({ items }: NavMainProps) {
   const rawPath = usePathname();
-  // 路由段含中文，pathname 可能是百分号编码，解码后再与导航 url 比较，保证高亮命中。
+  // 라우트 세그먼트에 중국어가 들어 있어 pathname이 퍼센트 인코딩될 수 있다. 디코딩한 뒤 내비게이션 url과 비교해야 강조 표시가 맞는다.
   const path = (() => {
     try {
       return decodeURIComponent(rawPath);

@@ -57,11 +57,17 @@ import { mergeActivities } from "@/lib/activity-merge";
 import { api } from "@/lib/api";
 import { shouldSubmitOnKey, useChatSendMode } from "@/lib/chat-send-mode";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { isBtwCommand } from "@/lib/side-questions";
 import type { Activity, Agent, ChatAttachment, Conversation, LLMProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // fmtBytes renders a human file size for attachment chips (mirrors transcript.tsx).
+// 서버의 기본 제목 `新对话`(server/conversations.go 사본)도 빈 제목처럼 "새 대화"로 보인다.
+function convTitle(title: string | undefined): string {
+  return !title || title === "新对话" ? "새 대화" : title;
+}
+
 function fmtBytes(n: number): string {
   if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MB`;
   if (n >= 1 << 10) return `${(n / (1 << 10)).toFixed(1)} KB`;
@@ -131,13 +137,13 @@ function groupByAgent(conversations: Conversation[], agentByKey: Map<string, Age
   return [...groups.values()];
 }
 
-// LiveBadge is the small pulsing "实时" chip reused from the task's main-agent
-// console — shown while a turn is streaming.
+// LiveBadge는 작업의 메인 에이전트 콘솔에서 가져다 쓰는 작은 깜박이는 '실시간' 칩이다.
+// 턴이 스트리밍되는 동안 보인다.
 function LiveBadge() {
   return (
     <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
       <span className="size-1 animate-pulse rounded-full bg-blue-500" />
-      实时
+      실시간
     </span>
   );
 }
@@ -169,7 +175,7 @@ function Composer({
   running?: boolean;
   onStop?: () => void;
   stopDisabled?: boolean;
-  // 方式1 文件上传:传了 onPickFiles 才显示回形针按钮 + 附件 chip 预览。
+  // 방식 1 파일 업로드: onPickFiles를 넘겨야 클립 버튼과 첨부 chip 미리보기를 보인다.
   attachments?: ChatAttachment[];
   onPickFiles?: (files: File[]) => void;
   onRemoveAttachment?: (path: string) => void;
@@ -178,7 +184,7 @@ function Composer({
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const atts = attachments ?? [];
-  // 发送键位由系统设置决定（localStorage），默认 Enter 发送。
+  // 전송 키는 시스템 설정(localStorage)이 정한다. 기본값은 Enter 전송이다.
   const sendMode = useChatSendMode();
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (!shouldSubmitOnKey(e, sendMode)) return;
@@ -203,7 +209,7 @@ function Composer({
                   type="button"
                   className="ml-0.5 text-muted-foreground hover:text-foreground"
                   onClick={() => onRemoveAttachment(a.path)}
-                  title="移除"
+                  title="제거"
                 >
                   <XIcon className="size-3" />
                 </button>
@@ -222,8 +228,8 @@ function Composer({
               multiple
               className="hidden"
               onChange={(e) => {
-                // FileList 与 input 元素活绑定:必须先快照成数组,再清空 value,
-                // 否则异步的 onPickFiles(比如草稿态要先建会话)恢复执行时会拿到空列表。
+                // FileList는 input 요소에 실시간으로 묶여 있다. 먼저 배열로 스냅숏을 뜬 뒤 value를 비워야 한다.
+                // 그러지 않으면 비동기 onPickFiles(예: 초안 상태라 대화를 먼저 만들어야 할 때)가 이어서 실행될 때 빈 목록을 받는다.
                 const picked = Array.from(e.target.files ?? []);
                 e.target.value = ""; // allow re-picking the same file
                 if (picked.length > 0) onPickFiles(picked);
@@ -234,7 +240,7 @@ function Composer({
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || uploading}
-              title="上传文件"
+              title="파일 업로드"
             >
               {uploading ? <Loader2Icon className="size-4 animate-spin" /> : <PaperclipIcon className="size-4" />}
             </Button>
@@ -250,14 +256,14 @@ function Composer({
           onKeyDown={onKeyDown}
         />
         {running && allowBtw && isBtwCommand(value) && (
-          <Button size="icon" onClick={onSend} aria-label="发送旁路问题" title="发送旁路问题">
+          <Button size="icon" onClick={onSend} aria-label="별도 질문 전송" title="별도 질문 전송">
             <ArrowUpIcon />
           </Button>
         )}
         {running ? (
           // while a run is in flight the send button becomes a stop button —
           // aborts just this session (the trigger queue keeps going).
-          <Button size="icon" variant="destructive" onClick={onStop} disabled={stopDisabled} title="停止本次运行">
+          <Button size="icon" variant="destructive" onClick={onStop} disabled={stopDisabled} title="이번 실행 중지">
             <Square className="size-3.5 fill-current" />
           </Button>
         ) : (
@@ -265,8 +271,8 @@ function Composer({
             size="icon"
             onClick={onSend}
             disabled={disabled || (!value.trim() && atts.length === 0)}
-            title="发送消息"
-            aria-label="发送消息"
+            title="메시지 전송"
+            aria-label="메시지 전송"
           >
             <ArrowUpIcon />
           </Button>
@@ -294,7 +300,7 @@ function LLMProfileRow({
   const [open, setOpen] = React.useState(false);
   const activeDefault = profiles.find((p) => p.is_default);
   const current = selected != null ? profiles.find((p) => Number(p.id) === selected) : null;
-  const label = current ? current.name : `默认${activeDefault ? `（${activeDefault.name}）` : ""}`;
+  const label = current ? current.name : `기본${activeDefault ? `(${activeDefault.name})` : ""}`;
 
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-1 px-1 pt-0.5 pb-1">
@@ -309,12 +315,12 @@ function LLMProfileRow({
             disabled={disabled}
             className="flex shrink-0 items-center gap-0.5 text-primary text-xs hover:underline disabled:pointer-events-none disabled:opacity-40"
           >
-            更换
+            변경
             <ChevronDownIcon className="size-3" />
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-64 p-1">
-          <p className="text-muted-foreground px-2 py-1 text-[11px] font-medium">选择 LLM 配置</p>
+          <p className="text-muted-foreground px-2 py-1 text-[11px] font-medium">LLM 프로필 선택</p>
           {/* default option */}
           <button
             type="button"
@@ -327,7 +333,7 @@ function LLMProfileRow({
               selected == null && "bg-accent",
             )}
           >
-            <span className="text-sm">默认{activeDefault ? `（${activeDefault.name}）` : ""}</span>
+            <span className="text-sm">기본{activeDefault ? `(${activeDefault.name})` : ""}</span>
             {activeDefault && (
               <span className="text-muted-foreground text-[11px]">
                 {activeDefault.format} · {activeDefault.model}
@@ -395,7 +401,7 @@ function DraftChat({
       await api.sendConversationMessage(c.id, msg);
       onStarted(c);
     } catch (e) {
-      toast.error("发送失败：" + (e as Error).message);
+      toast.error("메시지를 보내지 못했습니다: " + (e as Error).message);
       setSending(false);
     }
   }
@@ -413,7 +419,7 @@ function DraftChat({
       const r = await api.chatUpload("session", `conv-${c.id}`, files);
       onStarted(c, { input, attachments: r.attachments });
     } catch (e) {
-      toast.error("上传失败：" + (e as Error).message);
+      toast.error("파일을 업로드하지 못했습니다: " + (e as Error).message);
       setUploading(false);
     }
   }
@@ -421,7 +427,7 @@ function DraftChat({
   const agentPicker = (
     <Select value={agentKey} onValueChange={setAgentKey}>
       <SelectTrigger className="w-full sm:w-40">
-        <SelectValue placeholder="选择 Agent…" />
+        <SelectValue placeholder="에이전트 선택…" />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -432,7 +438,7 @@ function DraftChat({
                 {a.name}
                 {!a.builtin && (
                   <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                    自定义
+                    사용자 지정
                   </Badge>
                 )}
               </span>
@@ -450,7 +456,7 @@ function DraftChat({
         <div className="bg-primary/10 flex size-12 items-center justify-center rounded-full">
           <Bot className="text-primary size-6" />
         </div>
-        <div className="text-sm font-medium">开始和「{agent?.name ?? "Agent"}」对话</div>
+        <div className="text-sm font-medium">'{agent?.name ?? "에이전트"}'와(과) 대화를 시작하세요</div>
         {agent?.description && <p className="text-muted-foreground max-w-md text-xs">{agent.description}</p>}
       </div>
 
@@ -459,7 +465,7 @@ function DraftChat({
         onChange={setInput}
         onSend={send}
         disabled={sending || uploading || !agentKey}
-        placeholder="输入消息，@ 引用记录，Enter 发送"
+        placeholder="메시지 입력, @로 기록 참조, Enter로 전송"
         leftSlot={agentPicker}
         onPickFiles={pickFiles}
         uploading={uploading}
@@ -500,7 +506,7 @@ function ChatView({
   const [input, setInput] = React.useState(initial?.input ?? "");
   const [sending, setSending] = React.useState(false);
   const [stopping, setStopping] = React.useState(false);
-  // 方式1 文件上传:已上传的附件(落到 sessions/conv-<id>/uploads/),随下条消息一起发。
+  // 방식 1 파일 업로드: 업로드한 첨부(sessions/conv-<id>/uploads/에 저장)는 다음 메시지와 함께 보낸다.
   const [attachments, setAttachments] = React.useState<ChatAttachment[]>(initial?.attachments ?? []);
   const [uploading, setUploading] = React.useState(false);
   const cursorRef = React.useRef(0); // newest loaded id — incremental-tail anchor
@@ -518,7 +524,7 @@ function ChatView({
       await api.updateConversationProfile(conv.id, id);
       onConvUpdated();
     } catch (e) {
-      toast.error("切换 LLM 失败：" + (e as Error).message);
+      toast.error("LLM 프로필을 바꾸지 못했습니다: " + (e as Error).message);
     }
   }
 
@@ -696,7 +702,7 @@ function ChatView({
     let li = 0,
       lo = 0,
       lcr = 0;
-    let turns = 0; // agent 循环轮次 = 模型调用次数（每次一条 kind='usage'）
+    let turns = 0; // 에이전트 루프 횟수 = 모델 호출 횟수(호출마다 kind='usage' 한 건)
     for (const a of messages) {
       if (a.kind === "result") {
         i += a.input_tokens ?? 0;
@@ -725,7 +731,7 @@ function ChatView({
       const r = await api.chatUpload("session", `conv-${conv.id}`, files);
       setAttachments((prev) => [...prev, ...r.attachments]);
     } catch (e) {
-      toast.error("上传失败：" + (e as Error).message);
+      toast.error("파일을 업로드하지 못했습니다: " + (e as Error).message);
     } finally {
       setUploading(false);
     }
@@ -745,7 +751,7 @@ function ChatView({
       // fetch avoids racing a separate post-send request against the poller.
       setRunning(true);
     } catch (e) {
-      toast.error("发送失败：" + (e as Error).message);
+      toast.error("메시지를 보내지 못했습니다: " + (e as Error).message);
       setInput(msg); // restore so the user doesn't lose their text
       setAttachments(atts); // and their attachments
     } finally {
@@ -762,7 +768,7 @@ function ChatView({
     try {
       await api.stopConversation(conv.id);
     } catch (e) {
-      toast.error("停止失败：" + (e as Error).message);
+      toast.error("실행을 중지하지 못했습니다: " + (e as Error).message);
     } finally {
       setStopping(false);
     }
@@ -777,7 +783,7 @@ function ChatView({
         <span className="text-muted-foreground hidden shrink-0 font-mono text-xs sm:inline">{conv.agent_key}</span>
         {agent && !agent.builtin && (
           <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">
-            自定义
+            사용자 지정
           </Badge>
         )}
         {agent?.description && (
@@ -787,8 +793,8 @@ function ChatView({
         <SideQuestionButton side={side} />
         <div className="text-muted-foreground ml-auto flex min-w-0 max-w-full items-center justify-end gap-x-3 gap-y-1 text-xs max-sm:w-full max-sm:flex-wrap">
           {tokenTotal.turns > 0 && (
-            <span title="agent 循环轮次（模型调用次数）" className="tabular-nums">
-              {tokenTotal.turns} 轮
+            <span title="에이전트 루프 횟수(모델 호출 횟수)" className="tabular-nums">
+              {tokenTotal.turns}회
             </span>
           )}
           {tokenTotal.any && (
@@ -806,12 +812,14 @@ function ChatView({
         <div className="min-w-0 max-w-full px-4 py-3" ref={contentRef}>
           {messages.length === 0 && !running ? (
             <div className="text-muted-foreground py-10 text-center text-sm">
-              开始和「{agent?.name ?? conv.agent_key}」对话
+              '{agent?.name ?? conv.agent_key}'와(과) 대화를 시작하세요
             </div>
           ) : (
             <>
               {hasMore && (
-                <div className="text-muted-foreground/70 pb-2 text-center text-[11px]">向上滚动加载更早的消息…</div>
+                <div className="text-muted-foreground/70 pb-2 text-center text-[11px]">
+                  위로 스크롤하면 이전 메시지를 불러옵니다…
+                </div>
               )}
               <Transcript
                 activity={messages}
@@ -831,7 +839,11 @@ function ChatView({
         onSend={send}
         disabled={running || sending}
         allowBtw
-        placeholder={running ? "Agent 正在回复，可输入 /btw 提问…" : "输入消息，@ 引用记录，Enter 发送"}
+        placeholder={
+          running
+            ? "에이전트가 응답하는 중입니다. /btw로 별도 질문을 할 수 있습니다…"
+            : "메시지 입력, @로 기록 참조, Enter로 전송"
+        }
         running={running}
         onStop={stop}
         stopDisabled={stopping}
@@ -912,7 +924,7 @@ const ConversationItem = React.memo(function ConversationItem({
         <Checkbox
           checked={selectedForDelete}
           onCheckedChange={(checked) => onSelectedForDeleteChange(conv.id, checked === true)}
-          aria-label={`选择对话「${conv.title || "新对话"}」`}
+          aria-label={`대화 '${convTitle(conv.title)}' 선택`}
           className="ml-1 shrink-0"
         />
       )}
@@ -939,16 +951,16 @@ const ConversationItem = React.memo(function ConversationItem({
           type="button"
           onClick={() => onSelect(conv.id)}
           onDoubleClick={() => onStartRename(conv)}
-          title="双击重命名"
+          title="두 번 클릭해 이름 바꾸기"
           className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left"
         >
           <div className="flex min-w-0 items-center gap-1.5">
-            {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label="已置顶" />}
-            <div className="truncate text-sm">{conv.title || "新对话"}</div>
+            {pinned && <PinIcon className="text-primary size-3 shrink-0" aria-label="상단 고정됨" />}
+            <div className="truncate text-sm">{convTitle(conv.title)}</div>
             {conv.running ? (
-              <Badge variant="secondary" className="shrink-0 gap-1" title="Agent 正在运行">
+              <Badge variant="secondary" className="shrink-0 gap-1" title="에이전트 실행 중">
                 <Spinner className="size-3" aria-hidden="true" />
-                运行中
+                실행 중
               </Badge>
             ) : null}
           </div>
@@ -961,7 +973,7 @@ const ConversationItem = React.memo(function ConversationItem({
               </>
             )}
             <span className="shrink-0">
-              {new Date(conv.created_at).toLocaleDateString("zh-CN", {
+              {new Date(conv.created_at).toLocaleDateString(DISPLAY_LOCALE, {
                 month: "numeric",
                 day: "numeric",
                 hour: "2-digit",
@@ -978,7 +990,7 @@ const ConversationItem = React.memo(function ConversationItem({
             variant="ghost"
             size="icon-sm"
             className="text-muted-foreground shrink-0"
-            aria-label={`管理对话「${conv.title || "新对话"}」`}
+            aria-label={`대화 '${convTitle(conv.title)}' 관리`}
           >
             <MoreHorizontalIcon />
           </Button>
@@ -987,18 +999,18 @@ const ConversationItem = React.memo(function ConversationItem({
           <DropdownMenuGroup>
             <DropdownMenuItem onSelect={() => onStartRename(conv)}>
               <PencilIcon />
-              重命名
+              이름 바꾸기
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onTogglePinned(conv)}>
               {pinned ? <PinOffIcon /> : <PinIcon />}
-              {pinned ? "取消置顶" : "置顶"}
+              {pinned ? "상단 고정 해제" : "상단 고정"}
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
               <Trash2Icon />
-              删除
+              삭제
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
@@ -1006,12 +1018,12 @@ const ConversationItem = React.memo(function ConversationItem({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除对话「{conv.title || "新对话"}」？</AlertDialogTitle>
-            <AlertDialogDescription>此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogTitle>대화 '{convTitle(conv.title)}'을(를) 삭제할까요?</AlertDialogTitle>
+            <AlertDialogDescription>삭제한 대화는 되돌릴 수 없습니다.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => onDelete(conv.id)}>删除</AlertDialogAction>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={() => onDelete(conv.id)}>삭제</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1037,7 +1049,7 @@ function AgentGroupHeader({
       type="button"
       onClick={() => onToggle(group.key)}
       aria-expanded={!collapsed}
-      title={collapsed ? `展开「${group.name}」` : `收起「${group.name}」`}
+      title={collapsed ? `'${group.name}' 펼치기` : `'${group.name}' 접기`}
       className={cn(
         "sticky top-0 z-10 flex min-w-0 items-center gap-1.5 rounded-md bg-card px-1.5 py-1 text-left font-medium text-[11px] transition-colors hover:bg-accent/50",
         collapsed && hasActive ? "text-foreground" : "text-muted-foreground",
@@ -1047,10 +1059,10 @@ function AgentGroupHeader({
       <Bot className="size-3 shrink-0" />
       <span className="min-w-0 flex-1 truncate">{group.name}</span>
       {collapsed && hasActive && (
-        <span className="size-1.5 shrink-0 rounded-full bg-primary" title="当前对话在此分组内" />
+        <span className="size-1.5 shrink-0 rounded-full bg-primary" title="현재 대화가 이 그룹에 있습니다" />
       )}
       {group.runningCount > 0 && (
-        <Spinner className="size-3 shrink-0" aria-label={`${group.runningCount} 个对话运行中`} />
+        <Spinner className="size-3 shrink-0" aria-label={`대화 ${group.runningCount}개 실행 중`} />
       )}
       <span className="shrink-0 tabular-nums opacity-60">{group.conversations.length}</span>
     </button>
@@ -1081,9 +1093,8 @@ export default function ChatPage() {
   const [renamingId, setRenamingId] = React.useState<number | null>(null);
   const [renameText, setRenameText] = React.useState("");
   const [selectedConversationIds, setSelectedConversationIds] = React.useState<Set<number>>(() => new Set());
-  // selectionMode gates the multi-select UI: off by default (clean list, no
-  // checkboxes); the header "多选" button turns it on, "完成" turns it off and
-  // clears the selection.
+  // selectionMode는 다중 선택 UI를 켜고 끈다. 기본은 꺼짐(체크박스 없는 깔끔한 목록)이고,
+  // 헤더의 '다중 선택' 버튼이 켜고 '완료' 버튼이 끄면서 선택을 비운다.
   const [selectionMode, setSelectionMode] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
   const [bulkDeleting, setBulkDeleting] = React.useState(false);
@@ -1218,9 +1229,9 @@ export default function ChatPage() {
       ),
     [visibleConversations, agentByKey],
   );
-  // conversation agents: custom agents + conversational built-ins (role=assistant,
-  // e.g. Auto / 渗透测试). The orchestration built-ins (goals/planner/mainagent/worker)
-  // are task-specific and stay hidden from the chat page.
+  // 대화용 에이전트: 사용자 지정 에이전트 + 대화형 내장 에이전트(role=assistant,
+  // 예: Auto, 침투 테스트(pentest)). 오케스트레이션 내장 에이전트(goals/planner/mainagent/worker)는
+  // 작업 전용이라 대화 페이지에서 숨긴다.
   const chatAgents = React.useMemo(() => agents.filter((a) => !a.builtin || a.role === "assistant"), [agents]);
   const agentFilterOptions = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -1232,10 +1243,10 @@ export default function ChatPage() {
     if (agentFilter !== null) keys.add(agentFilter);
     return [...keys]
       .map((key) => ({ key, name: agentByKey.get(key)?.name || key, count: counts.get(key) ?? 0 }))
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+      .sort((a, b) => a.name.localeCompare(b.name, DISPLAY_LOCALE));
   }, [convs, chatAgents, agentByKey, agentFilter]);
   const conversationCountLabel =
-    agentFilter === null ? `共 ${convs.length} 个` : `${filteredConversations.length} / ${convs.length} 个`;
+    agentFilter === null ? `총 ${convs.length}개` : `${filteredConversations.length} / ${convs.length}개`;
 
   function changeAgentFilter(key: string | null) {
     setAgentFilter(key);
@@ -1286,7 +1297,7 @@ export default function ChatPage() {
         });
         void reloadConvs();
       } catch (e) {
-        toast.error("删除失败：" + (e as Error).message);
+        toast.error("대화를 삭제하지 못했습니다: " + (e as Error).message);
       }
     },
     [reloadConvs],
@@ -1303,7 +1314,7 @@ export default function ChatPage() {
         const result = await api.deleteConversations(ids.slice(offset, offset + 100));
         for (const item of result.items) {
           if (item.ok) deleted.add(item.id);
-          else failed.push({ id: item.id, error: item.error ?? "对话不存在" });
+          else failed.push({ id: item.id, error: item.error ?? "대화가 없습니다" });
         }
       }
       if (deleted.has(selectedId ?? -1)) selectConversation(null);
@@ -1312,13 +1323,13 @@ export default function ChatPage() {
         for (const id of deleted) next.delete(id);
         return next;
       });
-      if (deleted.size > 0) toast.success(`已删除 ${deleted.size} 个对话`);
+      if (deleted.size > 0) toast.success(`대화 ${deleted.size}개를 삭제했습니다`);
       if (failed.length > 0) {
         const details = failed
           .slice(0, 3)
-          .map((item) => `#${item.id}（${item.error}）`)
-          .join("；");
-        toast.error(`${failed.length} 个对话删除失败：${details}${failed.length > 3 ? " 等" : ""}`);
+          .map((item) => `#${item.id}(${item.error})`)
+          .join("; ");
+        toast.error(`대화 ${failed.length}개를 삭제하지 못했습니다: ${details}${failed.length > 3 ? " 외" : ""}`);
       }
       setBulkDeleteOpen(false);
       // Fully successful → return to the clean list; keep selection mode on if
@@ -1326,7 +1337,7 @@ export default function ChatPage() {
       if (failed.length === 0) setSelectionMode(false);
       void reloadConvs();
     } catch (error) {
-      toast.error(`批量删除失败：${(error as Error).message}`);
+      toast.error(`대화를 일괄 삭제하지 못했습니다: ${(error as Error).message}`);
       void reloadConvs();
     } finally {
       setBulkDeleting(false);
@@ -1340,7 +1351,7 @@ export default function ChatPage() {
         await api.pinConversation(conversation.id, !pinned);
         void reloadConvs();
       } catch (e) {
-        toast.error(`${pinned ? "取消置顶" : "置顶"}失败：${(e as Error).message}`);
+        toast.error(`${pinned ? "상단 고정을 해제하지" : "상단에 고정하지"} 못했습니다: ${(e as Error).message}`);
       }
     },
     [reloadConvs],
@@ -1359,7 +1370,7 @@ export default function ChatPage() {
         await api.renameConversation(id, title);
         void reloadConvs();
       } catch (e) {
-        toast.error("重命名失败：" + (e as Error).message);
+        toast.error("대화 이름을 바꾸지 못했습니다: " + (e as Error).message);
       }
     },
     [reloadConvs],
@@ -1376,23 +1387,23 @@ export default function ChatPage() {
         <div className="bg-card flex flex-col overflow-hidden rounded-lg border">
           <div className="flex flex-col gap-2 border-b p-2">
             <Button size="sm" className="w-full" onClick={() => selectConversation(null)}>
-              <PlusIcon /> 新建对话
+              <PlusIcon /> 새 대화
             </Button>
             <Select
               value={agentFilter === null ? "all" : `agent:${agentFilter}`}
               onValueChange={(value) => changeAgentFilter(value === "all" ? null : value.slice(6))}
               disabled={bulkDeleting}
             >
-              <SelectTrigger size="sm" className="w-full min-w-0" aria-label="按 Agent 筛选对话">
+              <SelectTrigger size="sm" className="w-full min-w-0" aria-label="에이전트별 대화 필터">
                 <Bot />
-                <SelectValue placeholder="全部 Agent" />
+                <SelectValue placeholder="전체 에이전트" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectItem value="all">全部 Agent</SelectItem>
+                  <SelectItem value="all">전체 에이전트</SelectItem>
                   {agentFilterOptions.map((agent) => (
                     <SelectItem key={agent.key} value={`agent:${agent.key}`}>
-                      {agent.name}（{agent.count}）
+                      {agent.name}({agent.count})
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -1404,11 +1415,11 @@ export default function ChatPage() {
                   <Checkbox
                     checked={conversationHeaderChecked}
                     onCheckedChange={(checked) => toggleAllConversations(checked === true)}
-                    aria-label="选择当前筛选的全部对话"
+                    aria-label="현재 필터의 대화 전체 선택"
                     disabled={filteredConversations.length === 0 || bulkDeleting}
                   />
                   <span className="text-muted-foreground min-w-0 flex-1 text-xs tabular-nums">
-                    {selectedConversationCount > 0 ? `已选 ${selectedConversationCount} 个` : conversationCountLabel}
+                    {selectedConversationCount > 0 ? `${selectedConversationCount}개 선택됨` : conversationCountLabel}
                   </span>
                   {selectedConversationCount > 0 && (
                     <Button
@@ -1418,11 +1429,11 @@ export default function ChatPage() {
                       onClick={() => setBulkDeleteOpen(true)}
                     >
                       <Trash2Icon data-icon="inline-start" />
-                      删除
+                      삭제
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" onClick={exitSelectionMode}>
-                    完成
+                    완료
                   </Button>
                 </div>
               ) : (
@@ -1438,7 +1449,7 @@ export default function ChatPage() {
                     disabled={filteredConversations.length === 0}
                   >
                     <ListChecksIcon data-icon="inline-start" />
-                    多选
+                    다중 선택
                   </Button>
                 </div>
               ))}
@@ -1451,7 +1462,7 @@ export default function ChatPage() {
             <div className="flex min-w-0 flex-col gap-0.5 p-2">
               {filteredConversations.length === 0 && (
                 <p className="text-muted-foreground px-2 py-6 text-center text-xs">
-                  {agentFilter === null ? "暂无对话" : "该 Agent 暂无对话"}
+                  {agentFilter === null ? "대화 없음" : "이 에이전트의 대화 없음"}
                 </p>
               )}
               {pinnedConversations.map((c) => (
@@ -1517,7 +1528,7 @@ export default function ChatPage() {
                   className="mt-1 w-full"
                   onClick={() => setVisibleConversationCount((count) => count + CONVERSATION_LIST_PAGE)}
                 >
-                  加载更多
+                  더 불러오기
                 </Button>
               )}
             </div>
@@ -1538,7 +1549,7 @@ export default function ChatPage() {
             />
           ) : sourceRequested ? (
             <div role="status" className="p-6 text-sm text-muted-foreground">
-              {convsLoaded ? "对话已被删除" : "正在加载对应对话…"}
+              {convsLoaded ? "삭제된 대화입니다" : "대화를 불러오는 중…"}
             </div>
           ) : (
             <DraftChat
@@ -1566,11 +1577,11 @@ export default function ChatPage() {
       <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除选中的 {selectedConversationCount} 个对话？</AlertDialogTitle>
-            <AlertDialogDescription>对话消息和执行记录将一并删除，此操作不可撤销。</AlertDialogDescription>
+            <AlertDialogTitle>선택한 대화 {selectedConversationCount}개를 삭제할까요?</AlertDialogTitle>
+            <AlertDialogDescription>대화 메시지와 실행 기록도 함께 삭제되며 되돌릴 수 없습니다.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkDeleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={bulkDeleting}>취소</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={bulkDeleting || selectedConversationCount === 0}
@@ -1580,7 +1591,7 @@ export default function ChatPage() {
               }}
             >
               {bulkDeleting && <Loader2Icon data-icon="inline-start" className="animate-spin" />}
-              {bulkDeleting ? "删除中" : "确认删除"}
+              {bulkDeleting ? "삭제 중" : "삭제"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

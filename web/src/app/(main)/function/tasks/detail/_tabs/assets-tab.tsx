@@ -300,7 +300,7 @@ function AddTaskAssetsSheet({
       onAttached();
       onOpenChange(false);
     } catch (reason) {
-      toast.error(`추가하지 못했습니다: ${String((reason as Error)?.message ?? reason)}`);
+      toast.error(`자산 범위를 추가하지 못했습니다: ${String((reason as Error)?.message ?? reason)}`);
     } finally {
       setSaving(false);
     }
@@ -446,7 +446,7 @@ export function AssetsTab({ taskId }: { taskId: string }) {
       setRemoveTarget(null);
       refresh();
     } catch (reason) {
-      toast.error(`제외하지 못했습니다: ${String((reason as Error)?.message ?? reason)}`);
+      toast.error(`자산을 제외하지 못했습니다: ${String((reason as Error)?.message ?? reason)}`);
     } finally {
       setRemoving(false);
     }
