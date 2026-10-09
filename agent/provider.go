@@ -76,7 +76,7 @@ type Config struct {
 	// 같은 공유 provider 라도 세션마다 다른 헤더 값을 보낼 수 있다.
 	SessionHeaderKey string
 	// Retry 는 이 설정이 해석된 뒤의 재시도 파라미터다(프로필 덮어쓰기 → 전역 정책 → 내장 기본값 순으로
-	// server 쪽에서 해석한다). 세 층의 뜻은 RetryConfig 에 있다. 영값 = 내장 기본값을 그대로 쓴다.
+	// server 쪽에서 해석한다). 세 층의 뜻은 RetryConfig 에 있다. 값을 비우면 내장 기본값을 쓴다.
 	Retry RetryConfig
 	// 구독 인증은 APIKey 대신 OAuthTokens로 제공자별 고정 백엔드를 부른다.
 	// 빈 값은 db.AuthAPIKey 다.

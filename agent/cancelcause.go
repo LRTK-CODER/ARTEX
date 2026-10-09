@@ -28,9 +28,9 @@ func Causef(code, short, format string, args ...any) *AbortCause {
 var (
 	// Task-level execution context.
 	AbortPausedByUser = cause("paused_by_user", "사용자가 작업을 일시 중지함",
-		"사용자가 작업 제어 API(POST /api/tasks/{id}/control, action=pause)로 작업을 일시 중지했습니다. 이번 플래너/워커 실행은 능동적으로 취소됐습니다. 실행 중이던 의도는 frontier(open)로 되돌아가고, 작업을 재개하면 다시 할당받아 처음부터 실행합니다")
+		"사용자가 작업 제어 API(POST /api/tasks/{id}/control, action=pause)로 작업을 일시 중지했습니다. 이번 플래너/워커 실행은 취소됐습니다. 실행 중이던 의도는 frontier(open)로 되돌아가고, 작업을 재개하면 다시 할당받아 처음부터 실행합니다")
 	AbortPausedByOrchestrator = cause("paused_by_orchestrator", "오케스트레이션 에이전트가 작업을 일시 중지함",
-		"오케스트레이션 에이전트가 pause_task 도구를 호출해 이 작업을 일시 중지했습니다. 이번 플래너/워커 실행은 능동적으로 취소됐습니다. 실행 중이던 의도는 frontier(open)로 되돌아가고, 재개하면 다시 실행합니다")
+		"오케스트레이션 에이전트가 pause_task 도구를 호출해 이 작업을 일시 중지했습니다. 이번 플래너/워커 실행은 취소됐습니다. 실행 중이던 의도는 frontier(open)로 되돌아가고, 재개하면 다시 실행합니다")
 	AbortTaskDeleted = cause("task_deleted", "작업이 삭제됨",
 		"작업을 삭제하는 중입니다(DELETE /api/tasks/{id}). 삭제 배리어가 이 작업에서 실행 중이던 플래너, 워커, 메인 에이전트를 취소했습니다. 이번 실행 결과는 더 이상 쓰이지 않습니다")
 	AbortPausedOnReload = cause("paused_on_reload", "백엔드가 작업의 일시 중지 상태를 복원함",
@@ -42,7 +42,7 @@ var (
 
 	// Per-work context.
 	AbortKilledByPlanner = cause("killed_by_planner", "플래너가 이 의도를 종료함",
-		"플래너가 kill_work 를 호출해 이 의도를 능동적으로 종료했습니다. 보통 방향이 어긋났거나 더 진행할 가치가 없다는 뜻입니다. 의도는 stopped 로 표시되고 자동으로 다시 할당받지 않습니다")
+		"플래너가 kill_work 를 호출해 이 의도를 직접 종료했습니다. 보통 방향이 어긋났거나 더 진행할 가치가 없다는 뜻입니다. 의도는 stopped 로 표시되고 자동으로 다시 할당받지 않습니다")
 	AbortWorkPausedByUser = cause("work_paused_by_user", "사용자가 이 워커 의도를 일시 중지함",
 		"사용자가 실행 중인 워커를 일시 중지했습니다. 이번 호출은 취소되고 의도는 paused 로 바뀝니다. 이미 등록된 의도, 사실, 취약점, 활동 기록은 모두 보존되며, 재개하면 처음부터 다시 실행합니다")
 	AbortWorkCancelledByUser = cause("work_cancelled_by_user", "사용자가 이 워커 의도를 삭제함",
@@ -54,7 +54,7 @@ var (
 
 	// Main Agent and standalone conversation contexts.
 	AbortChatStoppedByUser = cause("chat_stopped_by_user", "사용자가 이번 대화를 중지함",
-		"사용자가 중지를 눌러 이번 메인 에이전트 또는 세션 에이전트 실행을 능동적으로 중단했습니다. 이미 생성된 활동 기록은 보존되며, 다음 메시지를 이어서 보낼 수 있습니다")
+		"사용자가 중지를 눌러 이번 메인 에이전트 또는 세션 에이전트 실행을 중단했습니다. 이미 생성된 활동 기록은 보존되며, 다음 메시지를 이어서 보낼 수 있습니다")
 	AbortChatPausedWithTask = cause("chat_paused_with_task", "작업 일시 중지로 메인 에이전트 대화가 중단됨",
 		"사용자가 작업을 일시 중지할 때 실행 중이던 메인 에이전트 대화도 함께 취소됐습니다. 이미 생성된 활동 기록은 보존되며, 작업을 재개해도 이번 메시지를 자동으로 다시 재생하지 않습니다")
 	AbortChatTurnFinished = cause("chat_turn_finished", "이번 대화가 정상 종료하고 context 를 해제함",
@@ -63,8 +63,8 @@ var (
 	// Process-level and per-run hard backstop.
 	AbortShutdown = cause("shutdown", "백엔드 프로세스가 종료 중임",
 		"백엔드 프로세스가 SIGINT 또는 SIGTERM 을 받아 재시작, 업데이트, 종료 중입니다. 실행 중인 모든 에이전트가 취소됩니다. 재시작 뒤 남아 있는 running 의도는 open 으로 초기화돼 다시 실행됩니다")
-	AbortRunHardTimeout = cause("run_hard_timeout", "한 번 실행의 강제 시간 초과 대비책이 발동됨",
-		"한 번 실행이 소프트 실제 경과 시간 예산과 추가 유예 시간을 넘겼습니다. 모델 요청이나 어떤 도구가 오래 반환하지 않아 정상적인 회차 경계 마무리를 수행하지 못했다는 뜻입니다. 중단 직전에 반환하지 않은 마지막 도구 호출을 중점적으로 확인하세요")
+	AbortRunHardTimeout = cause("run_hard_timeout", "한 번 실행의 강제 시간 제한에 걸림",
+		"한 번 실행이 실제 경과 시간 예산과 추가 유예 시간을 넘겼습니다. 모델 요청이나 어떤 도구가 오래 반환하지 않아 정상적인 회차 경계 마무리를 수행하지 못했다는 뜻입니다. 중단 직전에 반환하지 않은 마지막 도구 호출을 중점적으로 확인하세요")
 )
 
 // AbortReason resolves the named cause attached to a cancelled run context.

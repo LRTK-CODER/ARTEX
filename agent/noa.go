@@ -16,7 +16,7 @@ func noaWarn(session string) func(string) {
 
 // noa 는 norma v0.4.0 이 들여온 '모델이 이끄는 컨텍스트 압축' 방식으로, 플랫폼 실험 기능으로서 사용자가
 // 시스템 설정에서 켜고 끈다. 내장 compaction 과 상호 배타적이다. noaadapter.Enable 이 유일한 진입점으로,
-// 한 번에 컨텍스트 접수기(Compactor), Compress 도구, 세 토막의 상주 프롬프트를 건다. Enable 을 부르지 않으면 꺼짐이다
+// 한 번에 컨텍스트 관리자(Compactor), Compress 도구, 상주 프롬프트 세 개를 건다. Enable 을 부르지 않으면 꺼짐이다
 // (내장 compaction 이 평소대로 동작한다). 토글은 각 agent 가 주입한 noaEnabledFn 이 해석하며 run 마다 한 번 읽으므로,
 // 전환은 이후 시작하는 run 에만 영향을 주고 agent 를 다시 만들 필요가 없다.
 

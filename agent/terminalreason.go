@@ -39,7 +39,7 @@ var reasonHint = map[harness.TerminalReason]string{
 	harness.ReasonPromptTooLong:     "프롬프트가 너무 길고 컨텍스트 압축 재시도도 모두 소진해 더 이상 실행할 수 없습니다",
 	harness.ReasonImageError:        "현재 모델이 이번 회차의 멀티모달 내용을 지원하지 않습니다. 비전을 지원하는 모델로 바꾸거나 도구가 이미지를 반환하지 않게 하세요",
 	harness.ReasonStopHookPrevented: "Stop 훅이 이번 회차의 종료를 막았고 이어 가지도 못했습니다. 작업 Guard 규칙이 너무 엄격하지 않은지 확인하세요",
-	harness.ReasonHookStopped:       "도구 또는 훅이 실행을 능동적으로 멈췄습니다. 예를 들어 범위를 벗어난 대상이나 금지된 명령입니다. 마지막 tool_result 의 차단 설명을 확인하세요",
+	harness.ReasonHookStopped:       "도구 또는 훅이 실행을 직접 멈췄습니다. 예를 들어 범위를 벗어난 대상이나 금지된 명령입니다. 마지막 tool_result 의 차단 설명을 확인하세요",
 	harness.ReasonAbortedStreaming:  "모델 출력 스트리밍 생성 단계에서 실행이 취소됐습니다",
 	harness.ReasonAbortedTools:      "도구 실행 단계에서 실행이 취소됐습니다",
 }
