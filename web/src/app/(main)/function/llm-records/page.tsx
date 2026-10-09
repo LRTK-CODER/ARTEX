@@ -32,11 +32,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import type { LLMRecordDetail, LLMRecordItem, LLMTask } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString(DISPLAY_LOCALE, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

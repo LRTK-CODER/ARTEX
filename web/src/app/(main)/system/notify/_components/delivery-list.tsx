@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { statusMeta, toneClasses } from "@/lib/status";
 import type { NotificationChannel, NotificationDelivery } from "@/lib/types";
 
@@ -180,5 +181,5 @@ export function DeliveryList({ channels }: { channels: NotificationChannel[] }) 
 function formatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("zh-CN", { hour12: false });
+  return d.toLocaleString(DISPLAY_LOCALE, { hour12: false });
 }

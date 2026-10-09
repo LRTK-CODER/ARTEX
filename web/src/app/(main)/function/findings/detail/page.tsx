@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
@@ -41,7 +42,7 @@ const FINDING_STATUSES: FindingStatus[] = [
 ];
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN");
+  return new Date(ts).toLocaleString(DISPLAY_LOCALE);
 }
 
 // FieldRow is one label/value line in the right-hand status panel.

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { useStoredSortPreference } from "@/lib/sort-preference";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus } from "@/lib/types";
@@ -108,7 +109,7 @@ function Row({
           <StatusBadge domain="finding" value={f.status} dot />
         )}
         <span className="hidden shrink-0 text-xs text-muted-foreground md:block">
-          {new Date(f.ts).toLocaleString("zh-CN")}
+          {new Date(f.ts).toLocaleString(DISPLAY_LOCALE)}
         </span>
         {f.finding_id && (
           <Link

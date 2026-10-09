@@ -42,12 +42,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { DISPLAY_LOCALE } from "@/lib/locale";
 import { useStoredSortPreference } from "@/lib/sort-preference";
 import type { TrafficDetail, TrafficExchange, TrafficHost, TrafficResp } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts: string) {
-  return new Date(ts).toLocaleString("zh-CN", {
+  return new Date(ts).toLocaleString(DISPLAY_LOCALE, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
