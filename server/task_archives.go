@@ -129,7 +129,7 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 	drainCtx, cancel := context.WithTimeout(s.ctx, taskDeleteDrainTimeout)
 	defer cancel()
 	if err := s.waitTaskQuiescent(drainCtx, taskID); err != nil {
-		return errors.New("작업에 아직 실행 중인 에이전트가 있습니다. 일시 중지한 뒤 다시 보관하세요")
+		return errors.New("작업에 아직 실행 중인 에이전트가 있습니다. 일시 중지한 뒤 다시 보관하세요.")
 	}
 	if err := s.drainTaskSideQuestions(drainCtx, taskID); err != nil {
 		return err

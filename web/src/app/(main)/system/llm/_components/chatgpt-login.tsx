@@ -177,7 +177,7 @@ function PasteLogin({
     // 복사할 때 붙은 앞뒤 공백 때문에 callback_url_mismatch가 나지 않게 다듬는다.
     const url = callbackUrl.trim();
     if (!url) {
-      setError("콜백 주소를 붙여넣으세요.");
+      setError("콜백 주소를 붙여넣으세요");
       return;
     }
     // 주소에 일회용 code·state가 들어 있으므로 보내는 즉시 입력란에서 지운다.

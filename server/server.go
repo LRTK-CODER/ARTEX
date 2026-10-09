@@ -1632,7 +1632,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	companyIDs, err := db.NormalizeTaskCompanyIDs(req.CompanyIDs)
 	if err != nil {
-		writeErr(w, 400, fmt.Sprintf("관련 기업이 잘못됐습니다. 유효한 기업을 최대 %d개까지 고를 수 있습니다", db.MaxTaskCompanyCount))
+		writeErr(w, 400, fmt.Sprintf("관련 기업이 잘못됐습니다. 유효한 기업을 최대 %d개까지 고를 수 있습니다.", db.MaxTaskCompanyCount))
 		return
 	}
 	req.CompanyIDs = companyIDs
@@ -3824,7 +3824,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.chatBusy[t.ID] {
 		s.chatMu.Unlock()
-		writeErr(w, 409, "메인 에이전트가 이전 메시지를 처리하는 중입니다. 잠시 뒤 다시 시도하세요")
+		writeErr(w, 409, "메인 에이전트가 이전 메시지를 처리하는 중입니다. 잠시 뒤 다시 시도하세요.")
 		return
 	}
 	ctx, cancel := context.WithCancelCause(s.ctx)

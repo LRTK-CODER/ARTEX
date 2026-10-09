@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	ErrEvidenceConflict = errors.New("트래픽 증거가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요")
+	ErrEvidenceConflict = errors.New("트래픽 증거가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요.")
 	ErrFindingNotFound  = errors.New("취약점이 없습니다")
 	ErrEvidenceNotFound = errors.New("트래픽 증거가 없습니다")
 )

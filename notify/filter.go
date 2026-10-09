@@ -61,7 +61,7 @@ func ValidMinSeverity(s string) bool {
 // 이력 데이터에 이미 있는 잘못된 값 때문에 알림 채널 전체를 읽지 못하는 일이 없다.
 func (f Filter) Validate() error {
 	if !ValidMinSeverity(f.MinSeverity) {
-		return fmt.Errorf("최저 심각도 %q은(는) 잘못된 값입니다. low / medium / high / critical 중 하나를 고르거나, 비워 두면 제한 없음입니다", f.MinSeverity)
+		return fmt.Errorf("최저 심각도 %q은(는) 잘못된 값입니다. low / medium / high / critical 중 하나를 고르거나, 비워 두면 제한 없음입니다.", f.MinSeverity)
 	}
 	return nil
 }

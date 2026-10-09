@@ -107,7 +107,7 @@ func FetchLatest(ctx context.Context, c *http.Client) (*Release, error) {
 	switch {
 	case resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusTooManyRequests:
 		// 인증하지 않은 GitHub API는 IP 마다 시간당 60회라서, 아웃바운드 IP를 함께 쓰면 쉽게 걸린다.
-		return nil, fmt.Errorf("GitHub API 속도 제한(시간당 60회)에 걸렸습니다. 잠시 뒤 다시 시도하세요")
+		return nil, fmt.Errorf("GitHub API 속도 제한(시간당 60회)에 걸렸습니다. 잠시 뒤 다시 시도하세요.")
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, fmt.Errorf("저장소 %s에 아직 정식 릴리스가 없습니다", Repo)
 	case resp.StatusCode != http.StatusOK:

@@ -420,7 +420,7 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 	s.chatMu.Lock()
 	if s.chatBusy[busyKey] {
 		s.chatMu.Unlock()
-		writeErr(w, 409, "이 대화는 이전 메시지를 처리하는 중입니다. 잠시 뒤 다시 시도하세요")
+		writeErr(w, 409, "이 대화는 이전 메시지를 처리하는 중입니다. 잠시 뒤 다시 시도하세요.")
 		return
 	}
 	s.chatBusy[busyKey] = true

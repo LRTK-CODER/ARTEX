@@ -168,7 +168,7 @@ func (s *Server) drainTaskSideQuestions(ctx context.Context, taskID string) erro
 	defer s.side.mu.Unlock()
 	for _, snap := range s.side.pending {
 		if snap.Parent.TaskID == id {
-			return errors.New("별도 질문의 컨텍스트가 아직 저장되지 않았습니다. 다시 시도하세요")
+			return errors.New("별도 질문의 컨텍스트가 아직 저장되지 않았습니다. 다시 시도하세요.")
 		}
 	}
 	return nil
@@ -193,7 +193,7 @@ func (s *Server) sideProvider(model sidequestion.Model) (llm.Provider, error) {
 		// Validate the persisted reference even if a previous provider is cached.
 		current, exists := s.loadProfileConfig(model.ProfileID)
 		if !exists || sideModel(current, model.ProfileID, model.Name).Identity != model.Identity {
-			return nil, errors.New("LLM 프로필이 삭제됐거나 바뀌었습니다. 먼저 메인 에이전트를 실행해 컨텍스트를 갱신하세요")
+			return nil, errors.New("LLM 프로필이 삭제됐거나 바뀌었습니다. 먼저 메인 에이전트를 실행해 컨텍스트를 갱신하세요.")
 		}
 		p, cfg, ok = s.providerForProfile(model.ProfileID)
 	} else {
@@ -202,7 +202,7 @@ func (s *Server) sideProvider(model sidequestion.Model) (llm.Provider, error) {
 		s.cfgMu.Unlock()
 	}
 	if !ok || p == nil || sideModel(cfg, model.ProfileID, model.Name).Identity != model.Identity {
-		return nil, errors.New("LLM 프로필이 삭제됐거나 바뀌었습니다. 먼저 메인 에이전트를 실행해 컨텍스트를 갱신하세요")
+		return nil, errors.New("LLM 프로필이 삭제됐거나 바뀌었습니다. 먼저 메인 에이전트를 실행해 컨텍스트를 갱신하세요.")
 	}
 	return p, nil
 }
@@ -370,7 +370,7 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 		return
 	}
 	if snap == nil {
-		writeErr(w, 409, "컨텍스트 스냅숏이 아직 없습니다. 먼저 메인 에이전트를 실행하세요")
+		writeErr(w, 409, "컨텍스트 스냅숏이 아직 없습니다. 먼저 메인 에이전트를 실행하세요.")
 		return
 	}
 	provider, err := s.sideProvider(snap.Model)
@@ -392,7 +392,7 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 		return
 	}
 	if full {
-		writeErr(w, 429, "별도 질문 요청이 동시 실행 제한에 도달했습니다. 잠시 뒤 다시 시도하세요")
+		writeErr(w, 429, "별도 질문 요청이 동시 실행 제한에 도달했습니다. 잠시 뒤 다시 시도하세요.")
 		return
 	}
 	agentQuestion, ok := s.prepareChatMentionMessage(w, in.Question)

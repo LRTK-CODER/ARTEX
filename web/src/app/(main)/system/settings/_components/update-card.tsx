@@ -83,7 +83,7 @@ export function UpdateCard() {
         if (r.ok) {
           const j = (await r.json()) as { version?: string };
           if (j.version && j.version !== fromVersion) {
-            toast.success(`${j.version}(으)로 업데이트했습니다. 페이지를 다시 불러오는 중입니다`);
+            toast.success(`${j.version}(으)로 업데이트했습니다. 페이지를 다시 불러오는 중입니다.`);
             await sleep(800);
             window.location.reload();
             return;

@@ -920,7 +920,7 @@ function sendMockWorkerMessage(
     return {
       ok: false,
       state: intent.state,
-      error: "일시 중지된 워커에게만 메시지를 보낼 수 있습니다. 먼저 일시 중지하세요",
+      error: "일시 중지된 워커에게만 메시지를 보낼 수 있습니다. 먼저 일시 중지하세요.",
     };
   }
   if (!normalizedMessage) return { ok: false, state: intent.state, error: "메시지는 비워 둘 수 없습니다" };

@@ -1916,11 +1916,11 @@ func (s *Server) pgDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	if err := pg.DeleteProfileContext(r.Context(), id); err != nil {
 		switch {
 		case errors.Is(err, db.ErrActiveLLMProfileDelete):
-			writeErr(w, 409, "활성 LLM 프로필은 삭제할 수 없습니다. 다른 프로필을 먼저 활성으로 설정하세요")
+			writeErr(w, 409, "활성 LLM 프로필은 삭제할 수 없습니다. 다른 프로필을 먼저 활성으로 설정하세요.")
 		case errors.Is(err, db.ErrLLMProfileReferencesChanged):
-			writeErr(w, 409, "작업이나 세션이 LLM 프로필을 바꾸는 중입니다. 다시 시도하세요")
+			writeErr(w, 409, "작업이나 세션이 LLM 프로필을 바꾸는 중입니다. 다시 시도하세요.")
 		case errors.Is(err, context.DeadlineExceeded):
-			writeErr(w, 409, "LLM 프로필 참조가 풀리기를 기다리다 시간이 초과됐습니다. 다시 시도하세요")
+			writeErr(w, 409, "LLM 프로필 참조가 풀리기를 기다리다 시간이 초과됐습니다. 다시 시도하세요.")
 		case errors.Is(err, db.ErrLLMProfileNotFound):
 			writeErr(w, 404, err.Error())
 		default:

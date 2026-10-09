@@ -182,7 +182,7 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, ok, _ := pg.GetSetting(authPassKey)
 	if !ok || hash == "" {
-		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요")
+		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요.")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.OldPassword)); err != nil {
@@ -221,7 +221,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	hash, ok, _ := pg.GetSetting(authPassKey)
 	if !ok || hash == "" {
-		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요")
+		writeErr(w, 403, "비밀번호가 설정되지 않았습니다. 먼저 비밀번호를 설정하세요.")
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {

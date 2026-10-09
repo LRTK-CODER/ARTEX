@@ -570,7 +570,7 @@ export default function TasksPage() {
     async (task: Task, name: string) => {
       try {
         await api.renameTask(task.id, name);
-        toast.success(`작업 #${task.id}의 이름을 바꿨습니다.`);
+        toast.success(`작업 #${task.id}의 이름을 바꿨습니다`);
         lastRef.current = "";
         load();
       } catch (error) {
@@ -605,7 +605,7 @@ export default function TasksPage() {
     async (task: Task) => {
       try {
         await api.archiveTask(task.id);
-        toast.success(`작업 #${task.id}을 보관 대기열에 넣었습니다.`);
+        toast.success(`작업 #${task.id}을 보관 대기열에 넣었습니다`);
         setActiveTab("archived");
         lastRef.current = "";
         load();
@@ -696,7 +696,7 @@ export default function TasksPage() {
     const result = await api.archiveTasks(archivableTaskIDs);
     const succeeded = result.items.filter((item) => item.ok);
     const failed = result.items.filter((item) => !item.ok);
-    if (succeeded.length > 0) toast.success(`작업 ${succeeded.length}개를 보관 대기열에 넣었습니다.`);
+    if (succeeded.length > 0) toast.success(`작업 ${succeeded.length}개를 보관 대기열에 넣었습니다`);
     if (failed.length > 0) {
       toast.error(
         `작업 ${failed.length}개를 보관하지 못했습니다: ${failed
@@ -715,7 +715,7 @@ export default function TasksPage() {
     async (action: "pause" | "resume", ids: string[]) => {
       if (ids.length === 0 || batchControlling) return;
       if (ids.length > 100) {
-        toast.error("한 번에 작업을 최대 100개까지 제어할 수 있습니다.");
+        toast.error("한 번에 작업을 최대 100개까지 제어할 수 있습니다");
         return;
       }
       setBatchControlling(action);
@@ -756,7 +756,7 @@ export default function TasksPage() {
       const ids = [...selectedIds];
       if (ids.length === 0 || movingCategory) return;
       if (ids.length > 100) {
-        toast.error("한 번에 작업을 최대 100개까지 분류를 바꿀 수 있습니다.");
+        toast.error("한 번에 작업을 최대 100개까지 분류를 바꿀 수 있습니다");
         return;
       }
       setMovingCategory(true);
@@ -1754,8 +1754,8 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
         const archiveID = Number(item.archive_id ?? item.id);
         if (item.ok && Number.isSafeInteger(archiveID) && archiveID > 0) pendingRestoreIDs.current.add(archiveID);
       }
-      if (succeeded > 0) toast.success(`작업 ${succeeded}개를 복원 대기열에 넣었습니다.`);
-      if (failed > 0) toast.error(`작업 ${failed}개를 복원하지 못했습니다.`);
+      if (succeeded > 0) toast.success(`작업 ${succeeded}개를 복원 대기열에 넣었습니다`);
+      if (failed > 0) toast.error(`작업 ${failed}개를 복원하지 못했습니다`);
       afterAction();
     } catch (error) {
       toast.error(`작업을 복원하지 못했습니다: ${(error as Error).message}`);
@@ -1779,8 +1779,8 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
           : await api.deleteTaskArchives(items.map((archive) => archive.id));
       const succeeded = result.items.filter((item) => item.ok).length;
       const failed = result.items.length - succeeded;
-      if (succeeded > 0) toast.success(`보관본 ${succeeded}개를 영구 삭제 대기열에 넣었습니다.`);
-      if (failed > 0) toast.error(`보관본 ${failed}개를 삭제하지 못했습니다.`);
+      if (succeeded > 0) toast.success(`보관본 ${succeeded}개를 영구 삭제 대기열에 넣었습니다`);
+      if (failed > 0) toast.error(`보관본 ${failed}개를 삭제하지 못했습니다`);
       afterAction();
     } catch (error) {
       toast.error(`보관본을 영구 삭제하지 못했습니다: ${(error as Error).message}`);
@@ -1793,7 +1793,7 @@ function TaskArchivesPanel({ onChanged }: { onChanged: () => void }) {
       if (archive.state === "archive_failed") await api.archiveTask(String(archive.task_id));
       if (archive.state === "restore_failed") await api.restoreTaskArchive(archive.id);
       if (archive.state === "delete_failed") await api.deleteTaskArchive(archive.id);
-      toast.success("처리 대기열에 다시 넣었습니다.");
+      toast.success("처리 대기열에 다시 넣었습니다");
       afterAction();
     } catch (error) {
       toast.error(`보관본 처리를 재시도하지 못했습니다: ${(error as Error).message}`);
@@ -2848,11 +2848,11 @@ function CategoryManagementSheet({
         const created = await api.createTaskCategory(name);
         setSelectedView(created.id);
         setDraftName(created.name);
-        toast.success("분류를 만들었습니다.");
+        toast.success("분류를 만들었습니다");
       } else {
         const updated = await api.renameTaskCategory(selectedView, name);
         setDraftName(updated.name);
-        toast.success("분류를 수정했습니다.");
+        toast.success("분류를 수정했습니다");
       }
       onChanged();
     } catch (error) {
@@ -3164,11 +3164,11 @@ function CreateTaskSheet({
 
   async function createTask() {
     if (!description.trim() || !goal.trim()) {
-      toast.error("설명과 목표를 입력하세요.");
+      toast.error("설명과 목표를 입력하세요");
       return;
     }
     if (sourceTaskIDs.length > MAX_SOURCE_TASKS) {
-      toast.error(`출처 작업은 최대 ${MAX_SOURCE_TASKS}개까지 연결할 수 있습니다.`);
+      toast.error(`출처 작업은 최대 ${MAX_SOURCE_TASKS}개까지 연결할 수 있습니다`);
       return;
     }
     setCreating(true);
@@ -3191,7 +3191,7 @@ function CreateTaskSheet({
           .map((r) => ({ ...r, pattern: r.pattern.trim() }))
           .filter((r) => r.pattern !== ""),
       });
-      toast.success("작업을 만들었습니다.");
+      toast.success("작업을 만들었습니다");
       setName("");
       setCategoryID(undefined);
       setDescription("");

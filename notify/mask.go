@@ -174,7 +174,7 @@ func rejectMaskedInContainers(incoming map[string]any, secretKeys []string) erro
 			continue
 		}
 		if strings.Contains(string(encoded), MaskedPrefix) {
-			return fmt.Errorf("필드 %s의 내용에 마스킹 표시 %q이(가) 들어 있습니다. 이 필드는 통째로 비워 두어 기존 값을 계속 쓰거나 새 값 전체를 제출해야 하며, 구조 안에 마스킹 자리표시자를 넣을 수 없습니다",
+			return fmt.Errorf("필드 %s의 내용에 마스킹 표시 %q이(가) 들어 있습니다. 이 필드는 통째로 비워 두어 기존 값을 계속 쓰거나 새 값 전체를 제출해야 하며, 구조 안에 마스킹 자리표시자를 넣을 수 없습니다.",
 				key, MaskedPrefix)
 		}
 	}

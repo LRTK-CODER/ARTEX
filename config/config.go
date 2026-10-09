@@ -145,7 +145,7 @@ func PostgresDSN() (dsn, source string, err error) {
 	if db.Host != "" || db.DBName != "" || db.User != "" {
 		return db.buildDSN(), "설정 파일 " + Path() + " (database 필드)", nil
 	}
-	return "", "", fmt.Errorf("데이터베이스 설정을 찾지 못했습니다. 환경 변수 ARTEX_PG_DSN이 설정되지 않았고 설정 파일 %s에 database(dsn 또는 host/user/dbname)가 없습니다. 설정 파일을 만들거나 환경 변수를 설정한 뒤 다시 시도하세요", Path())
+	return "", "", fmt.Errorf("데이터베이스 설정을 찾지 못했습니다. 환경 변수 ARTEX_PG_DSN이 설정되지 않았고 설정 파일 %s에 database(dsn 또는 host/user/dbname)가 없습니다. 설정 파일을 만들거나 환경 변수를 설정한 뒤 다시 시도하세요.", Path())
 }
 
 func (d Database) buildDSN() string {
