@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -76,11 +78,19 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.engine.decInflight(id)
 	}
-	dir := filepath.Join(s.m.dir, sub, id, "uploads")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// 에이전트가 작업 디렉터리 안에 심볼릭 링크를 만들 수 있으므로 만들기·쓰기는 작업 공간 루트의 os.Root 로만 한다(#97).
+	root, err := s.wsOpenRoot()
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer root.Close()
+	rel := filepath.Join(sub, id, "uploads")
+	if err := root.MkdirAll(rel, 0o755); err != nil {
 		writeErr(w, 500, "建目录失败: "+err.Error())
 		return
 	}
+	dir := filepath.Join(s.m.dir, rel)
 	r.Body = http.MaxBytesReader(w, r.Body, maxChatUpload)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeErr(w, 400, "解析上传失败或超出大小限制: "+err.Error())
@@ -97,30 +107,34 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
 			continue
 		}
-		dest := uniqueUploadPath(dir, name)
-		if err := saveUpload(hdr, dest); err != nil {
+		base, err := saveUniqueUpload(root, rel, hdr, name)
+		if err != nil {
 			writeErr(w, 500, "保存失败: "+err.Error())
 			return
 		}
-		base := filepath.Base(dest)
-		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: dest})
+		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: filepath.Join(dir, base)})
 	}
 	writeJSON(w, 200, map[string]any{"attachments": out})
 }
 
-// uniqueUploadPath returns dir/name, or dir/name-1, dir/name-2… when it already exists,
-// so re-uploading the same filename never clobbers a prior attachment.
-func uniqueUploadPath(dir, name string) string {
-	dest := filepath.Join(dir, name)
-	if _, err := os.Stat(dest); os.IsNotExist(err) {
-		return dest
-	}
+// createUniqueUpload 는 root 안의 dir 에 name, 이미 있으면 name-1, name-2… 순서로 새 파일을 만들고
+// 고른 이름을 돌려준다. 같은 이름을 다시 올려도 앞 첨부를 덮어쓰지 않는다.
+// O_EXCL 로 만들므로 이름 고르기와 만들기 사이에 경쟁이 없고, 그 이름에 링크(끊긴 링크 포함)가 있으면
+// 따라가지 않고 이미 있는 이름으로 본다.
+func createUniqueUpload(root *os.Root, dir, name string) (*os.File, string, error) {
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
-	for i := 1; ; i++ {
-		cand := filepath.Join(dir, fmt.Sprintf("%s-%d%s", stem, i, ext))
-		if _, err := os.Stat(cand); os.IsNotExist(err) {
-			return cand
+	for i := 0; ; i++ {
+		cand := name
+		if i > 0 {
+			cand = fmt.Sprintf("%s-%d%s", stem, i, ext)
+		}
+		f, err := root.OpenFile(filepath.Join(dir, cand), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err == nil {
+			return f, cand, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, "", err
 		}
 	}
 }
@@ -165,18 +179,21 @@ func humanBytes(n int64) string {
 	}
 }
 
-// saveUpload 는 채팅 첨부를 dest 에 쓴다. 작업 공간 파일 관리자의 올리기는 os.Root 를 거치는 saveUploadInRoot 를 쓴다.
-func saveUpload(hdr *multipart.FileHeader, dest string) error {
+// saveUniqueUpload 는 채팅 첨부를 root 안의 dir 에 겹치지 않는 이름으로 쓰고 그 이름을 돌려준다.
+// 닫기 오류도 돌려준다(늦게 비워지는 쓰기 실패).
+func saveUniqueUpload(root *os.Root, dir string, hdr *multipart.FileHeader, name string) (string, error) {
 	src, err := hdr.Open()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer src.Close()
-	out, err := os.Create(dest)
+	out, base, err := createUniqueUpload(root, dir, name)
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, src)
-	return err
+	if _, err := io.Copy(out, src); err != nil {
+		_ = out.Close() // 복사 오류가 원인이므로 닫기 오류는 덮어쓰지 않는다
+		return "", err
+	}
+	return base, out.Close()
 }
