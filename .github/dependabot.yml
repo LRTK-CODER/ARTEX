@@ -42,7 +42,9 @@ updates:
       include: "scope"
 
   - package-ecosystem: "npm"
-    directory: "/web"
+    directories:
+      - "/web"
+      - "/skills/api-recon/scripts"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
