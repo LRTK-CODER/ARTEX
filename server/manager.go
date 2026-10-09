@@ -628,10 +628,6 @@ func (m *Manager) SetWebSearch(on bool, backend string, braveKey, tavilyKey, pro
 	return nil
 }
 
-// browserMCPName is the seeded Playwright MCP whose proxy args + CA env are kept
-// in sync with the traffic-capture toggle.
-const browserMCPName = "browser"
-
 // syncBrowserMCPProxy reconciles the seeded browser MCP's proxy args + CA env with
 // the current traffic-capture state: capture on → route Playwright through the
 // recording proxy (--proxy-server) and trust its MITM CA (NODE_EXTRA_CA_CERTS);
@@ -645,7 +641,7 @@ func (m *Manager) syncBrowserMCPProxy() {
 	}
 	var srv *pgdb.MCPServer
 	for _, s := range servers {
-		if s.Name == browserMCPName {
+		if s.Name == pgdb.BrowserMCPName {
 			srv = s
 			break
 		}
@@ -657,7 +653,7 @@ func (m *Manager) syncBrowserMCPProxy() {
 	proxy := m.ProxyAddr()  // "" when capture off
 	cert := m.ProxyCACert() // "" when capture off
 
-	args := stripProxyArgs(decodeStrSlice(srv.Args))
+	args := pgdb.StripBrowserProxyArgs(decodeStrSlice(srv.Args))
 	env := decodeStrMap(srv.Env)
 	delete(env, "NODE_EXTRA_CA_CERTS")
 	if proxy != "" {
@@ -677,25 +673,6 @@ func (m *Manager) syncBrowserMCPProxy() {
 	} else {
 		log.Printf("[mcp] browser MCP 已移除捕获代理配置")
 	}
-}
-
-// stripProxyArgs removes any --proxy-server/--proxy-bypass flags (both "--flag val"
-// and "--flag=val" forms) so they can be re-added cleanly from current state,
-// without mutating the input slice.
-func stripProxyArgs(args []string) []string {
-	out := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--proxy-server" || a == "--proxy-bypass" {
-			i++ // skip the following value too
-			continue
-		}
-		if strings.HasPrefix(a, "--proxy-server=") || strings.HasPrefix(a, "--proxy-bypass=") {
-			continue
-		}
-		out = append(out, a)
-	}
-	return out
 }
 
 func decodeStrSlice(raw json.RawMessage) []string {
