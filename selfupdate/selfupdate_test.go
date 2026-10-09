@@ -2,6 +2,9 @@ package selfupdate
 
 import (
 	"archive/zip"
+	"context"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -455,5 +458,36 @@ func TestSettleIsNoopWithoutMarker(t *testing.T) {
 	settle(p) // 普通启动路径，不该 panic 也不该动任何文件
 	if _, err := os.Stat(p.Current); err != nil {
 		t.Error("无标记时 settle 不应影响任何文件")
+	}
+}
+
+// roundTripFunc 는 네트워크 없이 요청을 받아 보는 가짜 RoundTripper 다.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestFetchLatestUsesForkReleases 는 업데이트 확인이 원 저자가 아니라 이 포크의
+// 릴리스를 묻는지 본다. 출처가 원 저자로 돌아가면 검토하지 않은 바이너리가 들어온다.
+func TestFetchLatestUsesForkReleases(t *testing.T) {
+	const want = "https://api.github.com/repos/LRTK-CODER/ARTEX/releases/latest"
+	var got string
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		got = r.URL.String()
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"tag_name":"v1.2.3"}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+
+	rel, err := FetchLatest(context.Background(), client)
+	if err != nil {
+		t.Fatalf("FetchLatest: %v", err)
+	}
+	if got != want {
+		t.Errorf("요청 URL = %q, want %q", got, want)
+	}
+	if rel.TagName != "v1.2.3" {
+		t.Errorf("TagName = %q, want v1.2.3", rel.TagName)
 	}
 }
