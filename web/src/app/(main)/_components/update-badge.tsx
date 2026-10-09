@@ -9,14 +9,14 @@ import { ArrowUpCircleIcon } from "lucide-react";
 import { api } from "@/lib/api";
 
 /**
- * 顶栏的"有新版本"提示：整页加载时查一次，有更新就在版本号旁边亮出来，
- * 点击直达系统配置页的「版本与更新」卡片。
+ * 상단 바의 '새 버전' 표시. 페이지 전체를 불러올 때 한 번 조회하고, 업데이트가 있으면 버전 번호 옆에 띄운다.
+ * 누르면 시스템 설정 페이지의 '버전과 업데이트' 카드로 바로 간다.
  *
- * 后端对 GitHub 的查询结果有 30 分钟缓存，所以这里每次挂载都查一次是安全的
- * ——未认证的 GitHub API 只有 60 次/小时/IP，没有那层缓存的话，多开几个标签页
- * 就会把配额耗光，之后真想更新反而查不动。
+ * 백엔드가 GitHub 조회 결과를 30분 캐시하므로 여기서 마운트할 때마다 조회해도 안전하다.
+ * 인증 없는 GitHub API는 IP당 시간당 60회뿐이라, 그 캐시가 없으면 탭 몇 개만 열어도
+ * 사용 한도가 바닥나 정작 업데이트하려 할 때 조회하지 못한다.
  *
- * 查询失败一律静默：顶栏不是报错的地方，用户进设置页点「检查更新」会看到原因。
+ * 조회에 실패하면 늘 조용히 넘긴다. 상단 바는 오류를 알릴 곳이 아니고, 사용자가 설정 페이지에서 '업데이트 확인'을 누르면 원인을 볼 수 있다.
  */
 export function UpdateBadge() {
   const [latest, setLatest] = React.useState("");
@@ -26,11 +26,11 @@ export function UpdateBadge() {
     api
       .checkUpdate()
       .then((r) => {
-        // has_update 已经包含了"版本号可比较"的判断，开发构建不会亮这个提示。
+        // has_update에 이미 '버전 번호를 비교할 수 있는가' 판단이 들어 있어 개발 빌드에서는 이 표시가 뜨지 않는다.
         if (alive && r.has_update && r.latest) setLatest(r.latest.replace(/^v(?=\d)/, ""));
       })
       .catch(() => {
-        // 静默：没网 / GitHub 限流都不该在顶栏弹错误。
+        // 조용히 넘긴다. 네트워크가 없거나 GitHub 속도 제한에 걸려도 상단 바에 오류를 띄우지 않는다.
       });
     return () => {
       alive = false;
@@ -42,17 +42,17 @@ export function UpdateBadge() {
   return (
     <Link
       href="/system/settings"
-      title={`发现新版本 ${latest}，点击前往更新`}
+      title={`새 버전 ${latest}이(가) 있습니다. 눌러서 업데이트하세요`}
       className="inline-flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 font-medium text-primary-foreground text-xs transition-opacity hover:opacity-90"
     >
-      {/* 呼吸点：顶栏元素很多，纯文字容易被忽略，动效让它一眼可见。 */}
+      {/* 깜박이는 점: 상단 바에 요소가 많아 글자만으로는 놓치기 쉬우므로 움직임으로 바로 눈에 띄게 한다. */}
       <span className="relative flex size-1.5">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary-foreground opacity-75" />
         <span className="relative inline-flex size-1.5 rounded-full bg-primary-foreground" />
       </span>
       <ArrowUpCircleIcon className="size-3.5" />
-      <span className="hidden sm:inline">新版本 {latest}</span>
-      <span className="sm:hidden">新版本</span>
+      <span className="hidden sm:inline">새 버전 {latest}</span>
+      <span className="sm:hidden">새 버전</span>
     </Link>
   );
 }
