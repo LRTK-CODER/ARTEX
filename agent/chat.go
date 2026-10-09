@@ -76,9 +76,9 @@ func (c *ChatAgent) SetGuard(g *guard.Guard) { c.guard = g }
 
 // chatWorkDirSpec returns a working-directory notice appended to every chat
 // agent's system prompt. Mirrors artifactSpec but without pentest-specific
-// wording ("payload", "抓响应体") that would be odd in a general assistant.
+// wording ("payload", "capturing response bodies") that would be odd in a general assistant.
 func chatWorkDirSpec(workDir string) string {
-	return "\n\n**文件输出规约**：需要写文件时，一律写到工作目录 " + workDir + "（这是默认 CWD，相对路径即落在这里，也可用该绝对路径）——不要写 /tmp 或其他绝对路径。"
+	return "\n\n**File output convention**: when you need to write a file, always write it to the working directory " + workDir + " (this is the default CWD, a relative path lands here, or use this absolute path) -- do not write to /tmp or any other absolute path."
 }
 
 // chatSystem renders the DB-managed prompt body for agentKey. Custom agents have
@@ -132,11 +132,11 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // 走记录代理留痕；载入代理 CA 验证 MITM 重签的 HTTPS 证书
+		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA 를 실어 MITM 이 재서명한 HTTPS 인증서를 검증한다
 		WebFetchProxy:   c.proxyAddr,
 		WebFetchCACert:  c.proxyCACert,
-		// 联网搜索(可选)。ddgs 无需 key；brave-free 需 BraveKey；tavily 需 TavilyKey。
-		// WebSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关；空则直连。
+		// 웹 검색(선택). ddgs 는 키가 필요 없다. brave-free 는 BraveKey, tavily 는 TavilyKey 가 필요하다.
+		// WebSearchProxy 는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
 		EnableWebSearch:       ws.Enabled,
 		WebSearchBackend:      ws.Backend,
 		BraveSearchAPIKey:     ws.BraveKey,
@@ -145,20 +145,20 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeepSeekSearchAPIKey:  ws.DeepSeekAPIKey,
 		DeepSeekSearchModel:   ws.DeepSeekModel,
 		WebSearchProxy:        ws.Proxy,
-		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash 子命令默认走代理+信任 CA
+		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA 를 탄다
 		WorkingDir:            sessionWorkDir,
 		MaxTurns:              maxTurns,
 		MaxDuration:           maxDuration,
 		Compaction:            compactionConfig(c.window),
 		Todos:                 actool.NewTodoStore(),
 		// large tool output spills to cmd-output/ under the session dir.
-		// 截断上限用 SDK 默认(tool.Capture 的 30000 字符)。
+		// 잘림 상한은 SDK 기본값(tool.Capture 의 30000자)을 쓴다.
 		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
-		// 命中预算(步数)→ SDK 跑收尾:输出一句总结。Prompt 与收尾轮数按本 agent key 后台可编辑
-		// (自定义 agent 各自一份;留空/0 用通用默认:10 轮)。
+		// 단계 한도에 걸리면 → SDK 가 마무리를 돈다: 요약 한 줄을 낸다. 프롬프트와 마무리 회합 수는 이 agent key 기준으로
+		// 백오피스에서 편집할 수 있다(사용자 지정 agent 는 각자 한 벌. 비우거나 0 이면 범용 기본값 10회).
 		Settlement:   wrapupSettlement(agentKey, nil),
-		NonStreaming: c.nonStreaming(), // 该 profile 选非流式时走 Provider.Complete
-		MaxTokens:    c.maxTokens(),    // 0 = 不发上限,由服务端默认值决定
+		NonStreaming: c.nonStreaming(), // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		MaxTokens:    c.maxTokens(),    // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}
 	if c.guard != nil {
 		opts.Hooks = c.guard.Hooks()
@@ -167,7 +167,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		opts.Transcript = c.tx
 		opts.SessionID = sessionID
 	}
-	// 实验功能:开启后由 noa 接管上下文压缩(归档集中在 <workDir>/noa/<SessionID> 下,持久)。
+	// 실험 기능: 켜면 noa 가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
 	enableNoa(&opts, c.noaEnabledFn, c.workDir, "chat-"+sessionID, noaWarn("chat-"+sessionID))
 	ctx = attachSideCapture(ctx, &opts)
 	s := agentcore.NewSession(opts)
