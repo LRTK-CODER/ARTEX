@@ -11,7 +11,7 @@ import (
 
 // 이 파일의 테스트는 모두 실제 PostgreSQL에 연결한다(DB가 없으면 건너뛴다). 여기 SQL은
 // FOR UPDATE SKIP LOCKED, make_interval, JSONB, 여러 행 IN(...) 자리표 이어 붙이기를
-// 쓴다. 모두 「컴파일은 되지만 실행 중 오류가 날 수 있는」 형태라 실제로 돌려 봐야
+// 쓴다. 모두 '컴파일은 되지만 실행 중 오류가 날 수 있는' 형태라 실제로 돌려 봐야
 // 검증했다고 할 수 있다.
 
 func notifyTestDB(t *testing.T) *DB {
@@ -102,13 +102,13 @@ func TestNotificationAssetNamesResolvesAndPreservesOrder(t *testing.T) {
 // 다음 문장을 계속 실행할 수 있음을 확인한다.
 //
 // 세이브포인트가 없으면 PostgreSQL은 트랜잭션 전체를 무효로 만들고, 그 뒤 모든 문장이
-// "current transaction is aborted"로 실패한다. 그것이 바로 「알림 테이블 문제 때문에
-// 취약점이 저장되지 않는」 장애 경로다.
+// "current transaction is aborted"로 실패한다. 그것이 바로 '알림 테이블 문제 때문에
+// 취약점이 저장되지 않는' 장애 경로다.
 //
 // 여기서는 일부러 **COMMIT이 아니라 ROLLBACK으로 끝낸다**. PG에서 ALTER TABLE은
 // 트랜잭션 안에서 동작하므로, 커밋하면 그 임시 제약이 스키마에 영구히 남아 뒤의 모든
 // 테스트를 깨뜨린다. 롤백하면 DDL이 자동으로 취소되어 손으로 정리할 필요가 없다.
-// 확인할 것은 「트랜잭션이 아직 살아 있다」뿐이라 실제로 커밋할 필요는 없다.
+// 확인할 것은 '트랜잭션이 아직 살아 있다'뿐이라 실제로 커밋할 필요는 없다.
 func TestRecordNotificationEventTxUnwindsOnFailure(t *testing.T) {
 	d := notifyTestDB(t)
 	ctx := context.Background()
@@ -202,8 +202,8 @@ func TestFanOutRoutesEventsByFilter(t *testing.T) {
 	}
 }
 
-// TestFanOutMarksEventsWithNoMatchingChannel 은 「이벤트가 어떤 알림 채널과도 일치하지
-// 않는」 경우를 다룬다. 이런 이벤트도 분배됨으로 표시해야 한다. 그러지 않으면 분배 대기
+// TestFanOutMarksEventsWithNoMatchingChannel 은 '이벤트가 어떤 알림 채널과도 일치하지
+// 않는' 경우를 다룬다. 이런 이벤트도 분배됨으로 표시해야 한다. 그러지 않으면 분배 대기
 // 집합에 영원히 남아 tick마다 다시 훑게 된다.
 func TestFanOutMarksEventsWithNoMatchingChannel(t *testing.T) {
 	d := notifyTestDB(t)
@@ -259,8 +259,8 @@ func TestClaimRealtimeDeliveriesHonorsLeaseAndMode(t *testing.T) {
 		t.Fatalf("finding id = %d, 기대값 3001 (이벤트에서 가져오지 못함)", got[0].FindingID)
 	}
 
-	// 선점 기한이 남았으므로 두 번째 할당은 비어 있어야 한다. 이것이 「같은 행을 두
-	// dispatcher가 동시에 전달하지 않는다」는 보장이다.
+	// 선점 기한이 남았으므로 두 번째 할당은 비어 있어야 한다. 이것이 '같은 행을 두
+	// dispatcher가 동시에 전달하지 않는다'는 보장이다.
 	again, err := d.ClaimRealtimeDeliveries(ctx, realtime.ID, 10, time.Minute)
 	if err != nil {
 		t.Fatal(err)
@@ -294,7 +294,7 @@ func TestClaimExpiredLeaseRecovers(t *testing.T) {
 	if err != nil || len(first) != 1 {
 		t.Fatalf("첫 할당 실패: %v (%d개)", err, len(first))
 	}
-	// 선점 기한을 손으로 과거로 밀어 「선점 기한 지남」을 흉내 낸다.
+	// 선점 기한을 손으로 과거로 밀어 '선점 기한 지남'을 흉내 낸다.
 	if _, err := d.Exec(`UPDATE notification_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE id=$1`, first[0].ID); err != nil {
 		t.Fatal(err)
 	}
@@ -388,8 +388,8 @@ func TestDigestBatchDueAndStableBatchID(t *testing.T) {
 	}
 
 	// 이 배치를 **통째로** 실패시켜 다시 예약한 뒤 다시 할당받는다. batch_id는 원래 값을
-	// 유지해야 한다(COALESCE의 역할). 그러지 않으면 재시도 한 번에 「이 배치는 함께
-	// 보냈다」는 사실이 지워진다.
+	// 유지해야 한다(COALESCE의 역할). 그러지 않으면 재시도 한 번에 '이 배치는 함께
+	// 보냈다'는 사실이 지워진다.
 	//
 	// 하나만이 아니라 배치 전체를 다시 예약해야 한다. 전달 엔진이 다이제스트 메시지를
 	// 보낼 때 그렇게 처리한다(메시지 하나가 배치 전체를 대표하고 성패를 함께한다).
@@ -509,7 +509,7 @@ func TestListNotificationDeliveriesPagingAndFilter(t *testing.T) {
 	if len(page2) != 2 || page2[0].ID >= page1[0].ID {
 		t.Fatalf("페이지 순서가 최신순이 아님: page1[0]=%d page2[0]=%d", page1[0].ID, page2[0].ID)
 	}
-	// 렌더링 컨텍스트가 기록과 함께 와야 한다. 그러지 않으면 목록이 「무엇을 보냈는지」 보여 주지 못한다.
+	// 렌더링 컨텍스트가 기록과 함께 와야 한다. 그러지 않으면 목록이 '무엇을 보냈는지' 보여 주지 못한다.
 	if page1[0].ChannelName == "" || page1[0].FindingID == 0 {
 		t.Fatalf("기록 항목에 표시 필드가 없음: %+v", page1[0])
 	}
@@ -688,7 +688,7 @@ func TestNotificationChannelCRUDRoundTrip(t *testing.T) {
 		t.Fatalf("변경이 적용되지 않음: %+v", after)
 	}
 
-	// 삭제한 뒤에는 조용히 성공하지 말고 「없음」을 알려야 한다.
+	// 삭제한 뒤에는 조용히 성공하지 말고 '없음'을 알려야 한다.
 	if err := d.DeleteNotificationChannel(ctx, id); err != nil {
 		t.Fatal(err)
 	}
@@ -701,14 +701,14 @@ func TestNotificationChannelCRUDRoundTrip(t *testing.T) {
 }
 
 // TestSaveNotificationChannelKeepsExplicitZeroRate 는 예전에 잘못 썼던 곳을 고정한다.
-// **0은 올바른 설정이고 「발송 속도 제한 없음」을 뜻한다. db 계층이 이것을 「지정하지
-// 않음」으로 보고 기본값으로 덮어쓰면 안 된다**.
+// **0은 올바른 설정이고 '발송 속도 제한 없음'을 뜻한다. db 계층이 이것을 '지정하지
+// 않음'으로 보고 기본값으로 덮어쓰면 안 된다**.
 //
 // 예전 버그: SaveNotificationChannel에 `if RatePerMin <= 0 { 기본값 사용 }`이 있었다.
-// 문서, UI 안내, takeTokens는 모두 「0=제한 없음」으로 해석하는데 DB에 쓰는 이 계층만
+// 문서, UI 안내, takeTokens는 모두 '0=제한 없음'으로 해석하는데 DB에 쓰는 이 계층만
 // 몰래 20(DingTalk/WeCom/Telegram)이나 100(Feishu(Lark))으로 바꿨다. 운영자는 제한을
-// 풀었다고 생각했지만 실제로는 묶여 있었고 아무 안내도 없었다. 「지정하지 않음」과
-// 「명시적 0」의 차이는 요청 본문만 나타낼 수 있으므로 기본값은 server 계층이 채우고
+// 풀었다고 생각했지만 실제로는 묶여 있었고 아무 안내도 없었다. '지정하지 않음'과
+// '명시적 0'의 차이는 요청 본문만 나타낼 수 있으므로 기본값은 server 계층이 채우고
 // (notifyCreateChannel 참고) db 계층은 저장만 한다.
 func TestSaveNotificationChannelKeepsExplicitZeroRate(t *testing.T) {
 	d := notifyTestDB(t)
@@ -811,12 +811,12 @@ func TestClaimDigestBatchHonorsCallerLimit(t *testing.T) {
 }
 
 // TestFinishFindingRetestEmitsStatusChange 는 감사에서 지적된 완전성 빈틈 하나를 다룬다.
-// 재검사 결론이 「수정됨」이면 상태는 실제로 바뀌지만, 그 UPDATE는 DB에 바로 써서
+// 재검사 결론이 '수정됨'이면 상태는 실제로 바뀌지만, 그 UPDATE는 DB에 바로 써서
 // 알림이 붙은 버전을 우회했다. 그래서 on_status_change를 설정한 알림 채널은 이런 상태
 // 전이 알림을 전혀 받지 못했다. 화면의 상태는 조용히 바뀌었고 운영자는 플랫폼을 열어
 // 봐야 알았다.
 //
-// 이 테스트는 「상태를 바꾸는 모든 경로가 상태 변경 이벤트를 등록한다」를 고정한다.
+// 이 테스트는 '상태를 바꾸는 모든 경로가 상태 변경 이벤트를 등록한다'를 고정한다.
 func TestFinishFindingRetestEmitsStatusChange(t *testing.T) {
 	d := notifyTestDB(t)
 	ctx := context.Background()

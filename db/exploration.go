@@ -886,7 +886,7 @@ func (s *ExplorationStore) NodesPage(f NodeFilter, page, size int) ([]*Node, int
 		args = append(args, "%"+q+"%")
 		mark := "$" + fmt.Sprint(len(args))
 		ors := []string{"payload::text ILIKE " + mark, "COALESCE(origin,'') ILIKE " + mark}
-		// 숫자만 있으면(또는 UI처럼 # 접두사가 붙은 「#41」 형태) 노드 id와 정확히 일치하는지 보아, 노드를 바로 찾을 수 있게 한다.
+		// 숫자만 있으면(또는 UI처럼 # 접두사가 붙은 '#41' 형태) 노드 id와 정확히 일치하는지 보아, 노드를 바로 찾을 수 있게 한다.
 		if idStr := strings.TrimPrefix(q, "#"); idStr != "" {
 			if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
 				args = append(args, id)

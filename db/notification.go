@@ -22,7 +22,7 @@ import (
 //     무조건 삽입만 하고, 알림 관련 테이블을 읽거나 필터 일치를 검사하지 않는다.
 //     여기에 읽기를 넣으면 사용자가 잘못 설정한 필터 조건 때문에 취약점 쓰기
 //     트랜잭션이 오염되거나 중단될 수 있다.
-//  2. 필터 일치 검사는 절대 오류를 내지 않는다. 형식이 잘못된 설정은 모두 「일치」로
+//  2. 필터 일치 검사는 절대 오류를 내지 않는다. 형식이 잘못된 설정은 모두 '일치'로
 //     처리한다(notify.Match 참고). 알림을 빠뜨리느니 더 보내는 편이 낫다.
 
 // ErrNotificationChannelNotFound 는 알림 채널이 없을 때 올린다.
@@ -58,7 +58,7 @@ type NotificationChannel struct {
 	Mode   string          `json:"mode"`
 	Config json.RawMessage `json:"config"`
 	Filter json.RawMessage `json:"filter"`
-	// Enabled를 포인터로 두는 것은 「필드를 보내지 않음」과 「명시적으로 false를 보냄」을
+	// Enabled를 포인터로 두는 것은 '필드를 보내지 않음'과 '명시적으로 false를 보냄'을
 	// 구분하기 위해서다. 프런트엔드 토글은 바뀐 필드만 제출한다.
 	Enabled    *bool     `json:"enabled,omitempty"`
 	RatePerMin int       `json:"rate_per_min"`
@@ -125,21 +125,21 @@ func (d *DB) NotificationChannelByID(ctx context.Context, id int64) (*Notificati
 //
 // 고칠 때는 호출자가 명시적으로 준 필드(nil이 아니거나 비어 있지 않은 것)만 덮어쓴다.
 // 그래야 프런트엔드가 일부만 고친 편집 패널 폼을 제출할 수 있고, config에서 화면에 보이지
-// 않은 필드까지 되돌려 보낼 필요가 없다. 되돌려 보내면 오히려 「마스킹 값이 실제 키를
-// 덮어쓰는」 사고가 난다.
+// 않은 필드까지 되돌려 보낼 필요가 없다. 되돌려 보내면 오히려 '마스킹 값이 실제 키를
+// 덮어쓰는' 사고가 난다.
 func (d *DB) SaveNotificationChannel(ctx context.Context, c *NotificationChannel) (int64, error) {
 	if c.Mode == "" {
 		c.Mode = NotifyModeRealtime
 	}
-	// 여기서는 일부러 0을 **손대지 않는다**. 0은 올바른 설정이고 「발송 속도 제한 없음」을 뜻한다.
+	// 여기서는 일부러 0을 **손대지 않는다**. 0은 올바른 설정이고 '발송 속도 제한 없음'을 뜻한다.
 	//
-	// 예전에는 `if c.RatePerMin <= 0 { c.RatePerMin = 기본값 }`으로 썼다. 「지정하지 않았으면
-	// 안전한 기본값을 준다」는 뜻이었지만 「명시적으로 0으로 설정」까지 함께 삼켰다.
+	// 예전에는 `if c.RatePerMin <= 0 { c.RatePerMin = 기본값 }`으로 썼다. '지정하지 않았으면
+	// 안전한 기본값을 준다'는 뜻이었지만 '명시적으로 0으로 설정'까지 함께 삼켰다.
 	// 문서, UI 안내, takeTokens는 모두 0을 제한 없음으로 해석하는데 여기서만 몰래
 	// 20(DingTalk/WeCom/Telegram)이나 100(Feishu(Lark))으로 바꿨다. 운영자는 제한을
 	// 풀었다고 생각했지만 실제로는 분당 20건에 묶였고 아무 안내도 없었다.
 	//
-	// 「지정하지 않음」과 「명시적 0」의 차이는 호출자만 안다(요청 본문에 필드가 없음 vs
+	// '지정하지 않음'과 '명시적 0'의 차이는 호출자만 안다(요청 본문에 필드가 없음 vs
 	// 0을 명시). 그래서 기본값은 필드가 없을 때 server 계층이 채운다. notifyCreateChannel 참고.
 	if c.RatePerMin < 0 {
 		return 0, errors.New("발송 속도 제한 값은 음수일 수 없습니다")
@@ -175,7 +175,7 @@ WHERE id=$1`,
 // SetNotificationChannelEnabled 는 알림 채널을 켜거나 끈다.
 //
 // 알림 채널을 끌 때 아직 보내지 않은 전달도 함께 skipped로 표시한다. 그러지 않으면
-// 다시 켰을 때 「꺼져 있는 동안 쌓인」 옛 취약점이 한꺼번에 도착한다. 이미 때가 지났고
+// 다시 켰을 때 '꺼져 있는 동안 쌓인' 옛 취약점이 한꺼번에 도착한다. 이미 때가 지났고
 // 새로 생긴 취약점으로 오해하기 쉽다.
 func (d *DB) SetNotificationChannelEnabled(ctx context.Context, id int64, enabled bool) error {
 	return d.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
@@ -215,16 +215,16 @@ func (d *DB) DeleteNotificationChannel(ctx context.Context, id int64) error {
 //
 // 취약점 쓰기 경로에서 알림과 관련된 변경은 이것 하나뿐이다. INSERT 한 번이고, 어떤
 // 테이블도 읽지 않고, 알림 채널을 모르고, 필터를 돌리지 않는다. 트랜잭션이 커밋되면
-// 「취약점 저장」과 「알림 발송 작업 존재」가 원자적으로 맞아떨어진다. 커밋은 됐는데
+// '취약점 저장'과 '알림 발송 작업 존재'가 원자적으로 맞아떨어진다. 커밋은 됐는데
 // 큐에 들어가지 않아 메시지가 영영 사라지는 틈이 없다.
 //
 // 핵심 설계 두 가지. 둘 다 이유가 있다.
 //
 //  1. **SAVEPOINT를 쓰는 이유**: PostgreSQL에서는 트랜잭션 안의 어느 문장이든 오류가
 //     나면 트랜잭션 전체가 aborted 상태가 되고, 그 뒤 모든 문장(COMMIT 포함)이
-//     실패한다. 그래서 「이 INSERT의 오류는 무시하고 호출자가 커밋을 이어 가게
-//     한다」는 PG에서 할 수 없다. 세이브포인트로 오류를 이 한 문장에 가둘 때만 된다.
-//     세이브포인트가 없으면 「전체 롤백」 하나만 남는다.
+//     실패한다. 그래서 '이 INSERT의 오류는 무시하고 호출자가 커밋을 이어 가게
+//     한다'는 PG에서 할 수 없다. 세이브포인트로 오류를 이 한 문장에 가둘 때만 된다.
+//     세이브포인트가 없으면 '전체 롤백' 하나만 남는다.
 //
 //  2. **전체 롤백이 틀린 이유**: 알림 발송은 편의 기능이고 취약점 기록이 제품 자체다.
 //     알림 테이블의 문제(마이그레이션하지 않은 옛 DB, 디스크 일시 장애) 때문에 높음
@@ -257,7 +257,7 @@ func RecordNotificationEventTx(ctx context.Context, tx *sql.Tx, kind string, fin
 }
 
 // AddNotificationEvent 는 InsertNotificationEventTx의 독립 트랜잭션 버전이다. 기존
-// 트랜잭션 밖에서 부르는 곳(실제 finding이 없는 알림 채널의 「테스트 메시지 보내기」
+// 트랜잭션 밖에서 부르는 곳(실제 finding이 없는 알림 채널의 '테스트 메시지 보내기'
 // 등)이 쓴다.
 func (d *DB) AddNotificationEvent(ctx context.Context, kind string, findingID int64, snap notify.Snapshot) (int64, error) {
 	raw, err := json.Marshal(snap)
@@ -279,7 +279,7 @@ func (d *DB) AddNotificationEvent(ctx context.Context, kind string, findingID in
 //
 // 필터 일치 검사는 일부러 SQL이 아니라 Go 쪽에 둔다. 알림 채널의 필터 조건은 선택
 // 필드 묶음으로 된 JSONB라서 여섯 가지 조합의 일치를 SQL로 쓰면 질의를 유지보수하기
-// 어렵다. 알림 채널은 「사람이 손으로 설정한 몇 개」뿐이라 모두 불러와 메모리에서
+// 어렵다. 알림 채널은 '사람이 손으로 설정한 몇 개'뿐이라 모두 불러와 메모리에서
 // 하나씩 비교하는 편이 빠르고 테스트하기도 쉽다.
 //
 // 어떤 알림 채널과도 일치하지 않은 이벤트도 fanned_out으로 표시한다. 그러지 않으면
@@ -373,8 +373,8 @@ WHERE NOT fanned_out ORDER BY id FOR UPDATE SKIP LOCKED LIMIT $1`, limit)
 }
 
 // listEnabledNotificationChannelsTx 는 트랜잭션 안에서 사용 중인 알림 채널을 읽는다.
-// 개수가 적어 페이지 나누기도 캐시도 하지 않는다. 캐시를 두면 「설정을 바꾸면 언제
-// 적용되는가」라는 시점 문제가 하나 더 생긴다.
+// 개수가 적어 페이지 나누기도 캐시도 하지 않는다. 캐시를 두면 '설정을 바꾸면 언제
+// 적용되는가'라는 시점 문제가 하나 더 생긴다.
 func listEnabledNotificationChannelsTx(ctx context.Context, tx *sql.Tx) ([]*NotificationChannel, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id, name, kind, config, mode, filter, rate_per_min
 FROM notification_channels WHERE enabled ORDER BY id`)
@@ -398,7 +398,7 @@ FROM notification_channels WHERE enabled ORDER BY id`)
 // 돌려주는 순서는 인자 순서와 같고, 길이는 인자보다 짧을 수 있다(없는 id는 건너뛴다).
 // 인자 순서를 지키는 것은 같은 취약점의 메시지가 여러 번 전달돼도 자산 순서가
 // 그대로이게 하기 위해서다. 그러지 않으면 재시도 뒤 받은 메시지의 자산 순서가 바뀌어
-// 「자산이 바뀌었다」로 잘못 읽힌다.
+// '자산이 바뀌었다'로 잘못 읽힌다.
 func (d *DB) NotificationAssetNames(ctx context.Context, ids []int64) ([]string, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -440,8 +440,8 @@ func (d *DB) NotificationAssetNames(ctx context.Context, ids []int64) ([]string,
 }
 
 // assetDisplayName 은 자산 유형에 따라 가장 알아보기 쉬운 식별자를 고른다.
-// 고를 것이 없으면 빈 문자열을 돌려주고, 「이름을 얻지 못한 자산」을 어떻게 보일지는
-// 호출자가 정한다. 이 함수가 자리표시 이름을 지어내지 않는 것은 「자산#42」 같은
+// 고를 것이 없으면 빈 문자열을 돌려주고, '이름을 얻지 못한 자산'을 어떻게 보일지는
+// 호출자가 정한다. 이 함수가 자리표시 이름을 지어내지 않는 것은 '자산#42' 같은
 // 불필요한 문구가 알림 메시지에 섞여 읽는 사람이 실제 도메인으로 오해하지 않게 하기 위해서다.
 func assetDisplayName(typ, domain, ip, url, appName, bundleID string) string {
 	pick := func(vals ...string) string {
@@ -494,7 +494,7 @@ func (d *DB) SetFindingStatusWithNotify(ctx context.Context, id int64, status st
 //
 // 트랜잭션 단위 함수로 뺀 것은 상태를 바꾸는 모든 경로가 같은 동작을 쓰게 하기
 // 위해서다. 예전에는 patchFinding만 알림이 붙은 버전을 썼고, **재검사 결론이
-// 「수정됨」일 때**(finding_retests의 `UPDATE findings SET status=...`)는 DB에 바로
+// '수정됨'일 때**(finding_retests의 `UPDATE findings SET status=...`)는 DB에 바로
 // 썼다. 그래서 `on_status_change`를 설정한 알림 채널은 이런 상태 전이 알림을 전혀
 // 받지 못했다. 화면의 상태는 조용히 바뀌었고 운영자는 플랫폼을 열어 봐야 알았다.
 //
@@ -553,7 +553,7 @@ type NotificationStats struct {
 }
 
 // NotificationStatsSnapshot 은 알림 시스템의 상태를 집계한다.
-// BacklogAgeMS는 「알림 발송이 멈췄는가」를 가장 바로 보여 주는 지표다. pending 개수보다
+// BacklogAgeMS는 '알림 발송이 멈췄는가'를 가장 바로 보여 주는 지표다. pending 개수보다
 // 훨씬 쓸모 있다. 같은 3건이 밀려 있어도 3초 묵은 것과 3시간 묵은 것일 수 있기 때문이다.
 func (d *DB) NotificationStatsSnapshot(ctx context.Context) (*NotificationStats, error) {
 	var s NotificationStats

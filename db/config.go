@@ -25,10 +25,10 @@ type LLMProfile struct {
 	// ContextWindowK is the model's context window in K tokens, used to size
 	// compaction thresholds. 0 = use a 200K default; capped at 1000 (1M).
 	ContextWindowK int `json:"context_window_k"`
-	// ThinkingType은 사고 「켜기·끄기」(thinking.type)를 따로 정한다: "" = 보내지 않음(기본값),
+	// ThinkingType은 사고 '켜기·끄기'(thinking.type)를 따로 정한다: "" = 보내지 않음(기본값),
 	// "disabled" = 명시적으로 끔, "enabled" = 켬. ReasoningEffort와 독립이다.
 	ThinkingType string `json:"thinking_type"`
-	// ReasoningEffort는 사고 「강도」를 따로 정한다: "" = 보내지 않음(기본값),
+	// ReasoningEffort는 사고 '강도'를 따로 정한다: "" = 보내지 않음(기본값),
 	// "low"/"medium"/"high"/"xhigh"/"max" = 해당 강도. agent.Config.NewProvider 참고.
 	ReasoningEffort string `json:"reasoning_effort"`
 	IsDefault       bool   `json:"is_default"`

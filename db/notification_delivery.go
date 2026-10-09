@@ -11,7 +11,7 @@ import (
 
 // 이 파일은 전달 작업의 할당과 상태 전이를 다룬다.
 //
-// 할당은 긴 트랜잭션이 아니라 「선점 기한」으로 한다. 행을 sending으로 바꾸고
+// 할당은 긴 트랜잭션이 아니라 '선점 기한'으로 한다. 행을 sending으로 바꾸고
 // next_attempt_at을 미래로 밀어 선점 기한 만료 시각으로 삼은 뒤, 트랜잭션을 커밋하고
 // 나서 네트워크 전달을 한다. 그래서 전달하는 동안 DB 잠금을 쥐고 있지 않다. 네트워크
 // 요청은 몇 초 걸릴 수 있고(클라이언트 시간 초과 15초), 행 잠금을 계속 쥐고 있으면 같은
@@ -120,13 +120,13 @@ type claimQuery struct {
 // ClaimRealtimeDeliveries 는 알림 채널 하나에서 시간이 된 실시간 전달을 최대 limit개
 // 할당받는다.
 //
-// 일부러 「전체에서 한 묶음을 할당받고 골라 보내기」가 아니라 **알림 채널 하나씩**
+// 일부러 '전체에서 한 묶음을 할당받고 골라 보내기'가 아니라 **알림 채널 하나씩**
 // 할당받는다. 발송 속도 제한은 전달 엔진이 알림 채널별로 관리한다. 이번에 이 채널이 몇
 // 건 더 보낼 수 있는지 먼저 알고 그만큼만 할당받아야 속도 제한이 재시도 횟수를 쓰지
 // 않는다. 거꾸로 먼저 할당받고 버리면 속도 제한에 막힌 행은 이미 attempts가 한 번
 // 세어진 상태라, 3번의 기회가 기다리기만 하다 바닥나 결국 failed가 된다.
 //
-// 조건에 「선점 기한이 지난 sending」이 들어 있다. 프로세스가 죽은 뒤 스스로 복구되는
+// 조건에 '선점 기한이 지난 sending'이 들어 있다. 프로세스가 죽은 뒤 스스로 복구되는
 // 경로다. lease는 전달 한 번에 걸리는 최악의 시간(알림 채널 HTTP 클라이언트 시간 초과
 // 15초)보다 충분히 커야 한다. 그러지 않으면 같은 행을 두 dispatcher가 동시에 전달한다.
 // 꺼진 알림 채널도 함께 걸러 낸다. 끄는 동작이 이미 남은 전달을 skipped로 표시했지만,
@@ -151,10 +151,10 @@ LIMIT $5`,
 // 전달이 있고, **가장 오래된 것**의 나이가 다이제스트 주기에 이르렀으면 참이다.
 //
 // 벽시계가 아니라 가장 오래된 전달의 나이로 판정한다. 그래야 막 만든 알림 채널이 정각에
-// 맞춰졌다는 이유로 한 건짜리 「다이제스트」를 바로 내보내지 않고, 오래 쌓인 배치도 한
+// 맞춰졌다는 이유로 한 건짜리 '다이제스트'를 바로 내보내지 않고, 오래 쌓인 배치도 한
 // 주기를 헛되이 더 기다리지 않는다.
 //
-// ClaimDigestBatch와 나눈 것은 뜻이 다르기 때문이다. 이 함수는 「보낼 때인가」에만
+// ClaimDigestBatch와 나눈 것은 뜻이 다르기 때문이다. 이 함수는 '보낼 때인가'에만
 // 답하고, 할당은 이 알림 채널의 발송 대기 행을 **모두**(아직 나이가 덜 찬 것 포함)
 // 가져간다. 그러지 않으면 한 주기가 여러 메시지로 쪼개져 다이제스트의 의미가 없어진다.
 func (d *DB) DigestBatchDue(ctx context.Context, channelID int64, minAge time.Duration) (bool, error) {
@@ -174,11 +174,11 @@ func (d *DB) DigestBatchDue(ctx context.Context, channelID int64, minAge time.Du
 //
 // 같은 배치의 전달은 모두 batch_id를 공유하고, 집합에서 가장 작은 id를 배치 번호로
 // 쓴다(안정적이고 읽기 쉽고 별도 시퀀스가 필요 없다). 재시도할 때 COALESCE로 원래 배치
-// 번호를 유지해, 여러 번 재시도한 뒤에도 「이 N건은 함께 보냈다」가 그대로 성립한다.
+// 번호를 유지해, 여러 번 재시도한 뒤에도 '이 N건은 함께 보냈다'가 그대로 성립한다.
 //
 // 무작위가 아니라 id 오름차순으로 앞의 N개를 가져간다. 가장 먼저 생긴 전달이 가장
-// 먼저 나가므로, 밀린 알림이 있어도 「새 취약점이 먼저 나가고 옛 취약점은 영원히 뒤로
-// 밀리는」 기아가 생기지 않는다.
+// 먼저 나가므로, 밀린 알림이 있어도 '새 취약점이 먼저 나가고 옛 취약점은 영원히 뒤로
+// 밀리는' 기아가 생기지 않는다.
 func (d *DB) ClaimDigestBatch(ctx context.Context, channelID int64, limit int, lease time.Duration) ([]*NotificationDelivery, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -186,9 +186,9 @@ func (d *DB) ClaimDigestBatch(ctx context.Context, channelID int64, limit int, l
 	// limit은 **메모리 상한**이고 호출자는 MaxDigestBatchSize를 넘긴다. 호출자가 더 큰
 	// 값을 넘기지 못하게 여기서 한 번 더 자른다.
 	//
-	// 「발송 속도 제한 허용량」을 배치 크기로 받지 않는 것은 일부러다. 속도 제한의 단위는
+	// '발송 속도 제한 허용량'을 배치 크기로 받지 않는 것은 일부러다. 속도 제한의 단위는
 	// 메시지 건수다(배치 하나는 메시지 하나를 보내고 토큰 하나를 쓰며, server 계층의
-	// takeTokens가 차감한다). 「배치 하나에 취약점을 몇 개 담는가」와는 다른 양이다.
+	// takeTokens가 차감한다). '배치 하나에 취약점을 몇 개 담는가'와는 다른 양이다.
 	// 예전에 rate_per_min을 digest에도 적용하려고 매번의 요청 허용량을 배치 크기로
 	// 넘겼더니, rate=20/min인 알림 채널은 배치마다 취약점을 1개만 담았고 digest가 요약
 	// 문구만 붙은 실시간 알림 발송으로 전락했다. 속도 제한을 바꾸려면 takeTokens의 want를
@@ -219,7 +219,7 @@ WHERE id IN (`+ph+`)`, append([]any{batchID}, idArgs...)...)
 	return out, err
 }
 
-// claimDeliveries 는 「고르기 + sending으로 바꾸며 선점 기한 늘리기 + 전체 행 읽기」를
+// claimDeliveries 는 '고르기 + sending으로 바꾸며 선점 기한 늘리기 + 전체 행 읽기'를
 // 트랜잭션 하나 안에서 한다. postClaim은 선택적인 추가 단계다(다이제스트 배치가
 // batch_id를 쓸 때 쓴다).
 func (d *DB) claimDeliveries(ctx context.Context, lease time.Duration, cq claimQuery, postClaim func(*sql.Tx, []int64) error) ([]*NotificationDelivery, error) {
@@ -237,7 +237,7 @@ func (d *DB) claimDeliveries(ctx context.Context, lease time.Duration, cq claimQ
 		return nil, tx.Commit()
 	}
 	// sending으로 바꾸고 next_attempt_at을 미래로 민다. 그 미래 시각이 곧 선점 기한
-	// 만료 시각이므로 「선점 기한이 남음」과 「아직 재시도 시각이 아님」을 같은 조건식으로
+	// 만료 시각이므로 '선점 기한이 남음'과 '아직 재시도 시각이 아님'을 같은 조건식으로
 	// 나타낼 수 있고, 열을 새로 둘 필요가 없다.
 	ph, idArgs := placeholders(3, ids)
 	if _, err := tx.ExecContext(ctx, `UPDATE notification_deliveries
@@ -306,7 +306,7 @@ SET state=$1, sent_at=now(), last_error='' WHERE id IN (`+ph+`)`, append([]any{N
 
 // RescheduleDeliveries 는 전달 묶음을 pending으로 되돌리고 재시도 시각을 뒤로 민다.
 //
-// 새 중간 상태를 두지 않고 pending으로 되돌리는 것은 「기회가 몇 번 남았나」를 한곳
+// 새 중간 상태를 두지 않고 pending으로 되돌리는 것은 '기회가 몇 번 남았나'를 한곳
 // (MaxNotifyAttempts)에서만 나타내, 재시도 정책에 따라 상태 기계의 분기가 늘어나지
 // 않게 하기 위해서다.
 func (d *DB) RescheduleDeliveries(ctx context.Context, ids []int64, delay time.Duration, errMsg string) error {
@@ -330,7 +330,7 @@ WHERE id IN (`+ph+`)`,
 // 반드시 되돌린다. 그러지 않으면 밀린 알림 500건이 20건씩 25개로 나뉘고, 뒤쪽 항목은 한 번도
 // 오류가 난 적이 없는데도 셋째 묶음에서 MaxNotifyAttempts에 걸려 failed가 된다.
 //
-// GREATEST(...,0)는 「누가 수동으로 재발송해 attempts를 0으로 만든 뒤 여기로 온」
+// GREATEST(...,0)는 '누가 수동으로 재발송해 attempts를 0으로 만든 뒤 여기로 온'
 // 경우를 받아 내, 횟수가 음수가 되지 않게 한다.
 func (d *DB) DeferDeliveries(ctx context.Context, ids []int64, reason string) error {
 	ph, args := placeholders(3, ids)
@@ -358,7 +358,7 @@ func (d *DB) FailDeliveries(ctx context.Context, ids []int64, errMsg string) err
 
 // RetryNotificationDelivery 는 전달 하나를 수동으로 재발송한다. pending으로 되돌리고
 // 재시도 횟수를 0으로 만들고 바로 보낼 수 있게 한다. 횟수를 0으로 만드는 것은
-// 일부러다. 사람이 「재발송」을 눌렀다면 앞선 실패의 원인은 이미 처리됐다는 뜻이므로,
+// 일부러다. 사람이 '재발송'을 눌렀다면 앞선 실패의 원인은 이미 처리됐다는 뜻이므로,
 // 옛 횟수로 제한할 이유가 없다.
 func (d *DB) RetryNotificationDelivery(ctx context.Context, id int64) error {
 	res, err := d.ExecContext(ctx, `UPDATE notification_deliveries

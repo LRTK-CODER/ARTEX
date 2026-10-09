@@ -8,7 +8,7 @@ import (
 )
 
 // 자산 차단 규칙의 일치 판정·실행 계층이다. asset_intercept.go는 규칙 저장만 맡고,
-// 여기서는 「대상 자산」의 도메인/IP/URL을 사용 중인 규칙과 대조한다. 에이전트 도구
+// 여기서는 '대상 자산'의 도메인/IP/URL을 사용 중인 규칙과 대조한다. 에이전트 도구
 // (add_intent, insert_assets)가 의도를 내리거나 자산을 넣기 전에 부르고, 일치하면 거부한다.
 
 // AssetInterceptKindLabel은 kind의 표시 라벨을 돌려준다. 에이전트에게 보내는 안내 메시지에 쓴다.
@@ -115,7 +115,7 @@ func MatchAssetInterceptRules(rules []AssetInterceptRule, domains, ips, urls []s
 }
 
 // interceptCandidates는 저장된 자산에서 차단 판정에 쓸 도메인/IP/URL 후보 문자열을 뽑는다.
-// URL의 host를 떼어 분류하므로 「URL만 있는」 서비스 자산도 도메인/IP 규칙과 일치할 수 있다.
+// URL의 host를 떼어 분류하므로 'URL만 있는' 서비스 자산도 도메인/IP 규칙과 일치할 수 있다.
 func (a *Asset) interceptCandidates() (domains, ips, urls []string) {
 	add := func(dst *[]string, s string) {
 		if s = strings.TrimSpace(s); s != "" {
@@ -169,7 +169,7 @@ func hasEnabledRule(rules []AssetInterceptRule) bool {
 	return false
 }
 
-// AssetGateDecision은 「차단 먼저, 허용 다음」 검사가 후보 문자열 묶음에 내린 판정 결과다.
+// AssetGateDecision은 '차단 먼저, 허용 다음' 검사가 후보 문자열 묶음에 내린 판정 결과다.
 type AssetGateDecision struct {
 	Allowed bool
 	Reason  string // 거부 이유(자산 표시 제외). Allowed=true이면 비어 있다
@@ -181,7 +181,7 @@ type AssetGateDecision struct {
 //  3. 그 밖에는 허용한다.
 //
 // allowRules가 비었거나 사용 중인 규칙이 없으면 허용 검사를 적용하지 않는다(허용 목록을
-// 쓰지 않으므로 모두 허용). 「허용 규칙을 설정하지 않음」이 모든 자산을 막지 않게 하려는 것이다.
+// 쓰지 않으므로 모두 허용). '허용 규칙을 설정하지 않음'이 모든 자산을 막지 않게 하려는 것이다.
 func EvaluateAssetGate(blockRules, allowRules []AssetInterceptRule, domains, ips, urls []string) AssetGateDecision {
 	if rule, _, ok := MatchAssetInterceptRules(blockRules, domains, ips, urls); ok {
 		return AssetGateDecision{Allowed: false, Reason: rule.Reason()}
@@ -211,7 +211,7 @@ func (s *AssetStore) ListAssetInterceptRules() ([]AssetInterceptRule, error) {
 	return s.db.ListAssetInterceptRules()
 }
 
-// CheckAssetsIntercept는 id로 자산을 불러와 하나씩 「차단 먼저, 허용 다음」 검사를 판정하고,
+// CheckAssetsIntercept는 id로 자산을 불러와 하나씩 '차단 먼저, 허용 다음' 검사를 판정하고,
 // 거부된 자산을 모두 돌려준다. 차단 규칙 = 전역 ∪ 작업 단위 block, 허용 규칙 = 작업 단위
 // allow(이 작업만). id가 없으면 바로 돌아간다. 작업 범위로 거르지 않는 전역 GetByIDs를 써서
 // scope 때문에 차단이 약해지지 않게 한다.
