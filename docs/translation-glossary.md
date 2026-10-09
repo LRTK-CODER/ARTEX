@@ -615,6 +615,55 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 | 发布包 | 배포 패키지 | release package | 업데이트가 내려받는 묶음. "归档包 → 보관 패키지"와 구분한다 |
 | 立即恢复 (회로 차단기) | 즉시 복구 | reset | 차단된 LLM 프로필의 회로 차단기를 바로 닫는 동작. "熔断 → 회로 차단기"를 따른다 |
 
+## 번역하지 않는 것
+
+`git grep -nP '[\x{4e00}-\x{9fff}]'`에 남는 파일과 이유다(#131에서 모은다). 새로 중국어를 남기면 이 표에 더한다. 공통 규칙 3번(데이터로서의 중국어)과 #99 범위 밖을 따른다.
+
+### 다른 이슈에서 옮기거나 범위 밖인 파일
+
+| 파일 | 이유 |
+|---|---|
+| `intercept/prompt.go`, `intercept/prompt_test.go`, `intercept/review_context_test.go`, `server/intercept_live_test.go`, `server/intercept_review_test.go`, `skills/api-recon/**`, `skills/scopesentry/SKILL.md` | PR #117(#103 승인 심사 프롬프트·스킬 지침)에서 옮긴다 |
+| `server/orchestration.go` | #128에서 옮긴다 |
+| `CHANGELOG.md` | 원 저자 이력. #99 범위 밖 |
+| `sidequestion/VALIDATION.md`, `sidequestion/validation-*.json` | 과거 실행 기록. #99 범위 밖 |
+| `docs/translation-glossary.md` | 이 문서의 원문(중국어) 열 |
+| `screenshots/*.png`, `web/media/dashboard.png`, `web/public/logo.png`, `web/src/app/icon.png`, `web/src/app/favicon.ico` | 바이너리 이미지. 바이트가 우연히 일치한다 |
+
+### 기존 설치·옛 데이터 호환
+
+| 파일 | 이유 |
+|---|---|
+| `db/builtin_rule_text.go` | #108 이전에 seed한 내장 차단 규칙 이름·메모. 기존 행을 찾아 바꾸는 데 쓴다 |
+| `server/prompt_english_reseed.go` | 옛 중국어 기본 프롬프트 원문. 사용자가 고치지 않은 행만 영어로 바꾸려고 비교한다 |
+| `server/finding_workflow.go`, `server/finding_workflow_test.go` | 옛 `traffic_search` 도구 설명(v2·v3). 사용자가 고치지 않은 행만 새 설명으로 바꾸려고 비교한다 |
+| `db/intercept.go`, `db/schema.sql`, `db/task_archives_restore.go`, `db/intercept_detail_test.go`, `db/intercept_filter_test.go`, `web/src/components/approval-records.tsx`, `web/src/lib/mock/handler.ts`, `web/src/lib/types.ts` | #110 이전 승인 심사 행의 모델 판정 접두사 `[模型]` |
+| `web/src/components/transcript.tsx` | #110 이전 승인 심사 요청 요약 형식(`工具 X 请求审批`) |
+| `server/conversations.go`, `server/conv_title_test.go`, `web/src/app/(main)/chat/page.tsx` | 옛 대화 기본 제목 `新对话` |
+| `server/server.go` | 규칙 모드에서 받는 옛 명령 접두사 `意图`·`提示` |
+
+### 프로토콜·탐지 키워드
+
+| 파일 | 이유 |
+|---|---|
+| `server/chat_mentions.go`, `server/chat_mentions_test.go`, `web/src/lib/chat-mentions.ts`, `web/src/lib/chat-mentions.test.mjs` | 대화 멘션 토큰 `@[漏洞#ID]`의 종류 이름. web과 server가 함께 쓰는 프로토콜이다 |
+| `agent/provider.go`, `agent/provider_quota_test.go`, `server/task_llm_test.go` | 중국 LLM 제공자의 사용 한도 부족 응답(`余额不足` 등) 탐지 |
+| `server/logsink.go` | 옛 중국어 로그 줄의 오류·경고 분류 키워드 |
+| `db/company_scope.go`, `web/src/lib/company-scope.ts` | ICP 등록 번호(`备案`) 탐지 |
+| `web/src/app/(main)/function/tasks/detail/_tabs/overview-tab.tsx`, `web/src/components/scope-text-editor.tsx` | ICP 등록 번호 입력 예시 |
+| `traffic/traffic.go` | `traffic_search`의 본문 검색 예시값(`内网测试`). 중국어 부분 문자열 검색을 보여 준다 |
+
+### 테스트 입력
+
+| 파일 | 이유 |
+|---|---|
+| `agent/blackboard_inheritance_test.go`, `db/company_scope_test.go`, `db/company_scope_consistency_test.go`, `db/task_assets_test.go`, `server/assets_scope_test.go` | 중국 ICP 등록 번호·비ASCII 범위 입력 |
+| `agent/prompt_now_test.go`, `agent/prompt_test.go`, `server/mgmt_test.go` | 사용자가 쓴 중국어 프롬프트 템플릿 렌더링 |
+| `agent/review_context_test.go`, `agent/terminalreason_test.go`, `agent/tools_overview_test.go`, `intercept/trace_test.go`, `sidequestion/context_test.go` | 멀티바이트 문자 자르기·토큰 추정·민감 정보 제외 입력 |
+| `server/finding_retests_test.go`, `server/finding_traffic_test.go`, `server/findings_groups_test.go` | 모델 응답·보고서 본문의 중국어 입력 |
+| `server/skill_upload_test.go` | 비ASCII 스킬 이름·파일 경로 검사 |
+| `traffic/reclaim_test.go`, `traffic/traffic_store_test.go`, `traffic/upgrade_test.go` | 중국어 본문 전문 검색 입력 |
+
 ## 고친 기록
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
