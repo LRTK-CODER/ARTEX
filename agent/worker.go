@@ -34,18 +34,18 @@ import (
 // independent of the traffic-recording MITM proxy — set it when the search endpoint
 // is only reachable via a VPN/SOCKS proxy. Empty = direct.
 //
-// 注意 deepseek 后端与其它三个的性质不同：DeepSeek 没有可直接调用的搜索接口，
-// 搜索只存在于其 Anthropic 兼容 messages 接口内部(web_search_20250305 server
-// tool)，因此每次搜索会消耗一次模型调用，且搜索请求由 DeepSeek 服务端发出——
-// 不经过本机 Proxy，也不会进流量留痕。
+// deepseek 백엔드는 나머지 셋과 성질이 다르다: DeepSeek 에는 바로 호출할 수 있는 검색 API 가
+// 없고, 검색은 그 Anthropic 호환 messages API 안에만 있다(web_search_20250305 server tool).
+// 그래서 검색 한 번이 모델 호출 한 번을 쓰고, 검색 요청은 DeepSeek 서버가 보낸다 — 로컬 Proxy 를
+// 거치지 않고 트래픽에도 남지 않는다.
 type WebSearchOpts struct {
 	Enabled   bool
 	Backend   string
 	BraveKey  string
 	TavilyKey string
 	Proxy     string
-	// DeepSeek* 来自当前激活的 LLM 配置(仅 anthropic 格式的 DeepSeek 官方端点)，
-	// 不单独配置，随 LLM 配置切换而变。
+	// DeepSeek* 는 현재 활성 LLM 설정에서 온다(anthropic 형식의 DeepSeek 공식 엔드포인트만).
+	// 따로 설정하지 않고 LLM 설정이 바뀌면 함께 바뀐다.
 	DeepSeekBaseURL string
 	DeepSeekAPIKey  string
 	DeepSeekModel   string
@@ -151,7 +151,7 @@ func (w *Worker) SetRunTimeout(run time.Duration) {
 // settleWrapUpPrompt is injected by the SDK settlement phase when a worker hits its
 // turn/time budget: stop probing, write back what was found, then end with a
 // plain-text one-liner (which becomes this run's displayed result).
-const settleWrapUpPrompt = "你即将因预算耗尽被终止。不要再运行任何命令/探测。请依次：(1) 把你上面已识别但还没写回的内容逐条写回——新资产用 insert_assets、探索结论/事实用 record_fact、确认漏洞用 report_finding；(2) **最后单独用一句话纯文本**总结你做了什么、得到哪些关键结论（这句会作为本次运行的结果展示，务必输出）。"
+const settleWrapUpPrompt = "You are about to be terminated because the budget is exhausted. Do not run any more commands/probes. In order: (1) write back, one by one, everything you have already identified above but not yet persisted -- new assets with insert_assets, exploration conclusions/facts with record_fact, confirmed vulnerabilities with report_finding; (2) **finally, in a single plain-text sentence**, summarize what you did and the key conclusions you reached (this sentence is displayed as this run's result, so be sure to output it)."
 
 func NewWorker(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int, extra ...actool.CoreTool) *Worker {
 	return &Worker{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, extraTools: extra}
@@ -223,26 +223,25 @@ func proxyEnv(proxyAddr, caCert string) []string {
 	return env
 }
 
-// workerDefaultTmpl is the built-in EDITABLE body (段 [A]) of the worker system
-// prompt, seeded into agent_prompts. The trafficTool block and the 中间产物输出规约
-// are NOT here — they are code-owned and appended by workerSystem after rendering
-// (段 [B]/[C]), so editing the DB body can never drop them.
-const workerDefaultTmpl = `你是一个网络安全平台授权渗透测试系统的"执行者"(work agent)。你领到【一条意图】(一句话探索方向)，唯一职责：**完成这一条意图、把发现写回知识图谱、然后停止返回。**
+// workerDefaultTmpl 은 worker 시스템 프롬프트의 내장 편집 가능 본문(섹션 [A])이며 agent_prompts 에
+// 씨앗으로 들어간다. trafficTool 블록과 중간 산출물 출력 규약은 여기에 없다 — 코드 소유라
+// workerSystem 이 렌더링 뒤에 붙인다(섹션 [B]/[C]). 그래서 DB 본문을 편집해도 그 둘을 떼어낼 수 없다.
+const workerDefaultTmpl = `You are the "executor" (work agent) of an authorized penetration testing system on a cybersecurity platform. You are assigned [one intent] (a one-sentence exploration direction); your sole responsibility: **complete this one intent, write the findings back into the knowledge graph, then stop and return.**
 
-**边界（红线）**：
-1. **只做你领到的这一条意图**。**探本意图时若瞥见本意图之外值得深挖的线索**（报错泄露的路径、可能与其它资产联动的点、疑似另一条利用链的入口），**在 fact 的 summary 里点一句交给规划者**。
-2. 初次受阻（payload 被过滤 / 404 / 注入无回显）不代表已探透——把本意图的所有绕过手段走完再输出结论；
-3. 只在授权范围内操作。系统提示顶部若附【操作约束】，那是最高优先级红线：每条命令/探测执行前先自检，违反即不做（哪怕它落在你领到的意图里）。
+**Boundaries (red lines)**:
+1. **Do only the one intent you were assigned.** **If, while exploring this intent, you glimpse a lead worth digging into beyond this intent** (a path leaked by an error, a point that may link with other assets, a suspected entry to another exploit chain), **note it in one sentence in the fact's summary and hand it to the planner.**
+2. An initial setback (a payload filtered / 404 / injection with no echo-back) does not mean you have exhausted it -- run through all the bypass techniques for this intent before producing a conclusion;
+3. Operate only within the authorized scope. If [operation constraints] are attached at the top of the system prompt, they are the highest-priority red line: self-check before executing each command/probe, and if it violates them do not do it (even if it falls within the intent you were assigned).
 
-**边发现边写回**（写进图才算数，脑子/文字里的不算；每得一个结果立刻写，别攒到最后被步数耗尽丢掉）。三种写回，别串图：
-- **新资产/资源 → insert_assets（资产图）**：子域 / service / endpoint / 指纹 / 凭据 等一切资产【本身】。**这里只登记资产；探索结论/判断不写这里，用 record_fact。**
-- **探索结论/事实 → record_fact（探索图，传 intent_id）**：都用它。**多个观察汇总成【一条】事实**（summary 一句总结 + detail写对总结的拓展，依靠真实的执行过程），不要一个属性一条、一意图通常只一条，拆碎会让图谱无限膨胀——**默认就写一条，能并进 detail 的都并进去**；仅当确有【彼此完全独立、无法归并】的结论时才用 facts 数组分条，这是极少数例外，不是常规。**只写增量**：只记这次【新得到】的，别把已有事实换措辞重记（只印证已有、无新增就不必记）。**只写真实看到的**：给 evidence（一行：命令+最能证明的一两行输出，简洁，细节在 detail）、标 confidence（observed=直接看到 / inferred=据现象推断）。
-- **确认漏洞 → report_finding（探索图，含 PoC，传 intent_id）**：**只有你本次真实触发过、拿到可复现证据（请求/响应或命令输出）才用**。严禁把"版本/指纹匹配到 CVE""参数看起来可注入""外部漏洞库/更新日志/代码 diff 推断"当已确认，也不要用查 CVE 库或对比补丁版本替代实际触发。触发不了但有嫌疑 → 用 record_fact 记一条 inferred 事实（嫌疑点+为何未触发）交规划者，别硬记成 finding。
+**Write back as you discover** (only what is written into the graph counts; what is in your head or text does not; write each result immediately, do not pile them up for the end and lose them when steps run out). Three kinds of write-back; do not cross the graphs:
+- **New asset/resource -> insert_assets (asset graph)**: subdomain / service / endpoint / fingerprint / credential and every asset **itself**. **Register only assets here; do not write exploration conclusions/judgments here, use record_fact.**
+- **Exploration conclusion/fact -> record_fact (exploration graph, pass intent_id)**: use it for all of them. **Aggregate multiple observations into [one] fact** (a one-sentence summary + detail that correctly expands on the summary, grounded in the real execution process); do not make one per attribute -- usually only one per intent, since fragmenting bloats the graph without bound -- **by default write one, and merge into detail everything you can**; use the facts array to split into entries only when there are genuinely [fully independent, unmergeable] conclusions, which is a rare exception, not the norm. **Write only increments**: record only what you **newly obtained** this time, do not re-record an existing fact with different wording (if you are only corroborating an existing one with nothing new, there is no need to record). **Write only what you actually saw**: give evidence (one line: the command + the one or two output lines that best prove it, concise, with details in detail) and mark confidence (observed=seen directly / inferred=inferred from a phenomenon).
+- **Confirmed vulnerability -> report_finding (exploration graph, with PoC, pass intent_id)**: **use it only when you actually triggered it this run and obtained reproducible evidence (request/response or command output)**. Never treat "version/fingerprint matched a CVE", "the parameter looks injectable", or "inferred from an external vulnerability database/changelog/code diff" as confirmed, and do not substitute querying a CVE database or comparing patch versions for actually triggering it. If you cannot trigger it but suspect it -> record an inferred fact with record_fact (the suspected point + why it was not triggered) and hand it to the planner rather than forcing it into a finding.
 
 
-完成本意图后用一句话总结你做了什么、写回了哪些事实。`
+After completing this intent, summarize in one sentence what you did and which facts you wrote back.`
 
-// workerTrafficBlock is 段 [B]: the traffic-tool note, code-injected only when
+// workerTrafficBlock is 섹션 [B]: the traffic-tool note, code-injected only when
 // traffic capture (recording) is on — i.e. the traffic_* tools actually exist.
 // Gated on recording, NOT on the egress proxy: a global proxy with capture off
 // routes traffic but records nothing, so the tools would not be there. Not stored,
@@ -251,21 +250,21 @@ func workerTrafficBlock(recording bool) string {
 	if !recording {
 		return ""
 	}
-	return "\n\n**流量工具**：\n- traffic_search / traffic_get / traffic_blob：回看响应、找已访问过的资源，**先查流量、不要重复 curl 同一 URL**。traffic_search **必须指定 host**、默认只回 3 条极轻量索引(id/method/url/status/resp_len，无响应内容)，需要更多显式调大 limit；可用 body_contains 在请求/响应正文里做全文搜索(至少 3 字符，支持子串和中文，如找密码/密钥/报错/内网地址)；要看某条原文用 traffic_get(id)，其中超大正文显示为 @blob sha256:<hash>，用 traffic_blob(hash) 分段取全文。"
+	return "\n\n**Traffic tools**:\n- traffic_search / traffic_get / traffic_blob: review responses and find already-visited resources; **search traffic first, do not curl the same URL again**. traffic_search **must specify host** and by default returns only 3 very lightweight index entries (id/method/url/status/resp_len, with no response body); raise limit explicitly for more; use body_contains for full-text search over the request/response body (at least 3 characters, supports substrings and Chinese, e.g. to find a password/key/error/internal address); to see the original of an entry use traffic_get(id), where an oversized body is shown as @blob sha256:<hash>, and use traffic_blob(hash) to fetch the full text in segments."
 }
 
-// artifactSpec is 段 [C]: the code-owned, non-editable tail appended to every
+// artifactSpec is 섹션 [C]: the code-owned, non-editable tail appended to every
 // pentest agent's prompt — intermediate artifacts must land in the shared work
 // dir, never /tmp. Guaranteed present regardless of how the DB body is edited.
 func artifactSpec(dir string) string {
-	return "\n\n**中间产物输出规约**：脚本、payload、抓到的响应体、临时数据等一切中间产物，**一律写到本任务工作目录 " + dir + "**（相对路径即写在这里，也可用该绝对路径）——**不要写 /tmp、不要用其它绝对路径**。"
+	return "\n\n**Intermediate-artifact output convention**: scripts, payloads, captured response bodies, temporary data, and all other intermediate artifacts **must be written to this task's working directory " + dir + "** (a relative path lands here, or use this absolute path) -- **do not write to /tmp and do not use any other absolute path**."
 }
 
-// workerArtifactSpec is the worker's 段 [C]: its per-intent run dir is pre-created
+// workerArtifactSpec is the worker's 섹션 [C]: its per-intent run dir is pre-created
 // by the engine (ensureRunDir), so it just writes relative paths there — no manual
 // mkdir, no cross-worker name collisions.
 func workerArtifactSpec(runDir string) string {
-	return "\n\n**中间产物输出规约**：脚本、payload、抓到的响应体、临时数据等一切中间产物，**一律写到本次意图的专属工作目录 " + runDir + "**（已自动建好，直接用相对路径写在这里即可，无需再手动建目录）——**不要写 /tmp、不要用其它绝对路径**。"
+	return "\n\n**Intermediate-artifact output convention**: scripts, payloads, captured response bodies, temporary data, and all other intermediate artifacts **must be written to this intent's dedicated working directory " + runDir + "** (already created, just write relative paths here, no need to mkdir manually) -- **do not write to /tmp and do not use any other absolute path**."
 }
 
 // ensureRunDir builds and creates an agent's working directory under base:
@@ -314,7 +313,7 @@ func intentAssetIDs(intent *db.Node) []int64 {
 }
 
 func renderIntentTask(intent *db.Node) string {
-	return fmt.Sprintf("\n\n【你领到的意图（本次唯一任务：只做这一条、只产生事实、做完即停）】：\n%s\n意图 id: %d（写回 record_fact / report_finding 时传它）", string(intent.Payload), intent.ID)
+	return fmt.Sprintf("\n\n**The intent you were assigned (your only task this time: do only this one, produce only facts, and stop when done)**:\n%s\nintent id: %d (pass it when writing back with record_fact / report_finding)", string(intent.Payload), intent.ID)
 }
 
 // renderWorkerGraphOverview folds the global situational snapshot into the worker's
@@ -323,17 +322,17 @@ func renderIntentTask(intent *db.Node) string {
 // purpose is letting the worker read context (existing facts/assets/hints)
 // so it avoids redundant work and doesn't re-derive what others already found.
 func renderWorkerGraphOverview(data map[string]any) string {
-	// coverage 是给规划者判断「哪类测得少 / 要不要扩范围」的信号，与 worker「只做领到的
-	// 那条意图、别追未覆盖的点」的职责边界相悖 → 从 worker 视图里剔除。data 是本次 worker
-	// 专属的新 map，删键不影响 planner。
+	// coverage 는 규획자가 "어떤 유형이 덜 테스트됐나 / 범위를 넓힐까"를 판단하는 신호로,
+	// "받은 의도만 하고 미커버 지점을 쫓지 말라"는 worker 의 직무 경계와 어긋난다 → worker 뷰에서 뺀다.
+	// data 는 이번 worker 전용의 새 map 이라 키를 지워도 planner 에 영향이 없다.
 	delete(data, "coverage")
 	b, err := json.Marshal(data)
 	if err != nil {
 		return "" // fall back silently: the worker just won't have the global context
 	}
-	return "\n\n【全局探索态势（只读，帮你把自己这条意图放进大局看）】：\n" +
-		"下面是整个任务当前的探索概况。用途有两个：一是知道别人已发现什么，别重复；二是让你探自己这条意图时，能联想到它和全局的关系。\n" +
-		"**发散是好事**：探本意图时尽管深想、多联想。唯一的界线是——别真的动手去执行别的意图（那是别的 worker 的事，由规划者调度）。但凡你联想到有价值的线索（跨资产的联动、疑似另一条利用链的入口、全局层面的可疑点），**务必写进 fact 交规划者**——这是你重要的产出，不是可有可无。宁可多报一条让规划者判断，也别自己咽下去。\n" +
+	return "\n\n**Global exploration situation (read-only, to help you place your own intent in the big picture)**:\n" +
+		"Below is the whole task's current exploration overview. It has two uses: one, to know what others have already found so you do not duplicate; two, so that while exploring your own intent you can associate it with the global picture.\n" +
+		"**Divergent thinking is good**: while exploring this intent, think deep and associate freely. The only line is this -- do not actually go execute another intent (that is another worker's job, scheduled by the planner). Whenever you associate a valuable lead (a cross-asset linkage, a suspected entry to another exploit chain, a globally suspicious point), **be sure to write it into a fact and hand it to the planner** -- this is an important part of your output, not optional. Better to report one extra for the planner to judge than to swallow it yourself.\n" +
 		string(b)
 }
 
@@ -369,25 +368,28 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	}
 	tsx.SetOwnerNode(intent.ID)         // assets this worker discovers anchor to its intent → visible to the task
 	tsx.SetEnrich(enr)                  // async DNS/HTTP auto-completion for assets this worker writes
-	tsx.SetNotifyFinding(notifyFinding) // report_finding 落库时当场唤醒 planner，带上「哪个意图+finding」
+	tsx.SetNotifyFinding(notifyFinding) // report_finding 가 저장될 때 그 자리에서 planner 를 깨운다. "어느 의도 + finding"을 함께 전한다
 	// base = built-in worker tools ∪ host tools (traffic) ∪ default tools (incl. Bash);
 	// then augment with the agent's visible skills/MCP. During the SDK settlement
 	// phase, Bash is hidden via Settlement.DisabledTools (no local gating needed).
 	base := append(tsx.WorkerTools(), w.extraTools...)
-	// worker 刻意不给 MultiEdit/Glob/Grep：文件精改用 Edit、检索走 Bash(grep/find)，
-	// 收敛工具面、减少低价值调用。其余 SDK 默认工具(Read/Write/Edit/LS/Bash/Sleep)照常。
+	// worker 에는 일부러 MultiEdit/Glob/Grep 을 주지 않는다: 파일 정밀 수정은 Edit 로, 검색은
+	// Bash(grep/find)로 한다. 도구 면을 좁혀 가치 낮은 호출을 줄인다. 나머지 SDK 기본 도구
+	// (Read/Write/Edit/LS/Bash/Sleep)는 그대로 둔다.
 	base = append(base, defaultToolsExcept("MultiEdit", "Glob", "Grep")...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts), IntentID: intent.ID})
 	tools, def, cleanup := AugmentTools(ctx, "worker", base)
 	defer cleanup()
 
-	// 意图是 worker 的【唯一职责、贯穿整个 run 的不变量】→ 连同启动指令、意图锚定的目标资产
-	// 原始数据一起放进 system prompt：system 每次 run 都重新拼一遍、绝不会被 compaction 压掉，
-	// 长 run 里意图永远在场，续跑时也不依赖 transcript 历史是否留住那条首消息。代价是 system
-	// 混入 per-intent 易变数据、失去跨意图缓存复用；这是刻意的取舍（意图丢失比省 token 严重得多）。
-	// 与 planner「态势块放 user turn」分叉是有意的：planner 本身是产意图的那个、没有单一 mandate，
-	// worker 有。仅【全局态势 overview】留在启动 user 消息里——它可降级、容忍 stale，压掉无碍。
-	// 本次意图的专属工作目录 <workDir>/tasks/<taskID>/i<intentID>，引擎侧先建好。
+	// 의도는 worker 의 [유일한 직무이자 run 전체를 관통하는 불변식]이다 → 시작 지시, 의도가 지정한
+	// 목표 자산 원본 데이터와 함께 system prompt 에 넣는다: system 은 run 마다 다시 조립되어 절대
+	// compaction 에 눌리지 않으므로, 긴 run 에서도 의도가 늘 있고, 이어서 돌 때도 transcript 역사가
+	// 그 첫 메시지를 보존했는지에 기대지 않는다. 대가는 system 에 의도별 가변 데이터가 섞여 의도 간
+	// 캐시 재사용을 잃는 것이다. 의도적인 맞바꿈이다(의도를 잃는 쪽이 토큰을 아끼는 것보다 훨씬 심각하다).
+	// planner 가 "태세 블록을 user turn 에 둔 것"과 갈라지는 것도 의도적이다: planner 는 의도를 만드는
+	// 쪽이라 단일 mandate 가 없고, worker 는 있다. [전역 태세 overview]만 시작 user 메시지에 남긴다 —
+	// 그것은 격하 가능하고 stale 를 견디며 눌려도 무방하다.
+	// 이번 의도의 전용 작업 디렉터리 <workDir>/tasks/<taskID>/i<intentID> 는 엔진 쪽에서 먼저 만든다.
 	runDir := ensureRunDir(w.workDir, taskID, intent.ID)
 	// The run-wide intent is not the current tool action. Do not forward it or
 	// inherit a parent run's background into the action reviewer.
@@ -395,20 +397,20 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	overview := renderWorkerGraphOverview(tsx.graphOverviewData())
 	sysBody := workerSystem(w.proxyAddr, w.proxyCACert, w.workDir, runDir)
 	if w.wantConstraints() {
-		sysBody += constraintBlock(ts) // 操作约束(若有)注入系统提示,worker 执行时严格遵守
+		sysBody += constraintBlock(ts) // 작업 제약 조건(있으면)을 시스템 프롬프트에 주입한다. worker 는 실행 때 엄격히 지킨다
 	}
-	// 意图块 → 意图锚定资产块 → 启动指令，依次追加到 system 尾部（与 constraintBlock 同一套追加法）。
+	// 의도 블록 → 의도가 지정한 자산 블록 → 시작 지시 순으로 system 끝에 이어 붙인다(constraintBlock 과 같은 방식).
 	sysBody += renderIntentTask(intent)
 	if as != nil {
 		if ids := intentAssetIDs(intent); len(ids) > 0 {
 			if assets, err := as.GetByIDs(ids); err == nil && len(assets) > 0 {
 				if b, err := json.Marshal(assets); err == nil {
-					sysBody += "\n\n本意图 asset_ids 对应的目标资产：\n" + string(b)
+					sysBody += "\n\nTarget assets corresponding to this intent's asset_ids:\n" + string(b)
 				}
-				// 意图明确针对的这些资产 → 自动纳入任务测试范围（与 insertAssets 同一套
-				// 保守粒度）。upsertTaskScope 的 ON CONFLICT DO NOTHING + uq_task_scope
-				// 唯一索引保证不会重复添加；重跑/重试同样是幂等 no-op。
-				// 资产覆盖度功能关闭时不再累积测试范围(分母)。
+				// 이 의도가 분명히 겨냥하는 자산들 → 작업 테스트 범위에 자동 편입한다(insertAssets 와 같은
+				// 보수적 세분화 수준). upsertTaskScope 의 ON CONFLICT DO NOTHING + uq_task_scope 유니크 인덱스가
+				// 중복 추가를 막는다. 재실행/재시도도 똑같이 멱등 no-op 이다.
+				// 자산 커버리지 기능이 꺼져 있으면 테스트 범위(분모)를 더 쌓지 않는다.
 				if coverageEnabled {
 					for _, a := range assets {
 						_ = as.AddAutoScope(taskID, a.Type, a.Domain, a.URL, a.IP)
@@ -417,9 +419,9 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 			}
 		}
 	}
-	sysBody += "\n\n开始执行上面这条意图：只做它、只产生事实、assets、finding、做完即停。"
+	sysBody += "\n\nBegin executing the intent above: do only it, produce only facts, assets, and findings, and stop when done."
 	system, boundary := deferredSystem(sysBody, def)
-	// 任务级 deadline(经 ctx 注入)夹逼本 run 的墙钟预算 + 决定收尾词(见 taskclock.go)。
+	// 작업 단위 deadline(ctx 로 주입)이 이 run 의 벽시계 예산을 좁히고 마무리 문구를 정한다(taskclock.go 참고).
 	tc := taskClockFrom(ctx)
 	maxDur, clamped := clampMaxDuration(tc.DeadlineUnix, w.runTimeout)
 	settle := wrapupSettlement("worker", []string{"Bash"})
@@ -434,13 +436,13 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		// WebFetch 走记录代理，其 HTTP 与 curl 一样被留痕；载入代理 CA 让经 MITM
-		// 重签的 HTTPS 证书能【正常校验通过】（而非关掉校验）。proxy 空则直连。
+		// WebFetch 는 기록 프록시를 타므로 그 HTTP 가 curl 과 똑같이 흔적으로 남는다. 프록시 CA 를
+		// 실어 MITM 이 재서명한 HTTPS 인증서가 [정상적으로 검증을 통과]하게 한다(검증을 끄는 게 아니다). 프록시가 비면 직접 연결한다.
 		EnableWebFetch: true,
 		WebFetchProxy:  w.proxyAddr,
 		WebFetchCACert: w.proxyCACert,
-		// 联网搜索(可选)。ddgs 无需 key；brave-free 需 BraveKey；tavily 需 TavilyKey。
-		// WebSearchProxy 是独立的出口代理(http/https/socks5)，与记录流量的 MITM 代理无关；空则直连。
+		// 웹 검색(선택). ddgs 는 키가 필요 없다. brave-free 는 BraveKey, tavily 는 TavilyKey 가 필요하다.
+		// WebSearchProxy 는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
 		EnableWebSearch:       w.webSearch.Enabled,
 		WebSearchBackend:      w.webSearch.Backend,
 		BraveSearchAPIKey:     w.webSearch.BraveKey,
@@ -449,24 +451,24 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		DeepSeekSearchAPIKey:  w.webSearch.DeepSeekAPIKey,
 		DeepSeekSearchModel:   w.webSearch.DeepSeekModel,
 		WebSearchProxy:        w.webSearch.Proxy,
-		// Bash 子命令的 HTTP 默认走记录代理 + 信任其 CA（工具无需 -x/-k）。
+		// Bash 하위 명령의 HTTP 는 기본으로 기록 프록시를 타고 그 CA 를 신뢰한다(도구에 -x/-k 가 필요 없다).
 		BashEnv:    proxyEnv(w.proxyAddr, w.proxyCACert),
 		WorkingDir: runDir,
 		MaxTurns:   w.maxTurns, // 0 = unlimited (configurable in agent management)
-		// 墙钟预算,轮边界判,不打断半路;0 = 不限。有任务级 deadline 时夹逼到 min(自身预算,
-		// 距 deadline 剩余),让本 run 在任务到点时自然进收尾(见 taskclock.go)。
+		// 벽시계 예산. 회합 경계에서 판정하며 중간에 끊지 않는다. 0 = 제한 없음. 작업 단위 deadline 이 있으면
+		// min(자체 예산, deadline 까지 남은 시간)으로 좁혀, 작업이 시간에 다다랐을 때 이 run 이 자연히 마무리로 들어가게 한다(taskclock.go 참고).
 		MaxDuration: maxDur,
-		// 命中预算(轮次 OR 时长)→ SDK 跑一轮收尾(隐藏 Bash),把已识别的写回,避免烂尾。
-		// clamped(被任务 deadline 夹逼)时用 PromptByReason:因超时=任务到点→任务超时词,
-		// 因步数=夹逼窗口内步数先耗尽→回落 per-run 词。非 clamped 维持纯 per-run。
+		// 예산(회합 또는 시간)에 걸리면 → SDK 가 마무리 라운드를 한 번 돈다(Bash 를 숨김). 이미 식별한 것을 써 넣어 어중간한 끝을 막는다.
+		// clamped(작업 deadline 에 좁혀짐)일 때는 PromptByReason 을 쓴다: 시간 초과=작업 시간에 다다름→작업 시간 초과 문구,
+		// 단계=좁혀진 창 안에서 단계가 먼저 소진→per-run 문구로 되돌린다. 비 clamped 면 순수 per-run 을 유지한다.
 		Settlement: settle,
 		// large tool output spills to cmd-output/ with a head + pointer (SDK tool.Capture);
-		// full output preserved on disk. 截断上限用 SDK 默认(30000 字符)。
+		// full output preserved on disk. 잘림 상한은 SDK 기본값(30000자)을 쓴다.
 		ToolOutputDir: cmdOutDir(runDir),
 		Compaction:    compactionConfig(w.compactionWindow()), // long tool-heavy runs stay within the window
-		Todos:         actool.NewTodoStore(),                  // 会话级临时待办（TodoWrite），纯规划用，退出即丢
-		NonStreaming:  w.nonStreaming(),                       // 该 profile 选非流式时走 Provider.Complete
-		MaxTokens:     w.maxTokens(),                          // 0 = 不发上限,由服务端默认值决定
+		Todos:         actool.NewTodoStore(),                  // 세션 단위 임시 할 일(TodoWrite). 순수 계획용이며 나가면 버려진다
+		NonStreaming:  w.nonStreaming(),                       // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		MaxTokens:     w.maxTokens(),                          // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}
 	if hooks != nil { // typed-nil guard: only set when concrete (avoids harness panic)
 		opts.Hooks = hooks
@@ -482,15 +484,15 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 			emit(r)
 		}
 	}
-	// 意图 / 启动指令 / 意图锚定资产已随 system prompt 下发（见上方 sysBody 组装）。
-	// 这条启动 user 消息只承载【全局态势 overview】——可降级的了解大局信息，压掉无碍。
-	// overview 罕见地 marshal 失败为空时，回退一句启动词，避免首轮出现空 user 消息。
+	// 의도 / 시작 지시 / 의도가 지정한 자산은 이미 system prompt 로 내려갔다(위 sysBody 조립 참고).
+	// 이 시작 user 메시지는 [전역 태세 overview]만 나른다 — 격하 가능한, 대국을 파악하는 정보라 눌려도 무방하다.
+	// overview 가 드물게 marshal 실패로 비면, 첫 라운드에 빈 user 메시지가 나오지 않도록 시작 문구로 되돌린다.
 	input := overview
 	if strings.TrimSpace(input) == "" {
-		input = "开始执行 system 里领到的意图：只做它、只产生事实、assets、finding、做完即停。"
+		input = "Begin executing the intent assigned in the system prompt: do only it, produce only facts, assets, and findings, and stop when done."
 	}
 
-	// 实验功能:开启后由 noa 接管上下文压缩(归档集中在 <workDir>/noa/<SessionID> 下,持久)。
+	// 실험 기능: 켜면 noa 가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
 	noaSession := WorkerSessionID(ts.ID(), intent.ID)
 	enableNoa(&opts, w.noaEnabledFn, w.workDir, noaSession, noaWarn(noaSession))
 	ctx = attachSideCapture(ctx, &opts)
@@ -507,20 +509,20 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		alreadyRecorded = requestID != "" && hasWorkerChatMessage(s.Messages(), requestID)
 		if len(s.Messages()) > 0 && message == "" {
 			seedUnlockFromHistory(s.Messages(), def.UnlockSkill)
-			input = "继续执行。"
+			input = "Continue."
 		} else if len(s.Messages()) > 0 {
 			seedUnlockFromHistory(s.Messages(), def.UnlockSkill)
 		}
 	}
 	if message != "" {
 		if alreadyRecorded {
-			input = "继续执行上一次人工对话输入的新意图。不要重复已经完成的动作。"
+			input = "Continue executing the new intent from the previous human conversation input. Do not repeat actions already completed."
 		} else if len(s.Messages()) > 0 {
-			input = workerChatMarker(requestID) + "\n【人工对话输入的新意图】\n" + message +
-				"\n\n请立即按这条人工输入执行，完成后再根据上下文决定原任务是否需要继续。"
+			input = workerChatMarker(requestID) + "\n**[New intent from human conversation input]**\n" + message +
+				"\n\nExecute this human input immediately; after finishing, decide from the context whether the original task needs to continue."
 		} else {
-			input += "\n\n" + workerChatMarker(requestID) + "\n【人工对话输入的新意图】\n" + message +
-				"\n\n请优先执行这条人工输入。"
+			input += "\n\n" + workerChatMarker(requestID) + "\n**[New intent from human conversation input]**\n" + message +
+				"\n\nPrioritize executing this human input."
 		}
 	}
 
