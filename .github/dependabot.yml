@@ -42,7 +42,9 @@ updates:
       include: "scope"
 
   - package-ecosystem: "npm"
-    directory: "/web"
+    directories:
+      - "/web"
+      - "/docker/playwright"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
