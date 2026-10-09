@@ -368,7 +368,54 @@ web 기능 화면(`web/src/app/(main)/function/**`)을 옮기며 정한 말이�
 | 概览 | 개요 | overview | |
 | 不可撤销 | 되돌릴 수 없습니다 | cannot be undone | "이 작업"은 task로 읽히므로 대상을 쓴다 |
 
+### 화면 시스템(#112에서 더함)
+
+web 시스템 화면(`web/src/app/(main)/system/**`)을 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| 模型配置 | LLM 프로필 | LLM profile | 기존 LLM 화면의 "프로필". 문맥이 분명하면 "프로필" |
+| 激活 / 激活配置 | 활성 / 활성 프로필 | active / active profile | "设为激活"은 "활성으로 설정" |
+| 轮询 (LLM 프로필 순환) | 장애 조치 | failover | 실패한 프로필에서 다음 프로필로 넘기는 기능. 주기적 조회인 "轮询 → 폴링"과 구분한다 |
+| 熔断 / 已熔断 | 회로 차단기 / 차단됨 | circuit breaker / tripped | 업계 표준 용어(circuit breaker) |
+| 冷却 | 대기 시간 | cooldown | 차단된 프로필을 건너뛰는 기간. 짧은 라벨은 "대기" |
+| 退避 / 指数退避 | 백오프 / 지수 백오프 | backoff / exponential backoff | 업계 표준 음차 |
+| 兜底 (LLM) | 대체 | fallback | 지정한 프로필이 실패했을 때 다른 프로필로 넘기는 것 |
+| 模型兜底审批 | 모델 승인 심사 | model approval review | 차단 규칙에 일치하지 않은 명령을 모델이 판정하는 기능. "审批 → 승인 심사"를 따른다 |
+| 人工审批 / 转人工 | 수동 승인 / 수동 승인 요청 | manual approval / ask | 정책 값 `ask` |
+| 放行 | 허용 | allow | "允许 → 허용"과 같은 말을 쓴다 |
+| 申请 (차단 정책) | 승인 요청 | ask | 정책 배지 |
+| 策略 | 정책 | policy | |
+| 模式 (차단 규칙) | 패턴 | pattern | |
+| 正则 / 正则表达式 | 정규식 | regex | |
+| 匹配 (규칙 대조) | 대조 / 일치 | match | 동작은 "대조하다", 결과는 "일치하다" |
+| 拦截范围 | 차단 범위 | intercept scope | 차단 규칙과 모델 승인 심사를 거치는 도구 목록 |
+| 流量捕获 | 트래픽 캡처 | traffic capture | |
+| 记录代理 | 기록 프록시 | recording proxy | 트래픽을 저장하는 MITM 프록시 |
+| 出口代理 | 아웃바운드 프록시 | outbound proxy | |
+| 直连 | 직접 연결 | direct connection | |
+| 上游 | 업스트림 | upstream | |
+| 限流 / 限速 | 발송 속도 제한 / 속도 제한 | rate limit | 알림 채널은 "발송 속도 제한", LLM 프로필은 "속도 제한" |
+| 汇总 (알림 모드) / 实时 | 다이제스트 / 실시간 | digest / realtime | 알림 모드 값 `digest` / `realtime` |
+| 积压 | 밀린 알림 | backlog | |
+| 回链地址 | 링크 기본 주소 | base URL | 알림 메시지의 「상세 보기」 링크 앞부분 |
+| 可见性 / 可见 | 공개 범위 / 공개 | visibility / visible | 에이전트별로 MCP·스킬을 보이게 하는 설정 |
+| 绑定 (도구-에이전트) / 关联 (스킬-MCP) | 연결 | bind / link | "绑定(트래픽) → 연결"과 같은 말을 쓴다 |
+| 技能库 | 스킬 라이브러리 | skill library | |
+| 未命中调用 (스킬) | 없는 스킬 호출 | missing skill call | 이름으로 호출했지만 라이브러리에 없는 스킬 |
+| 压缩包 | 압축 파일 | archive (.zip) | |
+| 网络搜索 | 웹 검색 | web search | |
+| 流式 / 非流式 | 스트리밍 / 비스트리밍 | streaming / non-streaming | |
+| 思考 / 思考强度 | 사고 / 사고 강도 | thinking / reasoning effort | Anthropic 한국어 문서의 "확장 사고" 표기를 따른다 |
+| 上下文窗口 | 컨텍스트 창 | context window | Anthropic 한국어 문서 표기 |
+| 输出上限 | 출력 최대 토큰 | max output tokens | |
+| 解释器 | 인터프리터 | interpreter | |
+| 请求头 / 会话头 | 요청 헤더 / 세션 헤더 | request header / session header | |
+| 一键更新 / 回滚 | 원클릭 업데이트 / 롤백 | one-click update / rollback | |
+| 冒烟测试 | 스모크 테스트 | smoke test | 업계 표준 음차 |
+
 ## 고친 기록
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
 - 2026-10-10: web 기능 화면 번역(#111)에서 정한 용어를 "화면 기능" 표로 더한다.
+- 2026-10-10: web 시스템 화면 번역(#112)에서 정한 용어를 "화면 시스템" 표로 더한다.
