@@ -4,10 +4,10 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write # 创建 Release 需要
+  contents: write # Release를 만들 때 필요하다
 
 jobs:
-  # ① 前端静态导出（一次），产物给交叉编译各平台复用
+  # 1. 프런트엔드 정적 export(한 번만). 결과물을 플랫폼별 교차 컴파일이 함께 쓴다
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +26,7 @@ jobs:
           name: web-dist
           path: web/out
 
-  # ② 五平台交叉编译（内嵌前端）+ 打 zip
+  # 2. 다섯 플랫폼 교차 컴파일(프런트엔드 내장) + zip 묶기
   binaries:
     needs: frontend
     runs-on: ubuntu-latest
@@ -55,8 +55,8 @@ jobs:
           ARTEX_BUILD_VERSION: ${{ github.ref_name }}
           ARTEX_SKIP_FRONTEND: "1"
           ARTEX_SKIP_NPM_CI: "1"
-          # UPX 自解压 ELF 在部分 Linux 内核、虚拟化和安全策略下会崩溃。
-          # Release 使用 Go linker 裁剪和 zip 压缩，优先保证可移植性。
+          # UPX 자체 압축 해제 ELF는 일부 Linux 커널, 가상화, 보안 정책에서 비정상 종료한다.
+          # Release는 Go linker의 크기 줄이기와 zip 압축만 써서 이식성을 먼저 지킨다.
           ARTEX_COMPRESS: "0"
           ARTEX_PACKAGE: "1"
           ARTEX_PACKAGE_DIR: dist
@@ -69,14 +69,14 @@ jobs:
         with:
           name: pkg-${{ matrix.goos }}-${{ matrix.goarch }}
           path: "dist/*.zip"
-      # Linux 生二进制单独上传，供 docker job 复用（免在镜像里重编前端+Go）
+      # Linux 원본 바이너리를 따로 올려 docker job이 다시 쓴다(이미지 안에서 프런트엔드·Go를 다시 빌드하지 않는다)
       - if: matrix.goos == 'linux'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bin-linux-${{ matrix.goarch }}
           path: dist/artex-linux-${{ matrix.goarch }}/artex
 
-  # ③ 汇总所有 zip → 创建 GitHub Release
+  # 3. 모든 zip을 모아 GitHub Release를 만든다
   release:
     needs: binaries
     runs-on: ubuntu-latest

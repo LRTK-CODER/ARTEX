@@ -25,14 +25,14 @@ func findingPaginationParam(raw string, fallback, upperBound int) int {
 	return value
 }
 
-// findingFilterFromQuery builds the shared findings filter from a request's
-// query string. 列表 / 分组 / 资产树 / 导出走同一份解析,新增筛选项只改这里。
+// findingFilterFromQuery 는 요청의 쿼리 문자열로 발견 사항 공용 필터를 만든다.
+// 목록·그룹·자산 트리·내보내기가 같은 파싱을 쓰므로, 필터 항목을 더할 때는 여기만 고친다.
 func findingFilterFromQuery(q url.Values) db.FindingFilter {
 	return db.FindingFilter{
 		Severity:  normFilter(q.Get("severity")),
 		Status:    normFilter(q.Get("status")),
 		VulnClass: normFilter(q.Get("vulnclass")),
-		// task_id(独立于会切到「按任务节点」分支的 task 参数):全局表按任务筛选。
+		// task_id(분기를 '작업 노드별'로 바꾸는 task 파라미터와 별개): 전역 표를 작업으로 거른다.
 		TaskID:     normFilter(q.Get("task_id")),
 		Query:      q.Get("q"),
 		Sort:       q.Get("sort"),
@@ -40,8 +40,8 @@ func findingFilterFromQuery(q url.Values) db.FindingFilter {
 	}
 }
 
-// findingAssetTree serves the「按资产」view's left-hand tree: every asset that
-// carries at least one matching finding, plus the ancestors needed to place it.
+// findingAssetTree 는 '자산별' 보기의 왼쪽 트리를 제공한다. 일치하는 발견 사항이 하나 이상 있는
+// 자산 전부와, 그 자산을 트리에 놓는 데 필요한 상위 자산을 담는다.
 func (s *Server) findingAssetTree(w http.ResponseWriter, r *http.Request) {
 	tree, err := s.m.pg.BuildFindingAssetTree(findingFilterFromQuery(r.URL.Query()))
 	if err != nil {
@@ -102,7 +102,7 @@ func (s *Server) deepenFinding(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeErr(w, http.StatusRequestEntityTooLarge, "请求正文过大")
+			writeErr(w, http.StatusRequestEntityTooLarge, "요청 본문이 너무 큽니다")
 		} else {
 			writeErr(w, http.StatusBadRequest, "bad json: "+err.Error())
 		}
@@ -145,7 +145,7 @@ func (s *Server) deepenFinding(w http.ResponseWriter, r *http.Request) {
 	audit := db.Activity{
 		Worker:  "system",
 		Kind:    "text",
-		Summary: "人工提交漏洞深入利用意图",
+		Summary: "사용자가 취약점 심화 검증 탐색 의도를 제출함",
 		Detail:  description,
 	}
 	intentID, audit, err := t.Store.AddFindingFollowUpIntent(id, *finding.NodeID, description, audit)
