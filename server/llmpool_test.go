@@ -2,9 +2,9 @@ package server
 
 import "testing"
 
-// The status list drives the "轮询顺序" strip in the UI, so it has to match the
-// order PoolProfiles actually runs: active first, then priority DESC, then id ASC
-// (input arrives id-ordered, so equal priorities must keep their relative order).
+// 상태 목록이 UI의 '장애 조치 순서' 줄을 그리므로 PoolProfiles가 실제로 도는 순서와 같아야 한다.
+// 활성 프로필이 먼저, 그다음 priority 내림차순, 그다음 id 오름차순이다
+// (입력이 id 순으로 오므로 priority가 같으면 원래 상대 순서를 지켜야 한다).
 func TestSortPoolStatusMatchesChainOrder(t *testing.T) {
 	in := []LLMPoolMemberStatus{
 		{ProfileID: "1", Name: "low", Priority: 0},
