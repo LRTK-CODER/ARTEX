@@ -60,6 +60,14 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "a11y": {
+        "noLabelWithoutControl": {
+          "level": "on",
+          "options": {
+            "inputComponents": ["Checkbox", "Switch"]
+          }
+        }
+      },
       "correctness": {
         "noUndeclaredVariables": "error",
         "noNestedComponentDefinitions": "error",

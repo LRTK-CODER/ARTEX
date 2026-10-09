@@ -1,0 +1,10 @@
+{
+  "name": "artex-playwright-tools",
+  "private": true,
+  "description": "컨테이너 이미지에 넣는 Playwright MCP·CLI. Dockerfile이 npm ci로 설치한다.",
+  "dependencies": {
+    "@playwright/cli": "0.1.22",
+    "@playwright/mcp": "0.0.83",
+    "playwright": "1.64.0-alpha-1790635538000"
+  }
+}
