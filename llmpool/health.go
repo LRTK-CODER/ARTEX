@@ -1,12 +1,10 @@
-// Package llmpool implements LLM failover ("轮询"): a Provider decorator that
-// walks an ordered chain of LLM profiles and moves to the next one when the
-// current one can't serve the request — out of credit, revoked key, rate-limited
-// past the SDK's own retries, or down.
+// Package llmpool 은 LLM 장애 조치를 구현한다. 순서가 정해진 LLM 프로필 체인을 따라가다가
+// 현재 프로필이 요청을 처리하지 못하면(사용 한도 부족, 폐기된 키, SDK 자체 재시도를 넘긴
+// 속도 제한, 서비스 중단) 다음 프로필로 넘기는 Provider 장식자다.
 //
-// The chain is built by the server from llm_profiles (active profile first, then
-// by priority), so the whole process shares ONE chain and ONE circuit-breaker
-// registry: when a task discovers a profile is out of credit, every other task
-// skips it immediately.
+// 체인은 server가 llm_profiles로 만든다(활성 프로필 먼저, 그다음 우선순위 순). 그래서 프로세스
+// 전체가 체인 하나와 회로 차단기 레지스트리 하나를 함께 쓴다. 한 작업이 어떤 프로필의 사용 한도가
+// 바닥난 것을 알게 되면 다른 모든 작업도 그 프로필을 바로 건너뛴다.
 package llmpool
 
 import (
@@ -161,7 +159,7 @@ func (r *Registry) Trip(id int64, errMsg string, hard bool) (tripped bool) {
 	return tripped
 }
 
-// Reset clears one profile's state — the UI's "立即恢复" action.
+// Reset 은 프로필 하나의 상태를 지운다. 화면의 '즉시 복구' 동작이다.
 func (r *Registry) Reset(id int64) {
 	r.mu.Lock()
 	delete(r.m, id)

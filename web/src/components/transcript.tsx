@@ -176,18 +176,18 @@ function toolInputText(tool: string, raw: string): string {
   return raw;
 }
 
-// InterceptCard renders an inline intercept_request approval card. The pending_id
-// is extracted from the summary (format: "工具 X 请求审批 (#N)") so buttons are
-// available immediately without waiting for the detail load.
+// InterceptCard 는 대화 안에 intercept_request 승인 카드를 그린다. pending_id를 요약
+// (형식: "도구 X 승인 심사 요청 (#N)", #110 이전 기록은 "工具 X 请求审批 (#N)")에서 뽑아,
+// 상세를 불러오기 전에도 버튼을 바로 쓸 수 있게 한다.
 function InterceptCard({ step, getDetail }: { step: Activity; getDetail: (seq: number) => Promise<string> }) {
-  // extract pending_id from summary: "工具 Bash 请求审批 (#42)"
+  // 요약에서 pending_id를 뽑는다: "도구 Bash 승인 심사 요청 (#42)"
   const pendingId = React.useMemo(() => {
     const m = /\(#(\d+)\)/.exec(step.summary);
     return m ? parseInt(m[1], 10) : null;
   }, [step.summary]);
 
   const toolName = React.useMemo(() => {
-    const m = /工具\s+(\S+)\s+请求/.exec(step.summary);
+    const m = /(?:도구|工具)\s+(\S+)\s+(?:승인 심사 요청|请求)/.exec(step.summary);
     return m ? m[1] : step.summary;
   }, [step.summary]);
 

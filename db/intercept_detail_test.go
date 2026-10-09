@@ -16,7 +16,7 @@ func TestInterceptDetails(t *testing.T) {
 	t.Cleanup(func() { _ = d.Close() })
 	create := func(t *testing.T, audit *InterceptAudit) int64 {
 		t.Helper()
-		id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{"path":"report.md"}`), "[模型] 확인 필요", audit)
+		id, err := d.CreateInterceptPending(0, 0, "approval-detail-test", "test", "Write", []byte(`{"path":"report.md"}`), "[모델] 확인 필요", audit)
 		if err != nil {
 			t.Fatal(err)
 		}

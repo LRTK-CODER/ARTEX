@@ -38,7 +38,11 @@ func TestInterceptApprovalFilters(t *testing.T) {
 						ruleID = rule.ID
 					}
 					if source == "model" {
-						reason = "[模型] fixture"
+						reason = "[모델] fixture"
+						if i == 0 {
+							// decision_source를 비우는 옛 행에는 #110 이전 접두사를 둔다.
+							reason = "[模型] fixture"
+						}
 					}
 					id, err := d.CreateDecidedIntercept(ruleID, 0, task, "test", "Bash", []byte(`{"command":"fixture"}`), status, reason)
 					if err != nil {

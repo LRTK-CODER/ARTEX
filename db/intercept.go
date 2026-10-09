@@ -37,7 +37,7 @@ type InterceptPending struct {
 	ToolInput      json.RawMessage `json:"tool_input"`
 	Status         string          `json:"status"`
 	DecisionSource string          `json:"decision_source"`
-	Reason         string          `json:"reason"` // 규칙 message 또는 모델 판정 이유(접두사 [模型])
+	Reason         string          `json:"reason"` // 규칙 message 또는 모델 판정 이유(접두사 [모델]. #110 이전 행은 [模型])
 	DecidedAt      *time.Time      `json:"decided_at"`
 	CreatedAt      time.Time       `json:"created_at"`
 }
@@ -226,9 +226,10 @@ func scanInterceptApprovalRow(rows interface{ Scan(...any) error }, r *Intercept
 }
 
 // Keep legacy rows without decision_source consistent with their displayed source.
+// 모델 판정 접두사는 [모델]이고, #110 이전 행에는 옛 접두사 [模型]이 남아 있어 둘 다 본다.
 const approvalDecisionSource = `COALESCE(NULLIF(ip.decision_source,''), CASE
  WHEN ip.rule_id IS NOT NULL THEN 'rule'
- WHEN ip.reason LIKE '[模型]%' THEN 'model' ELSE 'unknown' END)`
+ WHEN ip.reason LIKE '[모델]%' OR ip.reason LIKE '[模型]%' THEN 'model' ELSE 'unknown' END)`
 
 const approvalRowColumns = `ip.id, ip.rule_id, ip.conversation_id, ip.task_id, ip.agent_name,
        ip.tool_name, ip.tool_input, ip.status, ip.reason, ip.decided_at, ip.created_at, ` + approvalDecisionSource + `,
@@ -248,7 +249,8 @@ func interceptSource(ruleID int64, reason string) string {
 	if ruleID != 0 {
 		return "rule"
 	}
-	if strings.HasPrefix(reason, "[模型]") {
+	// intercept는 [모델]을 붙인다. [模型]은 #110 이전에 만든 행과 보관본의 옛 접두사다.
+	if strings.HasPrefix(reason, "[모델]") || strings.HasPrefix(reason, "[模型]") {
 		return "model"
 	}
 	return "unknown"

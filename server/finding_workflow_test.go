@@ -10,6 +10,7 @@ import (
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -246,7 +247,7 @@ func TestFindingWorkflowMigrationPreservesUserConfiguration(t *testing.T) {
 	}
 	search, _ := pg.GetTool("traffic_search")
 	get, _ := pg.GetTool("traffic_get")
-	if !strings.Contains(search.Description, "支持裸主机、主机:端口或完整 URL") {
+	if !strings.Contains(search.Description, "accepts a bare host, host:port, or a full URL") {
 		t.Fatal("traffic_search description migration missing host/port guidance")
 	}
 	if search.Enabled || !contains(search.Agents, "reporter") || get.Enabled || len(get.Agents) != 1 || get.Agents[0] != "custom-agent" {
@@ -325,4 +326,62 @@ func TestFindingWorkflowReporterBindsBeforeWritingReport(t *testing.T) {
 	}
 	workflowCall(t, ctx, workflowTool(t, off, "get_finding_traffic"), map[string]any{"finding_id": f.FindingID}, false)
 	workflowTool(t, off, "update_finding_report")
+}
+
+// TestTrafficSearchDescriptionEnglishMigration 은 traffic_search 설명을 영어로 옮긴
+// v4 재씨앗(#110)을 검증한다. v3 중국어 그대로인 행만 영어로 바뀌고, 사용자가 고친
+// 행은 그대로 남으며, 다시 돌려도 결과가 같다.
+func TestTrafficSearchDescriptionEnglishMigration(t *testing.T) {
+	s, _, _ := trafficEvidenceServer(t)
+	pg := s.m.pg
+	const flag = "finding_workflow_tools_v4_english_search_description"
+	// 기존 설치가 DB 에 들고 있는 v3 중국어 값(데이터로서의 중국어). 비교용 상수다.
+	v3 := "查询记录代理已抓取的目标流量（必须指定 host；支持裸主机、主机:端口或完整 URL，可再按 URL 子串或正文关键词过滤）。指定端口时只返回该服务的流量，避免同一 IP 的不同端口串包。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符）。仅返回极轻量索引(id/method/url/status/resp_len)，不含响应内容；结果非空后必须用 traffic_get 逐条核实请求/响应，再把确实支持当前漏洞的 ID 交给 bind_finding_traffic。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页。"
+
+	old, err := pg.GetTool("traffic_search")
+	if err != nil || old == nil {
+		t.Fatal("missing traffic_search", err)
+	}
+	t.Cleanup(func() {
+		bindings, _ := json.Marshal(old.Agents)
+		pg.UpdateTool("traffic_search", old.Description, old.Schema, bindings, old.Enabled)
+	})
+	bindings, _ := json.Marshal(old.Agents)
+
+	// v3 중국어 행은 영어로 바뀐다.
+	if err := pg.UpdateTool("traffic_search", v3, old.Schema, bindings, old.Enabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.SetSetting(flag, "false"); err != nil {
+		t.Fatal(err)
+	}
+	s.seedFindingWorkflowTools()
+	row, _ := pg.GetTool("traffic_search")
+	// 영어 번역 본문과 정확히 같고, 영어 표지 문구를 담아야 한다(v3 중국어가 남아 있으면 실패).
+	if row.Description != traffic.TrafficSearchDescription || !strings.Contains(row.Description, "host is required") {
+		t.Fatalf("v3 row not migrated to English: %q", row.Description)
+	}
+
+	// 멱등: flag 를 다시 내려 재실행해도 결과가 같다(이제 v3 행이 없어 바꿀 것이 없다).
+	if err := pg.SetSetting(flag, "false"); err != nil {
+		t.Fatal(err)
+	}
+	s.seedFindingWorkflowTools()
+	again, _ := pg.GetTool("traffic_search")
+	if again.Description != traffic.TrafficSearchDescription || !strings.Contains(again.Description, "host is required") {
+		t.Fatalf("rerun changed description: %q", again.Description)
+	}
+
+	// 사용자가 고친 설명은 그대로 둔다.
+	if err := pg.UpdateTool("traffic_search", "USER TRAFFIC DESCRIPTION", old.Schema, bindings, old.Enabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.SetSetting(flag, "false"); err != nil {
+		t.Fatal(err)
+	}
+	s.seedFindingWorkflowTools()
+	edited, _ := pg.GetTool("traffic_search")
+	if edited.Description != "USER TRAFFIC DESCRIPTION" {
+		t.Fatalf("overwrote user-edited description: %q", edited.Description)
+	}
 }

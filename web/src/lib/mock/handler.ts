@@ -2440,14 +2440,15 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
   if (seg[0] === "intercept" && seg[1] === "pending" && seg[3] === "decide") {
     const id = Number(seg[2]);
     const row = mockInterceptHistory.find((r) => r.id === id) ?? mockInterceptPending.find((r) => r.id === id);
-    if (row?.status !== "pending") throw new Error("审批已处理或不存在，请刷新记录");
+    if (row?.status !== "pending") throw new Error("이미 처리됐거나 없는 승인 심사입니다. 기록을 새로 고치세요.");
     if (b.decision !== "allowed" && b.decision !== "denied") throw new Error("잘못된 승인 심사 동작입니다");
     row.status = b.decision;
     row.decided_at = new Date().toISOString();
     const detail = mockInterceptDetails[id];
     if (detail) {
       detail.effective_action = b.decision === "allowed" ? "allow" : "deny";
-      detail.decision_reason = b.decision === "allowed" ? "人工允许执行" : "人工拒绝执行";
+      detail.decision_reason =
+        b.decision === "allowed" ? "사용자가 실행을 허용했습니다" : "사용자가 실행을 거부했습니다";
       detail.execution_status = b.decision === "allowed" ? "unknown" : "not_executed";
       detail.output = b.decision === "allowed" ? "데모 모드에서는 도구를 실행하지 않았습니다." : "";
     }
@@ -2469,7 +2470,8 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
       throw new Error("잘못된 판정 출처입니다");
     const filtered = mockInterceptHistory.filter((row) => {
       const source =
-        row.decision_source || (row.rule_id ? "rule" : row.reason?.startsWith("[模型]") ? "model" : "unknown");
+        row.decision_source ||
+        (row.rule_id ? "rule" : /^\[(?:모델|模型)\]/.test(row.reason ?? "") ? "model" : "unknown");
       return (
         (seg[1] !== "task" || row.task_id === decodeURIComponent(seg[2])) &&
         (!status || row.status === status) &&

@@ -1,10 +1,8 @@
-// Package guard implements the safety boundary layer (docs §11): an audit log,
-// user-configured intercept-rule evaluation, and Observer/G5 failure attribution.
-// Every tool call passes through the PreToolUse hook before executing.
-// (The RoE authorization-scope mechanism was removed; a replacement may be added
-// later.) Destructive/exfil gating is no longer hard-coded here — it lives in the
-// DB intercept rules (seeded as ordinary [内置] rules, so users can disable or
-// delete them), evaluated via applyIntercept.
+// Package guard 는 안전 경계 계층이다(docs §11): 감사 기록, 사용자가 설정한 차단 규칙 평가,
+// Observer/G5 실패 원인 판별을 맡는다. 모든 도구 호출은 실행 전에 PreToolUse 훅을 지난다.
+// (RoE 허가 범위 장치는 없앴고, 나중에 대체 장치를 둘 수 있다.) 파괴적 동작·데이터 유출 차단은
+// 더 이상 여기에 하드코딩하지 않는다. DB 차단 규칙(일반 [내장] 규칙으로 시드되므로 사용자가
+// 끄거나 지울 수 있다)에 있고 applyIntercept로 평가한다.
 package guard
 
 import (
@@ -100,7 +98,7 @@ func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 	}
 	switch dec.Action {
 	case "deny":
-		// 观测:deny 命中不阻塞审批,直接记一条 denied（历史/任务拦截页可见）。
+		// 관찰: deny 규칙에 일치하면 승인을 기다리지 않고 denied 한 건을 바로 기록한다(기록·작업 차단 화면에서 보인다).
 		g.interceptor.Log(ctx, intercept.ConvIDFromContext(ctx), dec, ev.ToolName, ev.Input, "denied")
 		return g.block(ev.ToolName, systemBlockMessage(dec.Message), "")
 	case "allow":
@@ -112,32 +110,28 @@ func (g *Guard) applyIntercept(ctx context.Context, ev hook.Event) hook.Result {
 		// immediately without creating a pending record — avoids orphaned DB entries
 		// and makes execOne complete fast, reducing the race against drainSynthetic.
 		if ctx.Err() != nil {
-			return g.block(ev.ToolName, systemBlockMessage("工作已取消，平台安全管控阻止执行"), "")
+			return g.block(ev.ToolName, systemBlockMessage("작업이 취소돼 플랫폼 보안 통제가 실행을 막았습니다"), "")
 		}
 		convID := intercept.ConvIDFromContext(ctx)
 		if !g.interceptor.HandleAsk(ctx, convID, dec, ev.ToolName, ev.Input) {
-			return g.block(ev.ToolName, systemBlockMessage("人工审批未通过（用户拒绝或审批超时）"), "")
+			return g.block(ev.ToolName, systemBlockMessage("수동 승인을 받지 못했습니다(사용자 거부 또는 승인 심사 시간 초과)"), "")
 		}
 		return hook.Result{}
 	}
 	return hook.Result{}
 }
 
-// systemBlockMessage frames an intercept block as an ARTEX platform-governance
-// decision so the agent does not mistake it for a target-side defense.
+// systemBlockMessage 는 차단을 ARTEX 플랫폼의 정책 결정으로 감싸, 에이전트가 대상 쪽 방어로
+// 착각하지 않게 한다.
 //
-// The bare reasons ("禁止执行此工具" / "用户拒绝") read exactly like a WAF/403 on
-// the target, so a pentest agent's instinct is to bypass them — rewrite the
-// command, swap the payload, re-encode, retry. That is both futile (the platform
-// blocks the class of action, not one string) and wrong (it's a policy decision,
-// not an obstacle to defeat). This prefix states plainly that the block comes
-// from the platform, is not the target's protection, and that the operation is
-// forbidden — so the agent pivots to another approach instead of evading it.
-// Audit/history rows keep the raw reason (see Interceptor.Log); only the
-// model-facing tool_result carries this framing.
+// 꾸밈 없는 사유('이 도구를 실행할 수 없습니다' / '사용자 거부')만 주면 대상의 WAF·403처럼 읽혀,
+// 에이전트가 다른 방식으로 같은 동작을 다시 시도하려 한다. 그러나 플랫폼은 문자열 하나가 아니라
+// 동작 종류를 막고, 이는 정책 결정이지 넘어야 할 장애물이 아니다. 이 머리말은 차단이 플랫폼에서
+// 왔고 대상의 방어가 아니며 이 동작이 금지됐음을 분명히 밝혀, 에이전트가 다른 접근으로 넘어가게 한다.
+// 감사·기록 행에는 원래 사유를 남기고(Interceptor.Log 참고), 모델이 받는 tool_result에만 이 머리말을 붙인다.
 func systemBlockMessage(reason string) string {
-	return "【ARTEX 平台管控·非目标防御】此调用被平台拦截。" +
-		"原因：" + reason + "。此操作被禁止。"
+	return "[ARTEX 플랫폼 통제 · 대상의 방어 아님] 플랫폼이 이 호출을 차단했습니다. " +
+		"원인: " + reason + ". 이 동작은 금지됐습니다."
 }
 
 var reBlocked = regexp.MustCompile(`(?i)\b(403|forbidden|waf|blocked|rate.?limit|429|captcha|denied)\b`)

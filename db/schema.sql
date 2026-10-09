@@ -1080,7 +1080,7 @@ CREATE TABLE IF NOT EXISTS intercept_pending (
     tool_input      JSONB NOT NULL DEFAULT '{}',
     status          TEXT NOT NULL DEFAULT 'pending'
                         CHECK (status IN ('pending', 'allowed', 'denied', 'timeout')),
-    -- 판정 사유: 규칙이 일치하면 규칙 message, 일치하는 규칙이 없어 LLM 이 판정하면 모델이 준 짧은 사유(접두사 [模型]).
+    -- 판정 사유: 규칙이 일치하면 규칙 message, 일치하는 규칙이 없어 LLM 이 판정하면 모델이 준 짧은 사유(접두사 [모델]. #110 이전 행은 [模型]).
     reason          TEXT NOT NULL DEFAULT '',
     decided_at      TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
