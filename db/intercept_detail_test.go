@@ -136,7 +136,7 @@ func TestInterceptDetails(t *testing.T) {
 		}
 	})
 	t.Run("archive compatibility", func(t *testing.T) {
-		// legacyReason 이 비어 있지 않으면 decision_source 와 audit 가 없는 옛 보관본 행을 만든다.
+		// legacyReason이 비어 있지 않으면 decision_source와 audit가 없는 옛 보관본 행을 만든다.
 		for _, tc := range []struct{ name, legacyReason string }{
 			{"legacy current prefix", "[모델] 확인 필요"},
 			{"legacy pre-110 prefix", "[模型] 需要确认"},

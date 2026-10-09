@@ -17,9 +17,9 @@ import (
 	"github.com/Autumn-27/artex/llmauth"
 )
 
-// ChatGPT 구독 로그인 API. redirect 가 localhost:1455 로 고정이라 원격 서버는 콜백을 받을 수 없다.
-// 그래서 사용자가 실패한 콜백 URL 을 붙여넣는 방식과 디바이스 코드 방식만 둔다.
-// 흐름 상태(PKCE verifier, state, 디바이스 진행 상태)는 메모리에만 두고 DB 에 쓰지 않는다.
+// ChatGPT 구독 로그인 API. redirect가 localhost:1455로 고정이라 원격 서버는 콜백을 받을 수 없다.
+// 그래서 사용자가 실패한 콜백 URL을 붙여넣는 방식과 디바이스 코드 방식만 둔다.
+// 흐름 상태(PKCE verifier, state, 디바이스 진행 상태)는 메모리에만 두고 DB에 쓰지 않는다.
 
 const (
 	// loginFlowTTL 은 흐름 하나가 유효한 시간이다. 디바이스 폴링 goroutine 도 이 시간이 지나면 끝난다.
@@ -29,9 +29,9 @@ const (
 	// loginSaveTimeout 은 교환한 토큰을 저장하는 상한이다.
 	loginSaveTimeout = 10 * time.Second
 	loginRandomBytes = 32
-	// maxLoginRequestBytes 는 로그인 요청 본문 상한이다. code·state·콜백 URL 은 수 KB 를 넘지 않는다.
+	// maxLoginRequestBytes 는 로그인 요청 본문 상한이다. code·state·콜백 URL은 수 KB를 넘지 않는다.
 	maxLoginRequestBytes = 32 << 10
-	// callbackPort·callbackPath 는 붙여넣은 콜백 URL 이 가리켜야 할 포트다(llmauth.RedirectURI).
+	// callbackPort·callbackPath는 붙여넣은 콜백 URL이 가리켜야 할 포트다(llmauth.RedirectURI).
 	callbackPort = "1455"
 	callbackPath = "/auth/callback"
 )
@@ -101,7 +101,7 @@ const (
 	deviceLoginExpired   deviceLoginStatus = "expired"
 )
 
-// loginFlow 는 진행 중인 로그인 하나다. 붙여넣기 흐름은 pkce·state 를, 디바이스 흐름은 status 를 쓴다.
+// loginFlow 는 진행 중인 로그인 하나다. 붙여넣기 흐름은 pkce·state를, 디바이스 흐름은 status를 쓴다.
 type loginFlow struct {
 	id        string
 	profileID int64
@@ -115,12 +115,12 @@ type loginFlow struct {
 
 	status  deviceLoginStatus
 	errCode loginErrorCode
-	// cancel 은 디바이스 폴링 goroutine 을 멈춘다. done 은 그 goroutine 이 끝나면 닫힌다.
+	// cancel 은 디바이스 폴링 goroutine을 멈춘다. done은 그 goroutine이 끝나면 닫힌다.
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-// loginFlows 는 흐름을 ID 로 들고 있다. 제로값을 그대로 쓴다.
+// loginFlows 는 흐름을 ID로 들고 있다. 제로값을 그대로 쓴다.
 type loginFlows struct {
 	mu    sync.Mutex
 	flows map[string]*loginFlow
@@ -163,7 +163,7 @@ func (l *loginFlows) clock() time.Time {
 	return l.now()
 }
 
-// add 는 흐름을 넣고 ID 를 돌려준다. 같은 프로필의 이전 흐름은 버린다. 한 프로필에 두 디바이스
+// add 는 흐름을 넣고 ID를 돌려준다. 같은 프로필의 이전 흐름은 버린다. 한 프로필에 두 디바이스
 // 흐름이 함께 돌아 서로의 저장을 덮지 않게 한다.
 func (l *loginFlows) add(id string, flow *loginFlow) {
 	l.mu.Lock()
@@ -183,7 +183,7 @@ func (l *loginFlows) dropProfile(profileID int64) {
 	l.dropLocked(func(f *loginFlow) bool { return f.profileID == profileID })
 }
 
-// dropLocked 는 match 에 맞거나 보관 시간이 지난 흐름을 지우고, 도는 goroutine 을 멈춘다.
+// dropLocked 는 match에 맞거나 보관 시간이 지난 흐름을 지우고, 도는 goroutine을 멈춘다.
 func (l *loginFlows) dropLocked(match func(*loginFlow) bool) {
 	now := l.clock()
 	for id, f := range l.flows {
@@ -196,8 +196,8 @@ func (l *loginFlows) dropLocked(match func(*loginFlow) bool) {
 	}
 }
 
-// takeBrowser 는 붙여넣기 흐름을 state 와 대조해 꺼낸다. 맞으면 흐름을 지워 한 번만 쓰게 한다.
-// state 가 다르면 흐름을 남겨 맞는 주소로 다시 시도할 수 있게 한다.
+// takeBrowser 는 붙여넣기 흐름을 state와 대조해 꺼낸다. 맞으면 흐름을 지워 한 번만 쓰게 한다.
+// state가 다르면 흐름을 남겨 맞는 주소로 다시 시도할 수 있게 한다.
 func (l *loginFlows) takeBrowser(id string, profileID int64, state string) (*loginFlow, loginErrorCode) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -230,14 +230,14 @@ func (l *loginFlows) deviceStatus(id string) (deviceLoginStatus, loginErrorCode,
 	return f.status, f.errCode, true
 }
 
-// finishDevice 는 goroutine 의 결과를 기록한다. 흐름이 이미 버려졌으면 기록해도 읽을 곳이 없다.
+// finishDevice 는 goroutine의 결과를 기록한다. 흐름이 이미 버려졌으면 기록해도 읽을 곳이 없다.
 func (l *loginFlows) finishDevice(f *loginFlow, status deviceLoginStatus, code loginErrorCode) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	f.status, f.errCode = status, code
 }
 
-// randomToken 은 흐름 ID 와 state 에 쓰는 추측할 수 없는 값이다.
+// randomToken 은 흐름 ID와 state에 쓰는 추측할 수 없는 값이다.
 func randomToken() (string, error) {
 	buf := make([]byte, loginRandomBytes)
 	if _, err := rand.Read(buf); err != nil {
@@ -246,8 +246,8 @@ func randomToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// loginProfile 은 요청의 profile_id 가 로그인할 수 있는 chatgpt_oauth 프로필인지 본다.
-// 쓸 수 없으면 응답을 쓰고 false 를 돌려준다.
+// loginProfile 은 요청의 profile_id가 로그인할 수 있는 chatgpt_oauth 프로필인지 본다.
+// 쓸 수 없으면 응답을 쓰고 false를 돌려준다.
 func (s *Server) loginProfile(w http.ResponseWriter, profileID int64) bool {
 	pg := s.pg(w)
 	if pg == nil {
@@ -275,7 +275,7 @@ func (s *Server) loginProfile(w http.ResponseWriter, profileID int64) bool {
 	return true
 }
 
-// decodeLoginRequest 는 상한을 둔 본문을 읽는다. 실패하면 응답을 쓰고 false 를 돌려준다.
+// decodeLoginRequest 는 상한을 둔 본문을 읽는다. 실패하면 응답을 쓰고 false를 돌려준다.
 func decodeLoginRequest(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxLoginRequestBytes)
 	err := decode(r, v)
@@ -292,7 +292,7 @@ func decodeLoginRequest(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 // isCallbackURL 은 붙여넣은 주소가 로그인 콜백 주소인지 본다. 다른 주소를 붙여넣은 실수를 알려 주려는 것이다.
-// 교환은 늘 고정 redirect_uri 로 하므로 보안 경계는 아니다.
+// 교환은 늘 고정 redirect_uri로 하므로 보안 경계는 아니다.
 func isCallbackURL(u *url.URL) bool {
 	host := u.Hostname()
 	return u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1") &&
@@ -303,7 +303,7 @@ type loginProfileRequest struct {
 	ProfileID int64 `json:"profile_id"`
 }
 
-// startChatGPTLogin 은 붙여넣기 로그인을 시작한다. authorize URL 과 흐름 ID 를 돌려준다.
+// startChatGPTLogin 은 붙여넣기 로그인을 시작한다. authorize URL과 흐름 ID를 돌려준다.
 func (s *Server) startChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginProfileRequest
 	if !decodeLoginRequest(w, r, &req) {
@@ -388,8 +388,8 @@ func (s *Server) completeChatGPTLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"connected": true, "plan_type": tokens.PlanType})
 }
 
-// startChatGPTDeviceLogin 은 디바이스 코드 로그인을 시작하고 폴링 goroutine 을 띄운다.
-// goroutine 은 흐름 TTL, 서버 종료, 같은 프로필의 새 흐름·연결 해제 중 먼저 오는 것에 끝난다.
+// startChatGPTDeviceLogin 은 디바이스 코드 로그인을 시작하고 폴링 goroutine을 띄운다.
+// goroutine은 흐름 TTL, 서버 종료, 같은 프로필의 새 흐름·연결 해제 중 먼저 오는 것에 끝난다.
 func (s *Server) startChatGPTDeviceLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginProfileRequest
 	if !decodeLoginRequest(w, r, &req) {
@@ -434,8 +434,8 @@ func (s *Server) waitChatGPTDeviceLogin(ctx context.Context, cancel context.Canc
 	tokens, err := client.WaitDeviceCode(ctx, dc)
 	var netErr net.Error
 	switch {
-	// 만료는 흐름 TTL 이나 llmauth 의 대기 상한만 뜻한다. HTTP 요청 하나의 타임아웃도
-	// context.DeadlineExceeded 로 보이므로 err 가 아니라 흐름 ctx 를 본다.
+	// 만료는 흐름 TTL 이나 llmauth의 대기 상한만 뜻한다. HTTP 요청 하나의 타임아웃도
+	// context.DeadlineExceeded로 보이므로 err가 아니라 흐름 ctx를 본다.
 	case errors.Is(err, llmauth.ErrDeviceCodeTimeout), errors.Is(ctx.Err(), context.DeadlineExceeded):
 		s.loginFlows.finishDevice(flow, deviceLoginExpired, loginErrFlowExpired)
 		return
@@ -485,7 +485,7 @@ func (s *Server) chatGPTDeviceLoginStatus(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, body)
 }
 
-// disconnectChatGPT 는 프로필의 자격 증명을 지우고 메모리의 TokenSource 와 진행 중인 흐름을 버린다.
+// disconnectChatGPT 는 프로필의 자격 증명을 지우고 메모리의 TokenSource와 진행 중인 흐름을 버린다.
 // 지우기만 하므로 암호화 키가 없어도 된다.
 func (s *Server) disconnectChatGPT(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
@@ -517,7 +517,7 @@ func (s *Server) disconnectChatGPT(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveChatGPTLogin 은 로그인으로 받은 토큰과 플랜을 저장한다. 요청이 끊겨도 저장이 끝나게
-// 서버 수명 ctx 로 저장한다.
+// 서버 수명 ctx로 저장한다.
 func (s *Server) saveChatGPTLogin(profileID int64, tokens llmauth.Tokens) error {
 	return s.saveSubscriptionLogin(profileID, db.AuthChatGPTOAuth, tokens)
 }
@@ -541,7 +541,7 @@ func (s *Server) saveSubscriptionLogin(profileID int64, authType db.AuthType, to
 }
 
 // afterOAuthCredentialsChanged 는 자격 증명이 바뀐 프로필의 TokenSource·재로그인 표시를 버리고
-// 캐시한 프로바이더를 다시 만든다. 캐시한 프로바이더는 옛 TokenSource 를 쥐고 있어 옛 계정의
+// 캐시한 프로바이더를 다시 만든다. 캐시한 프로바이더는 옛 TokenSource를 쥐고 있어 옛 계정의
 // 토큰을 계속 쓸 수 있기 때문이다.
 func (s *Server) afterOAuthCredentialsChanged(profileID int64) {
 	s.oauth.forget(profileID)

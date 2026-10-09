@@ -31,7 +31,7 @@ type notifyChannelDTO struct {
 	RatePerMin int            `json:"rate_per_min"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
-	// SecretKeys는 어느 필드가 자격 증명인지 프런트엔드에 알려 준다. 프런트엔드는 이를 보고 비밀번호 입력 칸과 '비워 두면 바꾸지 않음' 안내를 그린다.
+	// SecretKeys 는 어느 필드가 자격 증명인지 프런트엔드에 알려 준다. 프런트엔드는 이를 보고 비밀번호 입력 칸과 '비워 두면 바꾸지 않음' 안내를 그린다.
 	// 알림 채널이 직접 선언하므로(notify.Channel.SecretKeys) 프런트엔드가 알림 채널 지식을 하드코딩하지 않는다.
 	SecretKeys []string `json:"secret_keys"`
 }

@@ -21,7 +21,7 @@ import (
 // 내보낸 메서드를 가진 **어떤** 타입에라도 닿으면 그 메서드를 템플릿 작성자에게 드러내는 셈이다.
 // 이 기능의 컨텍스트는 일부러 순수 데이터만 둔다(내보낸 필드만 있고 메서드는 없다).
 //
-// 이것이 실패하면 누가 webhookTemplateData / webhookItem 에 메서드를 더한 것이다.
+// 이것이 실패하면 누가 webhookTemplateData / webhookItem에 메서드를 더한 것이다.
 // 허용하기 전에 그 메서드로 템플릿이 드러내고 싶지 않은 것을 읽을 수 있는지 먼저 따져 본다.
 func TestTemplateContextHasNoMethods(t *testing.T) {
 	for _, v := range []any{webhookTemplateData{}, webhookItem{}} {

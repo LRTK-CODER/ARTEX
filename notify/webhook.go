@@ -166,7 +166,7 @@ func parseWebhookTemplate(tpl string) (*template.Template, error) {
 
 // webhookTemplateFuncs 는 템플릿에 드러내는 도우미 함수다.
 var webhookTemplateFuncs = template.FuncMap{
-	// json 은 임의의 값을 JSON으로 직렬화한다.
+	// json은 임의의 값을 JSON으로 직렬화한다.
 	//
 	// 이 함수는 있으면 좋은 정도가 아니라 꼭 필요하다. 없으면 사용자는 {{.Title}}로 바로 끼워 넣을 수밖에 없는데,
 	// 취약점 제목에 따옴표나 줄바꿈이 하나만 있어도 요청 본문 전체가 올바른 JSON이 아니게 된다. 수신 측은
@@ -178,7 +178,7 @@ var webhookTemplateFuncs = template.FuncMap{
 		}
 		return string(raw), nil
 	},
-	// jsons 는 JSON 조각을 다른 JSON 문자열 값 안에 넣을 때 쓴다(문자열 이스케이프를 한 번 더 한다).
+	// jsons는 JSON 조각을 다른 JSON 문자열 값 안에 넣을 때 쓴다(문자열 이스케이프를 한 번 더 한다).
 	"jsons": func(v any) (string, error) {
 		raw, err := json.Marshal(v)
 		if err != nil {

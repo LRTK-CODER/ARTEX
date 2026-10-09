@@ -46,7 +46,7 @@ type Task struct {
 	// 트리거가 없으면 한 번 트리거한다. 최소값=기본값=300(5분)이고, 더 작으면 300으로 올린다
 	// (CreateTask에서 정규화).
 	PlanHeartbeatSeconds int `json:"plan_heartbeat_seconds"`
-	// CoverageEnabled는 "자산 커버리지 기능"의 전체 스위치다(기본 true). false면 테스트
+	// CoverageEnabled 는 "자산 커버리지 기능"의 전체 스위치다(기본 true). false면 테스트
 	// 커버리지를 계산·표시하지 않고, task_scope(source=auto)를 자동으로 쌓지 않고, 에이전트에
 	// add_task_scope/list_untested_assets를 열지 않고, 상황 정보에 coverage 블록을 넣지 않는다
 	// (scope 필드는 남는다). company 연결(task_scope kind=company)은 이 스위치와 상관없이 항상
@@ -71,7 +71,7 @@ type TaskDeletePreparation struct {
 	TrafficHosts  []string
 }
 
-// IsTerminal은 작업 상태가 종료(끝난) 상태인지 알려 준다.
+// IsTerminal 은 작업 상태가 종료(끝난) 상태인지 알려 준다.
 // 여러 곳에 흩어져 있던 done/failed 하드코딩 판정을 대신하는 단일 기준이다.
 func IsTerminal(status string) bool {
 	return status == "done" || status == "failed" || status == "timeout"
@@ -153,11 +153,11 @@ type TaskCreateOptions struct {
 	LLMProfileIDs        []int64
 	TimeoutSeconds       int
 	PlanHeartbeatSeconds int
-	// CoverageEnabled는 "자산 커버리지 기능" 스위치다. nil=기본값 켜짐(true)이라 이 스위치를
+	// CoverageEnabled 는 "자산 커버리지 기능" 스위치다. nil=기본값 켜짐(true)이라 이 스위치를
 	// 신경 쓰지 않는 생성 경로(오케스트레이션 spawn, 이전 API)는 원래 동작을 유지한다. web에서
 	// 작업을 만들 때만 false를 넘겨 끌 수 있다.
 	CoverageEnabled *bool
-	// InterceptRules는 작업 단위 자산 차단 규칙이다. 작업을 만들 때 같은 트랜잭션에서 task_intercept_rules에 쓴다.
+	// InterceptRules 는 작업 단위 자산 차단 규칙이다. 작업을 만들 때 같은 트랜잭션에서 task_intercept_rules에 쓴다.
 	InterceptRules []TaskInterceptRuleInput
 }
 
@@ -358,7 +358,7 @@ func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	return &t, nil
 }
 
-// SetParentRef는 작업의 부모 작업 id를 기록한다(오케스트레이션 에이전트의 spawn_task 연결).
+// SetParentRef 는 작업의 부모 작업 id를 기록한다(오케스트레이션 에이전트의 spawn_task 연결).
 func (d *DB) SetParentRef(id int64, parentRef string) error {
 	_, err := d.Exec(`UPDATE tasks SET parent_ref=NULLIF($2,'') WHERE id=$1`, id, parentRef)
 	return err
@@ -506,7 +506,7 @@ UPDATE tasks
 	return n > 0, nil
 }
 
-// StampFirstRun은 작업이 처음 실제로 실행된 시각을 기록하고 절대 마감 시각(= now +
+// StampFirstRun 은 작업이 처음 실제로 실행된 시각을 기록하고 절대 마감 시각(= now +
 // timeoutSeconds)을 계산한다. 멱등이다. first_run_at이 아직 NULL일 때만 기록하므로 재시작이나
 // 재진입해도 원래 시계를 유지한다. timeoutSeconds<=0이면 deadline_at은 NULL(제한 없음)로 둔다.
 // 결과 마감 시각을 돌려준다(nil = 제한 없음 또는 바뀌지 않음).

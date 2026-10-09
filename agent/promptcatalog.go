@@ -1,11 +1,11 @@
 package agent
 
-// 이 파일은 내장 agent 의 '기본 프롬프트 본문'(섹션 [A])을, 서버가 멱등하게
-// agent_prompts 테이블에 씨앗으로 넣을 수 있는 목록으로 만든다 — toolcatalog.go 의
-// BuiltinToolSeeds() 를 본뜬 것이다.
+// 이 파일은 내장 agent의 '기본 프롬프트 본문'(섹션 [A])을, 서버가 멱등하게
+// agent_prompts 테이블에 씨앗으로 넣을 수 있는 목록으로 만든다 — toolcatalog.go의
+// BuiltinToolSeeds()를 본뜬 것이다.
 //
-// '편집 가능한 본문'만 담는다: 섹션 [B] trafficTool 과 섹션 [C] 중간 산출물 출력 규약은
-// 코드가 고정으로 주입하므로(worker.go 의 workerTrafficBlock/artifactSpec 참고) DB 에
+// '편집 가능한 본문'만 담는다: 섹션 [B] trafficTool과 섹션 [C] 중간 산출물 출력 규약은
+// 코드가 고정으로 주입하므로(worker.go의 workerTrafficBlock/artifactSpec 참고) DB에
 // 들어가지 않고 편집할 수 없어 씨앗에 없다. 씨앗 텍스트는 Go 템플릿 자리표({{.Goal}} 등)를
 // 쓰고, 렌더링 때 실행 시점 변수로 채운다.
 

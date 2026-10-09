@@ -179,7 +179,7 @@ func TestOAuthCredentialsStoredEncrypted(t *testing.T) {
 		t.Fatalf("other key: err = %v, want ErrCredentialDecrypt", err)
 	}
 
-	// 다른 프로필 행에 암호문을 옮겨 넣어도 풀리지 않아야 한다(AAD 로 행에 묶임).
+	// 다른 프로필 행에 암호문을 옮겨 넣어도 풀리지 않아야 한다(AAD로 행에 묶임).
 	other := oauthTestProfile(t, d, "t-oauth-encrypted-other")
 	if _, err := d.Exec(`INSERT INTO llm_oauth_credentials(profile_id,access_token,refresh_token,expires_at) VALUES ($1,$2,$3,now())`, other, rawAccess, rawRefresh); err != nil {
 		t.Fatal(err)
@@ -511,14 +511,14 @@ func TestSaveProfileOAuthDropsAPIKey(t *testing.T) {
 			t.Cleanup(func() { d.Exec(`DELETE FROM llm_profiles WHERE id=$1`, id) })
 			return id
 		}, false},
-		{"키 없이 OAuth 로 전환", func(t *testing.T) int64 {
+		{"키 없이 OAuth로 전환", func(t *testing.T) int64 {
 			id := newKeyed(t, "t-oauth-key-switch")
 			if _, err := d.SaveProfile(&LLMProfile{ID: id, Name: "t-oauth-key-switch", Format: "openai-responses", Model: "m", AuthType: AuthChatGPTOAuth}); err != nil {
 				t.Fatal(err)
 			}
 			return id
 		}, false},
-		{"키를 주며 OAuth 로 전환", func(t *testing.T) int64 {
+		{"키를 주며 OAuth로 전환", func(t *testing.T) int64 {
 			id := newKeyed(t, "t-oauth-key-switch-with-key")
 			if _, err := d.SaveProfile(&LLMProfile{ID: id, Name: "t-oauth-key-switch-with-key", Format: "openai-responses", Model: "m", APIKey: key, AuthType: AuthChatGPTOAuth}); err != nil {
 				t.Fatal(err)

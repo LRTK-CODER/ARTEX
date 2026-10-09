@@ -16,12 +16,12 @@ import (
 
 func (s *Server) seedFindingWorkflowTools() {
 	// v4: traffic_search 설명을 영어로 옮겼다(#110). 사용자가 고치지 않은, 이전 기본
-	// 중국어 값(v2·v3) 중 하나와 정확히 같은 행만 바꾼다. legacy 의 중국어는 기존 설치
+	// 중국어 값(v2·v3) 중 하나와 정확히 같은 행만 바꾼다. legacy의 중국어는 기존 설치
 	// 행을 찾는 데 쓰는 데이터다.
 	const hostSearchDescriptionFlag = "finding_workflow_tools_v4_english_search_description"
 	if value, _, _ := s.m.pg.GetSetting(hostSearchDescriptionFlag); value != "true" {
 		// 이전 기본 문구만 바꾼다. 사용자가 고친 설명이 우선이라 업그레이드에도 남아야 한다.
-		// v2 는 v0.4.0 이전 기본 문구다. v3 이전을 거치지 않고 바로 올라온 설치도 옮긴다.
+		// v2는 v0.4.0 이전 기본 문구다. v3 이전을 거치지 않고 바로 올라온 설치도 옮긴다.
 		// 정확한 문구로 찾으므로 다시 돌려도 남은 행이 없어 바뀌는 것이 없다.
 		legacy := []string{
 			// v2

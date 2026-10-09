@@ -335,8 +335,8 @@ func TestTrafficSearchDescriptionEnglishMigration(t *testing.T) {
 	s, _, _ := trafficEvidenceServer(t)
 	pg := s.m.pg
 	const flag = "finding_workflow_tools_v4_english_search_description"
-	// 기존 설치가 DB 에 들고 있는 v2·v3 중국어 값(데이터로서의 중국어). 비교용 상수다.
-	// v2 는 v0.4.0 이전 기본 문구다.
+	// 기존 설치가 DB에 들고 있는 v2·v3 중국어 값(데이터로서의 중국어). 비교용 상수다.
+	// v2는 v0.4.0 이전 기본 문구다.
 	v2 := "查询记录代理已抓取的目标流量（必须指定 host，可再按 URL 子串或正文关键词过滤）。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符），可用来找响应里的密码、密钥、报错、内网地址等。仅返回极轻量索引(id/method/url/status/resp_len)，不含任何响应内容。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页（page=0 起）；要看某条的请求/响应原文用 traffic_get(id)。回看已访问资源、找端点先用它，避免重复 curl 同一 URL。"
 	v3 := "查询记录代理已抓取的目标流量（必须指定 host；支持裸主机、主机:端口或完整 URL，可再按 URL 子串或正文关键词过滤）。指定端口时只返回该服务的流量，避免同一 IP 的不同端口串包。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符）。仅返回极轻量索引(id/method/url/status/resp_len)，不含响应内容；结果非空后必须用 traffic_get 逐条核实请求/响应，再把确实支持当前漏洞的 ID 交给 bind_finding_traffic。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页。"
 
@@ -350,7 +350,7 @@ func TestTrafficSearchDescriptionEnglishMigration(t *testing.T) {
 	})
 	bindings, _ := json.Marshal(old.Agents)
 
-	// v2·v3 중국어 행은 각각 영어로 바뀐다. v2 는 v3 이전을 거치지 않고 바로 올라온 설치다.
+	// v2·v3 중국어 행은 각각 영어로 바뀐다. v2는 v3 이전을 거치지 않고 바로 올라온 설치다.
 	for _, tc := range []struct{ name, desc string }{{"v2", v2}, {"v3", v3}} {
 		if err := pg.UpdateTool("traffic_search", tc.desc, old.Schema, bindings, old.Enabled); err != nil {
 			t.Fatal(err)
@@ -366,7 +366,7 @@ func TestTrafficSearchDescriptionEnglishMigration(t *testing.T) {
 		}
 	}
 
-	// 멱등: flag 를 다시 내려 재실행해도 결과가 같다(이제 v3 행이 없어 바꿀 것이 없다).
+	// 멱등: flag를 다시 내려 재실행해도 결과가 같다(이제 v3 행이 없어 바꿀 것이 없다).
 	if err := pg.SetSetting(flag, "false"); err != nil {
 		t.Fatal(err)
 	}

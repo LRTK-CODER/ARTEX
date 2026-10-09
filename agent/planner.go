@@ -150,7 +150,7 @@ func renderPlannerTodos(items []actool.Todo) string {
 //	"done"    — a worker finished intent IntentID (its output conclusion is fetched).
 //	"finding" — a worker reported a finding on intent IntentID (Detail = 요약).
 //	"goal"    — the human (via the main agent's set_goals) added one OR MORE goals in a
-//	            single call (Goals = 이번에 추가된 목표 텍스트, 1개 이상; set_goals 는 일괄 지원).
+//	            single call (Goals = 이번에 추가된 목표 텍스트, 1개 이상; set_goals는 일괄 지원).
 //	"goal_deleted" — the human deleted a goal from the overview's goal management (Detail = 삭제된 목표 텍스트).
 //	"goal_edited"  — the human edited a goal from the overview's goal management (OldGoal→NewGoal 텍스트).
 //	"cancelled" — the human deleted intent IntentID (Detail = 삭제 사유). The intent is
@@ -160,10 +160,10 @@ type TriggerEvent struct {
 	IntentID int64
 	Detail   string
 	Summary  string   // Kind=="cancelled" 전용: 삭제 전에 잡아 둔 의도 요약(영구 삭제 뒤에는 노드가 없어 다시 조회할 수 없다)
-	Goals    []string // Kind=="goal" 전용: 이번 set_goals 로 추가된 목표 텍스트(1개 이상)
+	Goals    []string // Kind=="goal" 전용: 이번 set_goals로 추가된 목표 텍스트(1개 이상)
 	OldGoal  string   // Kind=="goal_edited" 전용: 수정 전 목표 텍스트
 	NewGoal  string   // Kind=="goal_edited" 전용: 수정 후 목표 텍스트
-	Hints    []string // Kind=="hint" 전용: 이번 add_hint 로 추가된 힌트 텍스트(1개 이상)
+	Hints    []string // Kind=="hint" 전용: 이번 add_hint로 추가된 힌트 텍스트(1개 이상)
 }
 
 // renderTriggers spells out the change(s) that fired this round: for a finished
@@ -197,7 +197,7 @@ func renderTriggers(ts *db.ExplorationStore, evs []TriggerEvent) string {
 		case "finding":
 			b.WriteString(fmt.Sprintf("\n- The worker for intent #%d (%s) reported a finding: %s", ev.IntentID, intentSummary(ts, ev.IntentID), ev.Detail))
 		case "cancelled":
-			// 의도 내용은 삭제 때 잡아 둔 Summary 를 우선 쓴다(영구 삭제 뒤에는 노드가 없어 intentSummary 가 조회하지 못한다).
+			// 의도 내용은 삭제 때 잡아 둔 Summary를 우선 쓴다(영구 삭제 뒤에는 노드가 없어 intentSummary가 조회하지 못한다).
 			sm := ev.Summary
 			if sm == "" {
 				sm = intentSummary(ts, ev.IntentID)
@@ -292,9 +292,9 @@ func renderGraphOverview(data map[string]any) string {
 	return "\n\n**This round's situation (graph_overview prefetched, identical to what calling that tool returns; call node_detail/list_facts, etc. for more detail as needed)**:\n" + string(b)
 }
 
-// plannerDefaultTmpl 은 planner 프롬프트의 내장 편집 가능 본문(섹션 [A])이며 agent_prompts 에
-// 씨앗으로 들어간다. Goal 은 {{.Goal}} 템플릿 변수이고, 중간 산출물 출력 규약 꼬리(artifactSpec)는
-// 코드 소유로 plannerSystem 이 렌더링 뒤에 붙인다.
+// plannerDefaultTmpl 은 planner 프롬프트의 내장 편집 가능 본문(섹션 [A])이며 agent_prompts에
+// 씨앗으로 들어간다. Goal은 {{.Goal}} 템플릿 변수이고, 중간 산출물 출력 규약 꼬리(artifactSpec)는
+// 코드 소유로 plannerSystem이 렌더링 뒤에 붙인다.
 const plannerDefaultTmpl = `You are the "planner" of an authorized penetration testing system on a cybersecurity platform, woken up frequently (woken whenever the graph changes). Responsibilities: read the situation -> judge the goals -> **add exploration intents only when there is a genuinely uncovered new direction**. You are a planner, not an executor: everything you produce this round can only be [generating/spelling out intents] or [judging goals]; never do the actual work in a plan.
 
 Task goal: {{.Goal}}
@@ -371,18 +371,18 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		tsx.SetOwnerNode(origin) // planner-side anchors default to the task root (origin fact)
 	}
 	// 도메인 도구 + 기본 도구 집합(Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash).
-	// 자산 커버리지 기능이 꺼져 있으면 add_task_scope/list_untested_assets 를 뺀다(프롬프트에 넣지 않는다).
+	// 자산 커버리지 기능이 꺼져 있으면 add_task_scope/list_untested_assets를 뺀다(프롬프트에 넣지 않는다).
 	base := append(tsx.DropCoverageTools(tsx.PlannerTools()), actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
 	tools, def, cleanup := AugmentTools(ctx, "planner", base)
 	defer cleanup()
 	// 핵심 태세(방금 끝난 의도 + 미리 가져온 전체 그래프)는 이제 [이번 라운드 user 입력]에 넣는다(아래 input 참고).
-	// system 에는 정적 계획 본문만 남긴다. 밖으로 빼면 system 이 라운드마다 안정적이라 캐시에 유리하다.
-	// 대가는 단일 라운드가 길어지면 태세가 compaction 에 눌릴 수 있다는 것(planner 단일 라운드는 보통 짧아 위험이 낮다).
-	// situational 은 아래 input 에 이어 붙는다.
+	// system 에는 정적 계획 본문만 남긴다. 밖으로 빼면 system이 라운드마다 안정적이라 캐시에 유리하다.
+	// 대가는 단일 라운드가 길어지면 태세가 compaction에 눌릴 수 있다는 것(planner 단일 라운드는 보통 짧아 위험이 낮다).
+	// situational은 아래 input에 이어 붙는다.
 	situational := renderTriggers(ts, triggers) + renderGraphOverview(tsx.graphOverviewData())
-	// 작업 단위 deadline / 종국 모드(ctx 로 주입됨. taskclock.go 참고). 종국 라운드에서는 작업 시간 초과
-	// planner 마무리 문구를 [이번 라운드 작업 지시]로 이번 user 입력에 이어 붙여(situational 과 함께),
+	// 작업 단위 deadline / 종국 모드(ctx로 주입됨. taskclock.go 참고). 종국 라운드에서는 작업 시간 초과
+	// planner 마무리 문구를 [이번 라운드 작업 지시]로 이번 user 입력에 이어 붙여(situational과 함께),
 	// 마지막 목표 판정만 하고 새 의도를 내지 않게 한다.
 	tc := taskClockFrom(ctx)
 	if tc.Final {
@@ -396,7 +396,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		sysBody += constraintBlock(ts) // 작업 제약 조건(있으면)을 시스템 프롬프트에 주입해 탐색 경계를 정한다
 	}
 	system, boundary := deferredSystem(sysBody, def)
-	// planner 는 자체 벽시계 예산이 없다. deadline 이 있으면 MaxDuration 을 남은 시간으로 좁혀,
+	// planner는 자체 벽시계 예산이 없다. deadline이 있으면 MaxDuration을 남은 시간으로 좁혀,
 	// 작업이 시간에 다다랐을 때 돌고 있는 규획 라운드가 마무리로 들어가게 한다(시간 초과→작업 시간 초과 문구,
 	// 단계 한도→per-run 문구).
 	maxDur, clamped := clampMaxDuration(tc.DeadlineUnix, 0)
@@ -412,11 +412,11 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA 를 실어 MITM 이 재서명한 HTTPS 인증서를 검증한다
+		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA를 실어 MITM이 재서명한 HTTPS 인증서를 검증한다
 		WebFetchProxy:   p.proxyAddr,
 		WebFetchCACert:  p.proxyCACert,
-		// 웹 검색(선택). ddgs 는 키가 필요 없다. brave-free 는 BraveKey, tavily 는 TavilyKey 가 필요하다.
-		// WebSearchProxy 는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
+		// 웹 검색(선택). ddgs는 키가 필요 없다. brave-free는 BraveKey, tavily는 TavilyKey가 필요하다.
+		// WebSearchProxy는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
 		EnableWebSearch:       p.webSearch.Enabled,
 		WebSearchBackend:      p.webSearch.Backend,
 		BraveSearchAPIKey:     p.webSearch.BraveKey,
@@ -425,37 +425,37 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		DeepSeekSearchAPIKey:  p.webSearch.DeepSeekAPIKey,
 		DeepSeekSearchModel:   p.webSearch.DeepSeekModel,
 		WebSearchProxy:        p.webSearch.Proxy,
-		BashEnv:               proxyEnv(p.proxyAddr, p.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA 를 탄다
+		BashEnv:               proxyEnv(p.proxyAddr, p.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
 		WorkingDir:            taskDir,                              // 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID>
 		ToolOutputDir:         cmdOutDir(taskDir),
 		MaxTurns:              p.maxTurns, // 0 = unlimited (configurable in agent management)
-		MaxDuration:           maxDur,     // 0=제한 없음; deadline 이 있으면=deadline 까지 남은 시간
+		MaxDuration:           maxDur,     // 0=제한 없음; deadline이 있으면=deadline 까지 남은 시간
 		Compaction:            compactionConfig(p.compactionWindow()),
-		// 깨우기 사이에 공유되는 규획 할 일: 직렬 체인이 여러 라운드에 걸쳐 유지되게 한다(session 은 새것, store 는 아니다).
+		// 깨우기 사이에 공유되는 규획 할 일: 직렬 체인이 여러 라운드에 걸쳐 유지되게 한다(session은 새것, store는 아니다).
 		Todos: p.todoFor(ts.ID()),
-		// [이번 라운드] 단계 예산에 걸리면 → SDK 가 마무리를 돈다: 이번 라운드에 정리된 결론을 반영한다
-		// (내야 할 add_intent, 증명 가능한 prove_goal, 직렬 체인은 TodoWrite 에 기록). 규획을 멈추는 게 아니다 —
-		// planner 는 이후에도 반복해서 깨워진다. clamped(작업 deadline 에 좁혀짐)일 때는 PromptByReason 로 바꾼다(wrapupSettlementForTask 참고).
+		// [이번 라운드] 단계 예산에 걸리면 → SDK가 마무리를 돈다: 이번 라운드에 정리된 결론을 반영한다
+		// (내야 할 add_intent, 증명 가능한 prove_goal, 직렬 체인은 TodoWrite에 기록). 규획을 멈추는 게 아니다 —
+		// planner는 이후에도 반복해서 깨워진다. clamped(작업 deadline에 좁혀짐)일 때는 PromptByReason로 바꾼다(wrapupSettlementForTask 참고).
 		Settlement:   settle,
-		NonStreaming: p.nonStreaming(), // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		NonStreaming: p.nonStreaming(), // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다
 		MaxTokens:    p.maxTokens(),    // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}
 	if p.tx != nil { // persist raw LLM conversation; one accumulating file per task's planner
 		opts.Transcript = p.tx
 		opts.SessionID = fmt.Sprintf("exp%d-planner", ts.ID())
 	}
-	// 실험 기능: 켜면 noa 가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
+	// 실험 기능: 켜면 noa가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
 	noaSession := fmt.Sprintf("exp%d-planner", ts.ID())
 	enableNoa(&opts, p.noaEnabledFn, p.workDir, noaSession, noaWarn(noaSession))
 	// 태세(방금 끝난 의도 + 전체 그래프)는 이제 이번 라운드 user 입력에 이어 붙는다(아래 input).
-	// user 에는 지시 + 깨우기 사이 할 일도 들어간다(할 일은 모델 자신의 규획 메모라 재생 가능하니 user 에 둬도 된다).
+	// user 에는 지시 + 깨우기 사이 할 일도 들어간다(할 일은 모델 자신의 규획 메모라 재생 가능하니 user에 둬도 된다).
 	// 첫 문장은 [이번 라운드에 구체적 변동이 있었는지]로 둘로 나뉜다: 변동 있음 → 아래 [실제 변동] 블록을 가리킨다.
 	// 변동 없음(심장박동 정기 점검 / hint / 복원 등) → "그래프가 바뀌었다"고 거짓말하지 말고, 돌고 있는 의도를 겸사겸사 복검하라고 알린다.
 	lead := "A concrete change just occurred (see **The actual change(s) that fired this round** below); plan the next step accordingly:"
 	if len(triggers) == 0 {
 		lead = "This round is a wake-up from a **scheduled check (heartbeat) / no concrete-change signal** -- the graph may have no new change. While here, review the running intents: use steer_work to course-correct ones with no progress for a long time or going off track, and kill_work to cut losses on ones whose direction is entirely wrong; then judge the goals and decide whether to add directions:"
 		// 심장박동/무변동 깨우기에서 전체 그래프에 open 이나 running 의도가 하나도 없으면 → 탐색이 멈춘 것이다
-		// (돌고 있는 worker 도, 대기 중인 방향도 없다). planner 에 분명히 알리고 이번 라운드에 새 방향을 반드시 내게 해,
+		// (돌고 있는 worker 도, 대기 중인 방향도 없다). planner에 분명히 알리고 이번 라운드에 새 방향을 반드시 내게 해,
 		// 돌고 있는 의도만 복검하고 빈 라운드로 끝나지 않게 한다.
 		if active, err := ts.HasActiveIntent(); err == nil && !active {
 			lead = "This round is a wake-up from a **scheduled check (heartbeat)**, and there is currently **no open or running intent at all** -- no worker is running and no direction is queued, so exploration has stalled. You **must** produce one or more new intents this round that advance the goal and are **mutually distinct** from the existing intents in the graph (you may not produce 0 intents); first judge from the situation below whether the goal is achieved, and if not, add directions immediately:"
@@ -463,8 +463,8 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	}
 	input := lead + situational + "\n\nBased on the situation above, judge the goals. When a goal is [genuinely achieved] (the target result is obtained / the target vulnerability is confirmed), use prove_goal to mark each one. **Hard floor: as long as the goal is unachieved and there is currently no open or running intent (frontier_open=0 and running_intents empty), this round you must produce at least one intent that advances the goal -- here there is no running work to wait on and no queued direction, so producing 0 intents = the task stalls. Only when an open/running intent is already advancing, or the goal is achieved, may you produce no new intent this round.**" +
 		renderPlannerTodos(opts.Todos.List())
-	// MaxDuration 은 이제 벽시계가 다하면 돌고 있는 도구를 끊고 그 자리에서(살아 있는 ctx 위) 마무리로 들어간다.
-	// 단일 라운드가 멈춰도 마무리를 건너뛰지 않으므로 외부 하드 ctx 보완이 필요 없다. ctx 는 pause / kill / shutdown 만 나른다.
+	// MaxDuration은 이제 벽시계가 다하면 돌고 있는 도구를 끊고 그 자리에서(살아 있는 ctx 위) 마무리로 들어간다.
+	// 단일 라운드가 멈춰도 마무리를 건너뛰지 않으므로 외부 하드 ctx 보완이 필요 없다. ctx는 pause / kill / shutdown 만 나른다.
 	_, _, err = captureRun(ctx, opts, input,
 		func(r db.Activity) {
 			if emit != nil {

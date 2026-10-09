@@ -66,7 +66,7 @@ type Recorder struct {
 	pg    *db.DB
 	model string // model name (from config, not in CompletionRequest)
 	prof  string // LLM profile name (from llm_profiles)
-	// thinkingType / reasoningEffort 는 프로필 수준의 사고 파라미터(사고 켜기·끄기 / 사고 강도)다.
+	// thinkingType / reasoningEffort는 프로필 수준의 사고 파라미터(사고 켜기·끄기 / 사고 강도)다.
 	// norma의 buildBody()가 provider 설정에서 실제 HTTP body에 넣고 CompletionRequest에는
 	// 나타나지 않으므로, Recorder가 여기서 따로 한 벌 들고 있다가 직렬화할 때 기록에 쓴다.
 	thinkingType    string

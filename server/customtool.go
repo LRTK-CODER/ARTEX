@@ -23,10 +23,10 @@ import (
 )
 
 // 이 파일은 사용자 지정 도구 실행기다.
-// system=false 인 tools 행을 kind 로 나눈다. command(명령을 렌더링해 Bash 바탕의 run 을 재사용),
+// system=false 인 tools 행을 kind로 나눈다. command(명령을 렌더링해 Bash 바탕의 run을 재사용),
 // script(Python만. 임시 파일에 쓰고 stdin=파라미터 JSON + env TOOL_*, 설정한 인터프리터 사용),
-// http(직접 요청, 프록시 설정 가능). 이 도구들은 트래픽·오케스트레이션 도구처럼 seed 가 필요 없다
-// (원래 tools 표에 있다). hostTools 로 넣고 연결된 에이전트로 거른다.
+// http(직접 요청, 프록시 설정 가능). 이 도구들은 트래픽·오케스트레이션 도구처럼 seed가 필요 없다
+// (원래 tools 표에 있다). hostTools로 넣고 연결된 에이전트로 거른다.
 
 // ---------- 사용자 지정 도구 CRUD ----------
 
@@ -41,7 +41,7 @@ type customToolReq struct {
 	Deferred    bool            `json:"deferred"`
 }
 
-var reToolKey = reAgentKey // 에이전트 key 와 같은 규칙: 영문 소문자로 시작하고 영문 소문자·숫자·밑줄만 쓴다
+var reToolKey = reAgentKey // 에이전트 key와 같은 규칙: 영문 소문자로 시작하고 영문 소문자·숫자·밑줄만 쓴다
 
 func (s *Server) pgCreateCustomTool(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
@@ -261,7 +261,7 @@ func (s *Server) customTools() ([]actool.CoreTool, error) {
 	return out, nil
 }
 
-// buildCustomTool 은 사용자 지정 도구 행 하나를 CoreTool 로 바꾼다. 스키마가 비어 있으면 얇은
+// buildCustomTool 은 사용자 지정 도구 행 하나를 CoreTool로 바꾼다. 스키마가 비어 있으면 얇은
 // {args:string} 래퍼 도구가 되어 command·http 템플릿이 {args}를 쓸 수 있다.
 func (s *Server) buildCustomTool(t *db.Tool) actool.CoreTool {
 	schema := ensureSchema(t.Schema)
@@ -336,8 +336,8 @@ func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, pa
 		return actool.Errorf("command is empty"), nil
 	}
 	cmd := renderTemplate(spec.Command, params, shellQuote)
-	// Bash 도 쓰는 바탕 run 을 재사용한다(Bash CoreTool.Call 경유). 보안 기준선·시간 초과·프록시 env·
-	// 출력 넘침 처리를 그대로 물려받는다. 이 도구는 Bash 와 같은 층에서 바탕을 함께 쓸 뿐, 모델이
+	// Bash 도 쓰는 바탕 run을 재사용한다(Bash CoreTool.Call 경유). 보안 기준선·시간 초과·프록시 env·
+	// 출력 넘침 처리를 그대로 물려받는다. 이 도구는 Bash와 같은 층에서 바탕을 함께 쓸 뿐, 모델이
 	// Bash 도구를 부르게 하지 않는다.
 	bashIn, _ := json.Marshal(map[string]any{"command": cmd})
 	if spec.TimeoutMs > 0 {
@@ -406,7 +406,7 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 		}
 	}
 	pj, _ := json.Marshal(params)
-	c.Stdin = bytes.NewReader(pj) // 파라미터 JSON 은 stdin 으로 넘긴다
+	c.Stdin = bytes.NewReader(pj) // 파라미터 JSON은 stdin으로 넘긴다
 	out, err := c.CombinedOutput()
 	body := string(out)
 	if runCtx.Err() == context.DeadlineExceeded {

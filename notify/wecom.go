@@ -8,7 +8,7 @@ import (
 )
 
 // weComMarkdownLimit 은 WeCom 그룹 봇 markdown content의 고정 상한이다(바이트, 문자가 아니다).
-// 여섯 알림 채널 중 가장 빡빡한 제한이며 TruncateBytes 가 있는 주된 이유다.
+// 여섯 알림 채널 중 가장 빡빡한 제한이며 TruncateBytes가 있는 주된 이유다.
 const weComMarkdownLimit = 4096
 
 // weComChannel 은 WeCom 그룹 봇을 구현한다.

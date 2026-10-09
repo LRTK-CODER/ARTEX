@@ -23,9 +23,9 @@ type Claims struct {
 // planTypePattern 은 플랜 이름 모양이다. 화면에 그대로 보이는 값이라 이 모양이 아니면 버린다.
 var planTypePattern = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 
-// ParseClaims 는 JWT 의 payload 에서 계정과 만료 시각을 꺼낸다.
-// 서명은 검증하지 않는다. 토큰은 인증 서버에서 TLS 로 직접 받은 것이고, 쓰임새는 만료 판단과
-// 헤더 값뿐이라서다. JWT 모양이 아니거나 payload 가 JSON 이 아니면 오류를 올린다.
+// ParseClaims 는 JWT의 payload 에서 계정과 만료 시각을 꺼낸다.
+// 서명은 검증하지 않는다. 토큰은 인증 서버에서 TLS로 직접 받은 것이고, 쓰임새는 만료 판단과
+// 헤더 값뿐이라서다. JWT 모양이 아니거나 payload가 JSON이 아니면 오류를 올린다.
 // 오류에는 토큰 원문을 싣지 않는다.
 func ParseClaims(token string) (Claims, error) {
 	parts := strings.Split(token, ".")
@@ -38,8 +38,8 @@ func ParseClaims(token string) (Claims, error) {
 	}
 	var body struct {
 		Exp *json.Number `json:"exp"`
-		// OpenAI 는 계정 정보를 이 이름의 클레임 객체에 넣는다.
-		// 클레임 경로는 openai/codex codex-rs/login/src/token_data.rs 의 AuthClaims
+		// OpenAI는 계정 정보를 이 이름의 클레임 객체에 넣는다.
+		// 클레임 경로는 openai/codex codex-rs/login/src/token_data.rs의 AuthClaims
 		// (chatgpt_account_id, chatgpt_plan_type)와 같다(커밋 f326857c).
 		Auth struct {
 			AccountID string `json:"chatgpt_account_id"`

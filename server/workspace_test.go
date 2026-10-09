@@ -227,22 +227,22 @@ func TestWorkspaceWriteRoutesConfinedAfterSymlinks(t *testing.T) {
 			}
 			if tc.mustNotExist != "" {
 				if _, err := os.Lstat(filepath.Join(f.outside, tc.mustNotExist)); err == nil {
-					t.Fatalf("작업 공간 밖에 %s 가 생겼다", tc.mustNotExist)
+					t.Fatalf("작업 공간 밖에 %s가 생겼다", tc.mustNotExist)
 				}
 			}
 			if tc.mustExist != "" {
 				if _, err := os.Lstat(filepath.Join(f.outside, tc.mustExist)); err != nil {
-					t.Fatalf("작업 공간 밖 %s 가 사라졌다: %v", tc.mustExist, err)
+					t.Fatalf("작업 공간 밖 %s가 사라졌다: %v", tc.mustExist, err)
 				}
 			}
 			if tc.goneInside != "" {
 				if _, err := os.Lstat(filepath.Join(f.real, tc.goneInside)); err == nil {
-					t.Fatalf("작업 공간 안 %s 가 남아 있다", tc.goneInside)
+					t.Fatalf("작업 공간 안 %s가 남아 있다", tc.goneInside)
 				}
 			}
 			if tc.keptInside != "" {
 				if _, err := os.Lstat(filepath.Join(f.real, tc.keptInside)); err != nil {
-					t.Fatalf("작업 공간 안 %s 가 사라졌다: %v", tc.keptInside, err)
+					t.Fatalf("작업 공간 안 %s가 사라졌다: %v", tc.keptInside, err)
 				}
 			}
 		})

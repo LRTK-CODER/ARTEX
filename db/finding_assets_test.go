@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// cleanupTreeFixtures는 테스트 하나가 만든 자산과 발견 사항을 지운다. t.Cleanup이 아니라
+// cleanupTreeFixtures 는 테스트 하나가 만든 자산과 발견 사항을 지운다. t.Cleanup이 아니라
 // defer로 등록해야 한다. t.Cleanup은 테스트 함수가 돌아온 뒤에 도는데, 그때는 defer
 // d.Close()가 이미 연결을 닫아 정리가 조용히 실패하고 공용 개발 DB에 데이터가 남는다.
 func cleanupTreeFixtures(d *DB, taskID int64, rootDomains ...string) {
@@ -43,7 +43,7 @@ func nodeByKey(tree *FindingAssetTree, key string) *FindingAssetNode {
 	return nil
 }
 
-// TestBuildFindingAssetTree는 "자산별" 트리의 전체 모양을 확인한다. 잎만 가리키는
+// TestBuildFindingAssetTree 는 "자산별" 트리의 전체 모양을 확인한다. 잎만 가리키는
 // 발견 사항에서 root→subdomain→service→endpoint 체인을 다시 만들고, 조상은 하위
 // 트리를 집계하고, 발견 사항이 없는 자산은 빠지고, 자산 행이 사라진 발견 사항은
 // 자산 없음 묶음에 들어간다.
@@ -151,7 +151,7 @@ func TestBuildFindingAssetTree(t *testing.T) {
 	}
 }
 
-// TestFindingAssetScopeFilter는 노드 하나를 고르면 발견 사항 목록이 그 노드의 하위
+// TestFindingAssetScopeFilter 는 노드 하나를 고르면 발견 사항 목록이 그 노드의 하위
 // 트리 전체로 좁혀지고, 자산 없음 표식도 동작하는지 확인한다.
 func TestFindingAssetScopeFilter(t *testing.T) {
 	d, err := Open(testDSN(t))

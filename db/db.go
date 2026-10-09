@@ -1,5 +1,5 @@
-// Package db 는 ARTEX 의 PostgreSQL 데이터 소스다(이전의 graph 단일 파일 SQLite 를 대체한다).
-// 연결을 열고, schema 를 적용하고, 내장 agent 와 변수 목록을 seed 한다.
+// Package db 는 ARTEX의 PostgreSQL 데이터 소스다(이전의 graph 단일 파일 SQLite를 대체한다).
+// 연결을 열고, schema를 적용하고, 내장 agent와 변수 목록을 seed 한다.
 package db
 
 import (
@@ -161,23 +161,23 @@ func Open(dsn string) (*DB, error) {
 type builtinAgent struct {
 	key, name, role, desc string
 	vars                  []promptVar
-	interactiveShell      bool // 행을 만들 때의 대화형 shell 기본값. ON CONFLICT 는 사용자가 나중에 바꾼 값을 덮어쓰지 않는다
+	interactiveShell      bool // 행을 만들 때의 대화형 shell 기본값. ON CONFLICT는 사용자가 나중에 바꾼 값을 덮어쓰지 않는다
 	runSeconds            *int // 행을 만들 때의 run 1회 실제 경과 시간 상한(초). nil=seed 기본값(1200), 0=제한 없음
 }
 
 type promptVar struct{ name, desc, example, source string }
 
-// intp 는 v 의 포인터를 돌려준다. builtinAgent 의 선택 필드(runSeconds 등)에 값을 명시할 때 쓴다.
+// intp 는 v의 포인터를 돌려준다. builtinAgent의 선택 필드(runSeconds 등)에 값을 명시할 때 쓴다.
 func intp(v int) *int { return &v }
 
-// builtinAgents 는 docs §5(a) 를 따른다. 내장 도구는 DB 에 저장하지 않고, 여기서는 agent 와 변수 목록만 seed 한다.
-// planner/worker/mainagent/auto 의 대화형 shell 기본값은 아래 interactive_shell_default_v1
-// 블록이 한꺼번에 true 로 둔다(나중의 토글을 존중한다). 여기의 interactiveShell 은 행을 만들 때부터 켜야 하는 새 agent 에만 쓴다.
+// builtinAgents 는 docs §5(a)를 따른다. 내장 도구는 DB에 저장하지 않고, 여기서는 agent와 변수 목록만 seed 한다.
+// planner/worker/mainagent/auto의 대화형 shell 기본값은 아래 interactive_shell_default_v1
+// 블록이 한꺼번에 true로 둔다(나중의 토글을 존중한다). 여기의 interactiveShell은 행을 만들 때부터 켜야 하는 새 agent 에만 쓴다.
 var builtinAgents = []builtinAgent{
 	{"goals", "목표 분해", "goals", "침투 테스트 작업 목표를 독립적이고 검증 가능한 하위 목표 여러 개로 나눕니다.", []promptVar{
 		{"EngagementDescription", "작업 설명(테스트 대상/배경)", "example.com 사이트 테스트", "exploration"},
-		// Now 는 전역 runtime 변수다(server.globalPromptVars 참고). 각 agent 목록에
-		// 다시 정의하면 withGlobalVars 가 덧붙일 때 전역 항목과 이름이 겹친다.
+		// Now는 전역 runtime 변수다(server.globalPromptVars 참고). 각 agent 목록에
+		// 다시 정의하면 withGlobalVars가 덧붙일 때 전역 항목과 이름이 겹친다.
 	}, false, nil},
 	{"planner", "플래너", "planner", "현황을 읽고 목표 달성 여부를 판정하며, 다루지 않은 새 방향이 있을 때만 탐색 의도를 더합니다(작업마다 계획 루프 하나).", []promptVar{
 		{"Goal", "작업 전체 목표", "example.com 관리자 권한 획득", "exploration"},
@@ -194,7 +194,7 @@ var builtinAgents = []builtinAgent{
 	}, false, nil},
 	// Auto: 내장 "플랫폼 조작" agent. 침투 테스트 오케스트레이션 루프에 참여하지 않고, 대화 화면에서 구동되어 도구로 플랫폼을 조작한다.
 	{"auto", "Auto", "assistant", "플랫폼 조작 도우미: 도구로 작업(생성/조회/일시 중지/힌트 주기)과 자산을 관리하고, 스킬·사용자 지정 도구·MCP를 만들거나 고칠 수 있습니다.", nil, false, nil},
-	// 침투 테스트: 내장 "단독 침투 테스트" agent. 대화 화면에서 구동되어 정보 수집부터 마무리까지 침투 테스트 전 과정을 혼자 계획·실행·검증한다. 대화형 shell 이 기본으로 켜진다.
+	// 침투 테스트: 내장 "단독 침투 테스트" agent. 대화 화면에서 구동되어 정보 수집부터 마무리까지 침투 테스트 전 과정을 혼자 계획·실행·검증한다. 대화형 shell이 기본으로 켜진다.
 	{"pentest", "침투 테스트", "assistant", "단독 침투 테스트 agent: 정보 수집 → 공격 표면 찾기 → 익스플로잇 심화 → 검증 → 마무리의 전 과정을 혼자 계획하고 실행하며 적대적 관점으로 검증합니다.", nil, true, intp(0)},
 }
 
@@ -223,7 +223,7 @@ ON CONFLICT (agent_id, var_name) DO UPDATE
 	}
 	// Drop catalog entries for variables that were renamed, so the white-list no
 	// longer advertises a name templates can't resolve (EngagementTitle→Description).
-	// 'Now' 를 각 agent 목록에서 전역 runtime 변수로 올린 뒤에도 이전 DB 의 goals 에 'Now' 한 줄이 남아
+	// 'Now' 를 각 agent 목록에서 전역 runtime 변수로 올린 뒤에도 이전 DB의 goals에 'Now' 한 줄이 남아
 	// 전역 항목과 이름이 겹친다(프런트 변수 목록 key 중복). 함께 지운다.
 	if _, err := d.Exec(`DELETE FROM agent_prompt_vars WHERE var_name IN ('EngagementTitle', 'CoverageGaps', 'Now')`); err != nil {
 		return fmt.Errorf("cleanup renamed vars: %w", err)
@@ -460,7 +460,7 @@ func (d *DB) seedDefaultInterceptRules() error {
 			priority: 90,
 		},
 		// ── HTTP 파괴 요청 (priority 80) ──────────────────────────────────
-		// Agent 가 DELETE 요청을 보내는 흔한 세 가지 방식:
+		// Agent가 DELETE 요청을 보내는 흔한 세 가지 방식:
 		//   1. curl -X DELETE / --request DELETE(Bash 도구로 바로 실행하거나 스크립트에 쓴다)
 		//   2. Python HTTP 클라이언트의 .delete() 메서드
 		//   3. JS/일반 스크립트의 method: 'DELETE' / method="DELETE"

@@ -127,7 +127,7 @@ func scanFindings(rows interface {
 	return out, rows.Err()
 }
 
-// ListFindings는 모든 발견 사항을 최신순으로 작업 설명과 함께 돌려준다.
+// ListFindings 는 모든 발견 사항을 최신순으로 작업 설명과 함께 돌려준다.
 // 대시보드 요약용으로 남겨 둔다. 페이지로 나눠 보여 주는 발견 사항 화면은 ListFindingsPage를 쓴다.
 func (d *DB) ListFindings(limit int) ([]*DBFinding, error) {
 	if limit <= 0 {
@@ -156,7 +156,7 @@ type FindingFilter struct {
 	TaskID    string // 작업 id(문자열. 비었거나 잘못되면 작업으로 거르지 않는다)
 	Query     string // 이름·유형·요약·증거·보고서 본문을 부분 일치로 찾는 키워드
 	Sort      string // "severity" | "time"
-	// AssetScope는 자산 트리의 노드 key(a:<id> / c:<id> / r:<domain> / __none__)다.
+	// AssetScope 는 자산 트리의 노드 key(a:<id> / c:<id> / r:<domain> / __none__)다.
 	// 노드 하나를 고르면 그 하위 트리 전체를 고른 것이다. 비면 자산으로 거르지 않는다.
 	AssetScope string
 
@@ -465,7 +465,7 @@ RETURNING id, created_at`, s.expID, audit.NodeID, utf8Clean(audit.Worker), utf8C
 	return intentID, audit, nil
 }
 
-// ListFindingsForExport는 발견 사항 화면의 내보내기 기능에 쓸 발견 사항을 report 필드
+// ListFindingsForExport 는 발견 사항 화면의 내보내기 기능에 쓸 발견 사항을 report 필드
 // 전체와 함께 페이지 나눔 없이 돌려준다. ids가 있으면 그 finding id만 정확히 내보내고
 // (선택 내보내기) filter는 무시한다. ids가 없으면 filter로 내보낸다(현재 필터 또는 전체).
 // 결과는 심각도 내림차순, 그다음 시간 내림차순이며 "요약 보고서 내보내기"의 묶음 순서와 같다.
@@ -520,7 +520,7 @@ func (d *DB) ListFindingsForExport(f FindingFilter, ids []int64) ([]*DBFinding, 
 	return out, rows.Err()
 }
 
-// FindingStats는 발견 사항 화면의 통계 카드와 취약점 유형 필터에 쓰는 테이블 전체 집계다.
+// FindingStats 는 발견 사항 화면의 통계 카드와 취약점 유형 필터에 쓰는 테이블 전체 집계다.
 // 페이지 나눔과 상관없이 정확하도록 서버에서 계산한다.
 type FindingStats struct {
 	Total       int                 `json:"total"`
@@ -533,7 +533,7 @@ type FindingStats struct {
 	Tasks       []FindingTaskOption `json:"tasks"` // 취약점이 있는 작업("작업별" 드롭다운용)
 }
 
-// FindingTaskOption은 발견 사항 화면의 작업 필터 항목 하나다. 발견 사항이 하나 이상 있는
+// FindingTaskOption 은 발견 사항 화면의 작업 필터 항목 하나다. 발견 사항이 하나 이상 있는
 // 작업과 그 설명, 발견 사항 수를 담는다. 작업이 그 뒤 삭제되면(발견 사항 행은 남는다)
 // Description이 비므로 프런트엔드는 id를 대신 보여 준다.
 type FindingTaskOption struct {
@@ -648,7 +648,7 @@ func (d *DB) GetFinding(id int64) (*DBFinding, error) {
 	return f, nil
 }
 
-// DeleteFinding은 발견 사항을 통째로 지운다. 독립 findings 행과 그 출처 탐색 노드
+// DeleteFinding 은 발견 사항을 통째로 지운다. 독립 findings 행과 그 출처 탐색 노드
 // (kind='finding')를 함께 지우므로 발견 사항 목록, 작업별 발견 사항 탭, 탐색 그래프에서
 // 모두 사라진다. 노드를 지우면 edge와 node_assets가 연쇄 삭제되고, 그 노드를 가리키는
 // 활동은 NULL이 된다. 영향받은 행 수를 돌려준다(0 = 그 id의 발견 사항이 없음).
@@ -686,7 +686,7 @@ func (d *DB) DeleteFindingsByTask(taskID int64) (int64, error) {
 	return res.RowsAffected()
 }
 
-// SetFindingStatus는 발견 사항 하나의 처리 상태를 바꾸고 영향받은 행 수를 돌려준다.
+// SetFindingStatus 는 발견 사항 하나의 처리 상태를 바꾸고 영향받은 행 수를 돌려준다.
 //
 // 하위 setter다. 상태만 바꾸고 알림 이벤트는 등록하지 않는다. 운영 코드에서 상태를
 // 바꿀 때는 SetFindingStatusWithNotify를 쓴다. 이 함수를 직접 부르면 "상태 변경 알림"이
@@ -707,7 +707,7 @@ func (d *DB) SetFindingReportByNodeID(nodeID int64, report string) (int64, error
 	return d.SetFindingReportVersionByNodeID(context.Background(), nodeID, report, nil)
 }
 
-// setFindingCol은 독립 finding 행의 텍스트 열 하나를 바꾸고, 같은 값을 출처 탐색 노드의
+// setFindingCol 은 독립 finding 행의 텍스트 열 하나를 바꾸고, 같은 값을 출처 탐색 노드의
 // payload에 jsonKey로 복사한다. 그래서 (이 테이블이 아니라 노드 payload를 읽는) 작업별
 // 발견 사항 탭과 맞춰진다. 영향받은 행 수를 돌려준다(그 id의 발견 사항이 없으면 0).
 // 노드 동기화는 최선 노력이다. col과 jsonKey는 SQL에 그대로 끼워 넣으므로 반드시 믿을
@@ -735,13 +735,13 @@ func (d *DB) SetFindingSeverity(id int64, severity string) (int64, error) {
 	return d.setFindingCol(id, "severity", "severity", severity)
 }
 
-// SetFindingName은 발견 사항 하나의 취약점 이름을 바꾼다(노드 payload도 맞춘다). 빈 이름도
+// SetFindingName 은 발견 사항 하나의 취약점 이름을 바꾼다(노드 payload도 맞춘다). 빈 이름도
 // 허용한다. 프런트엔드가 취약점 유형을 대신 보여 준다.
 func (d *DB) SetFindingName(id int64, name string) (int64, error) {
 	return d.setFindingCol(id, "name", "name", name)
 }
 
-// SetFindingVulnClass는 발견 사항 하나의 취약점 유형을 바꾼다(노드 payload도 맞춘다).
+// SetFindingVulnClass 는 발견 사항 하나의 취약점 유형을 바꾼다(노드 payload도 맞춘다).
 func (d *DB) SetFindingVulnClass(id int64, vulnclass string) (int64, error) {
 	return d.setFindingCol(id, "vulnclass", "vulnclass", vulnclass)
 }
@@ -763,7 +763,7 @@ func (a *AssetStore) FindingMetaByNodeID(taskID int64) (map[int64]FindingMeta, e
 	return a.db.FindingMetaByNodeID(taskID)
 }
 
-// FindingMetaByNodeID는 작업의 발견 사항 노드 id를 독립 행의 메타데이터로 잇는다.
+// FindingMetaByNodeID 는 작업의 발견 사항 노드 id를 독립 행의 메타데이터로 잇는다.
 // 그래서 탐색 노드를 읽는 작업별 화면도 전역 발견 사항 화면과 같은 상태와 같은 연결
 // 자산을 보여 주고 고칠 수 있다.
 func (d *DB) FindingMetaByNodeID(taskID int64) (map[int64]FindingMeta, error) {

@@ -6,11 +6,11 @@ import (
 	"github.com/Autumn-27/norma/harness"
 )
 
-// 마무리 프롬프트(wrap-up / settlement prompt): agent 가 [단계 소진(MaxTurns)] 또는
-// [시간 초과(run_seconds/MaxDuration)]로 종료될 때, SDK 의 settlement 단계가 이 프롬프트를 주입해
-// agent 가 식별했지만 아직 써 넣지 않은 것을 먼저 저장하고 요약 한 줄을 내게 한다. 어중간한 끝을 막는다.
+// 마무리 프롬프트(wrap-up / settlement prompt): agent가 [단계 소진(MaxTurns)] 또는
+// [시간 초과(run_seconds/MaxDuration)]로 종료될 때, SDK의 settlement 단계가 이 프롬프트를 주입해
+// agent가 식별했지만 아직 써 넣지 않은 것을 먼저 저장하고 요약 한 줄을 내게 한다. 어중간한 끝을 막는다.
 //
-// 각 agent 의 마무리 프롬프트는 백오피스에서 필요에 따라 덮어쓸 수 있다(agents.wrapup_prompt 에 저장).
+// 각 agent의 마무리 프롬프트는 백오피스에서 필요에 따라 덮어쓸 수 있다(agents.wrapup_prompt에 저장).
 // 비우면 여기의 내장 기본값을 쓴다. [프롬프트 본문]만 편집할 수 있다. 어떤 도구를 비활성화할지, 마무리에
 // 몇 회합을 줄지는 코드가 고정한 정책이다.
 
@@ -24,8 +24,8 @@ var WrapupOverride func(agentKey string) (string, bool)
 // table. nil / ≤0 → the built-in per-agent default (wrapupTurnDefaults) is used.
 var WrapupMaxTurnsOverride func(agentKey string) (int, bool)
 
-// agent key 로 색인하는 내장 기본 마무리 프롬프트. worker 는 과거에 하드코딩하던
-// settleWrapUpPrompt(worker.go 에 정의)를 재사용하고, planner/mainagent 는 각각 한 벌씩 둔다.
+// agent key로 색인하는 내장 기본 마무리 프롬프트. worker는 과거에 하드코딩하던
+// settleWrapUpPrompt(worker.go에 정의)를 재사용하고, planner/mainagent는 각각 한 벌씩 둔다.
 // 맞는 것이 없으면(사용자 지정 agent) 범용 기본값으로 간다.
 var wrapupDefaults = map[string]string{
 	"worker":    settleWrapUpPrompt,
@@ -33,8 +33,8 @@ var wrapupDefaults = map[string]string{
 	"mainagent": mainAgentWrapUpDefault,
 }
 
-// wrapupTurnDefaults: 각 agent 마무리 단계 [자체]의 회합 예산 내장 기본값(백오피스에서 >0 으로 덮어쓸 수 있다).
-// 모두 10회를 줘 마무리 단계에 저장할 단계 수가 넉넉하게 한다. 맞는 것이 없으면 genericWrapupTurns 로 간다.
+// wrapupTurnDefaults: 각 agent 마무리 단계 [자체]의 회합 예산 내장 기본값(백오피스에서 >0으로 덮어쓸 수 있다).
+// 모두 10회를 줘 마무리 단계에 저장할 단계 수가 넉넉하게 한다. 맞는 것이 없으면 genericWrapupTurns로 간다.
 var wrapupTurnDefaults = map[string]int{
 	"worker":    10,
 	"planner":   10,
@@ -103,12 +103,12 @@ func wrapupSettlement(agentKey string, disabledTools []string) *harness.Settleme
 
 // ---------- 작업 단위 시간 초과 마무리 문구 ----------
 //
-// per-run 마무리 문구와는 [두 벌]이다: per-run 은 "이번 run 의 예산이 다 찼다"이고, 작업 시간 초과는
-// "작업 전체가 시간에 다다라 곧 끝난다"이다. 의미가 종종 반대다(특히 planner: per-run 은 "멈추지 말고 계속
+// per-run 마무리 문구와는 [두 벌]이다: per-run은 "이번 run의 예산이 다 찼다"이고, 작업 시간 초과는
+// "작업 전체가 시간에 다다라 곧 끝난다"이다. 의미가 종종 반대다(특히 planner: per-run은 "멈추지 말고 계속
 // 규획하라", 작업 시간 초과는 "시간에 다다랐으니 규획을 멈추고 마지막 판정을 하라"). worker/planner 에만 설정한다.
 
 // WrapupTaskTimeoutOverride / …TurnsOverride: 작업 시간 초과 마무리 문구와 회합 수의 DB 덮어쓰기
-// (agents.task_timeout_wrapup_prompt / _max_turns 에 연결, worker/planner 만).
+// (agents.task_timeout_wrapup_prompt / _max_turns에 연결, worker/planner 만).
 var (
 	WrapupTaskTimeoutOverride      func(agentKey string) (string, bool)
 	WrapupTaskTimeoutTurnsOverride func(agentKey string) (int, bool)
@@ -123,13 +123,13 @@ const workerTaskTimeoutDefault = "**The entire task has reached its timeout limi
 
 const plannerTaskTimeoutDefault = "**The entire task has reached its timeout limit and is about to end** (not this round -- the whole task terminates). Based on **all** current facts and findings, make a final goal judgment: for a goal proven achieved by evidence, call prove_goal to mark it met (do not miss it). **Do not generate any new intent** (dispatching one now will not be executed anyway). Once judged, wrap up; no summary text needed."
 
-// TaskTimeoutWrapupDefault 는 어떤 agent 의 작업 시간 초과 내장 기본 마무리 문구를 돌려준다(백오피스 자리표/기본값 복원용).
+// TaskTimeoutWrapupDefault 는 어떤 agent의 작업 시간 초과 내장 기본 마무리 문구를 돌려준다(백오피스 자리표/기본값 복원용).
 func TaskTimeoutWrapupDefault(agentKey string) string {
 	return taskTimeoutWrapupDefaults[agentKey] // 설정 안 된 경우(mainagent/chat)는 빈 문자열을 돌려준다
 }
 
-// resolveTaskTimeoutWrapup: DB 덮어쓰기(비어 있지 않음) > 내장 기본값. 빈 문자열은 그 agent 에 작업 시간 초과
-// 문구가 없다는 뜻이고(worker/planner 가 아님), 이때 호출자는 per-run 문구로 되돌아가야 한다.
+// resolveTaskTimeoutWrapup: DB 덮어쓰기(비어 있지 않음) > 내장 기본값. 빈 문자열은 그 agent에 작업 시간 초과
+// 문구가 없다는 뜻이고(worker/planner가 아님), 이때 호출자는 per-run 문구로 되돌아가야 한다.
 func resolveTaskTimeoutWrapup(agentKey string) string {
 	if WrapupTaskTimeoutOverride != nil {
 		if t, ok := WrapupTaskTimeoutOverride(agentKey); ok && strings.TrimSpace(t) != "" {
@@ -150,11 +150,11 @@ func resolveTaskTimeoutTurns(agentKey string) int {
 
 // wrapupSettlementForTask builds settlement for a worker/planner run that is aware
 // of the task deadline. See §5 of the design doc:
-//   - clamped=true  → 이번 run 이 작업 deadline 에 좁혀짐: Timeout 으로 마무리=작업이 시간에 다다름→작업 시간 초과 문구;
-//     MaxTurns 로 마무리=좁혀진 창 안에서 단계가 먼저 소진되고 작업은 몇 분 남음→per-run 문구로 되돌린다.
-//   - clamped=false → 작업이 아직 이르다: 두 reason 모두 per-run 문구를 쓴다(즉 wrapupSettlement 로 퇴화).
+//   - clamped=true  → 이번 run이 작업 deadline에 좁혀짐: Timeout으로 마무리=작업이 시간에 다다름→작업 시간 초과 문구;
+//     MaxTurns로 마무리=좁혀진 창 안에서 단계가 먼저 소진되고 작업은 몇 분 남음→per-run 문구로 되돌린다.
+//   - clamped=false → 작업이 아직 이르다: 두 reason 모두 per-run 문구를 쓴다(즉 wrapupSettlement로 퇴화).
 //
-// harness 에 넘긴 PromptByReason 은 마무리 때 [실제] reason 으로 그 자리에서 고른다. build 때 어긋날 일이 없다.
+// harness에 넘긴 PromptByReason은 마무리 때 [실제] reason으로 그 자리에서 고른다. build 때 어긋날 일이 없다.
 func wrapupSettlementForTask(agentKey string, disabledTools []string, clamped bool) *harness.Settlement {
 	perRun := resolveWrapup(agentKey)
 	st := &harness.Settlement{

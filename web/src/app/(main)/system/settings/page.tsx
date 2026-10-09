@@ -588,7 +588,7 @@ export default function SystemSettingsPage() {
                     Tavily를 골랐지만 키를 아직 설정하지 않았습니다. 키를 저장하기 전에는 검색 도구가 켜지지 않습니다.
                   </p>
                 )}
-                <p className="text-muted-foreground text-xs">https://tavily.com 에 가입하고 API 키를 받으세요.</p>
+                <p className="text-muted-foreground text-xs">https://tavily.com에 가입하고 API 키를 받으세요.</p>
               </div>
             )}
 

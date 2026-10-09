@@ -5,7 +5,7 @@ import "fmt"
 // builtinTextMigration 은 #108 이전에 seed 한 중국어 값(legacy)과 지금 seed 하는 한국어 값(current)의 쌍이다.
 type builtinTextMigration struct{ legacy, current string }
 
-// 명령 차단 규칙과 자산 차단 규칙의 seed 는 설정 플래그로 한 번만 돌아, 기존 설치에는 중국어 행이
+// 명령 차단 규칙과 자산 차단 규칙의 seed는 설정 플래그로 한 번만 돌아, 기존 설치에는 중국어 행이
 // 남는다. 아래 표의 legacy 값은 그 행을 찾는 데이터라 번역하지 않는다.
 var legacyInterceptRuleNames = []builtinTextMigration{
 	{"[内置] 递归强制删除 rm -rf", "[내장] 재귀 강제 삭제 rm -rf"},
@@ -61,7 +61,7 @@ var legacyAssetInterceptRuleNotes = []builtinTextMigration{
 }
 
 // migrateBuiltinRuleTexts 는 기존 설치의 내장 차단 규칙 이름·메시지·메모를 한국어로 바꾼다.
-// 값이 이전 seed 와 정확히 같은 필드만 바꾸므로 사용자가 고친 값은 그대로 남는다. intercept_rules 에는
+// 값이 이전 seed와 정확히 같은 필드만 바꾸므로 사용자가 고친 값은 그대로 남는다. intercept_rules 에는
 // builtin 열이 없어 이름·메시지 값 자체로 기본 행을 알아본다. 바꾼 뒤에는 legacy 값과 같은 행이 없어
 // 매 시작 다시 돌아도 결과가 같다.
 func (d *DB) migrateBuiltinRuleTexts() error {

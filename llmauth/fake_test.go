@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// fakeJWT 는 서명 없는 JWT 모양 문자열을 만든다. ParseClaims 는 서명을 보지 않는다.
+// fakeJWT 는 서명 없는 JWT 모양 문자열을 만든다. ParseClaims는 서명을 보지 않는다.
 func fakeJWT(t *testing.T, claims map[string]any) string {
 	t.Helper()
 	payload, err := json.Marshal(claims)
@@ -33,8 +33,8 @@ func accessJWT(t *testing.T, accountID string, exp time.Time) string {
 }
 
 // fakeAuthServer 는 OpenAI 인증 서버의 토큰·디바이스 코드 엔드포인트를 흉내 낸다.
-// 실제 서버처럼 client_id·grant_type·형식이 틀린 요청은 400 으로 거부하고,
-// 이미 쓴 refresh 토큰은 refresh_token_reused 로 거부한다.
+// 실제 서버처럼 client_id·grant_type·형식이 틀린 요청은 400으로 거부하고,
+// 이미 쓴 refresh 토큰은 refresh_token_reused로 거부한다.
 type fakeAuthServer struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -44,9 +44,9 @@ type fakeAuthServer struct {
 	validRefresh  string
 	usedRefreshes map[string]bool
 	refreshCalls  int
-	// failRefreshes 만큼 다음 refresh 를 500 으로 실패시킨다.
+	// failRefreshes 만큼 다음 refresh를 500으로 실패시킨다.
 	failRefreshes int
-	// onRefresh 는 refresh 가 성공해 응답하기 직전에 불린다.
+	// onRefresh 는 refresh가 성공해 응답하기 직전에 불린다.
 	onRefresh     func()
 	exchangeForms []url.Values
 	// pollStatuses 는 폴링 응답 상태를 차례로 정한다. 다 쓰면 성공을 돌려준다.
@@ -57,7 +57,7 @@ type fakeAuthServer struct {
 	now             time.Time
 	accountID       string
 	usercodeCode    int
-	// idTokenPlan·accessTokenPlan 이 비어 있지 않으면 각 토큰에 chatgpt_plan_type 클레임으로 싣는다.
+	// idTokenPlan·accessTokenPlan이 비어 있지 않으면 각 토큰에 chatgpt_plan_type 클레임으로 싣는다.
 	idTokenPlan     string
 	accessTokenPlan string
 }
@@ -90,7 +90,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body) // 테스트 응답 쓰기 실패는 클라이언트 쪽 단언에서 드러난다
 }
 
-// issueLocked 는 새 토큰 묶음을 만들고 refresh 토큰을 회전시킨다. f.mu 를 잡고 부른다.
+// issueLocked 는 새 토큰 묶음을 만들고 refresh 토큰을 회전시킨다. f.mu를 잡고 부른다.
 func (f *fakeAuthServer) issueLocked(w http.ResponseWriter) {
 	f.issued++
 	if f.validRefresh != "" {
@@ -99,7 +99,7 @@ func (f *fakeAuthServer) issueLocked(w http.ResponseWriter) {
 	f.validRefresh = fmt.Sprintf("refresh-%d", f.issued)
 	writeJSON(w, http.StatusOK, map[string]string{
 		"id_token": fakeJWT(f.t, map[string]any{"https://api.openai.com/auth": f.authClaim(f.idTokenPlan)}),
-		// 실제 서버처럼 발급마다 다른 access token 을 준다.
+		// 실제 서버처럼 발급마다 다른 access token을 준다.
 		"access_token": fakeJWT(f.t, map[string]any{
 			"jti":                         f.issued,
 			"exp":                         f.now.Add(f.expiresIn).Unix(),
@@ -109,7 +109,7 @@ func (f *fakeAuthServer) issueLocked(w http.ResponseWriter) {
 	})
 }
 
-// authClaim 은 토큰의 계정 클레임 객체다. plan 이 비면 플랜 클레임을 뺀다.
+// authClaim 은 토큰의 계정 클레임 객체다. plan이 비면 플랜 클레임을 뺀다.
 func (f *fakeAuthServer) authClaim(plan string) map[string]any {
 	claim := map[string]any{"chatgpt_account_id": f.accountID}
 	if plan != "" {
@@ -208,7 +208,7 @@ func (f *fakeAuthServer) deviceToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// fakeClock 은 sleep 이 부를 때만 시간이 흐르는 시계다.
+// fakeClock 은 sleep이 부를 때만 시간이 흐르는 시계다.
 type fakeClock struct {
 	mu     sync.Mutex
 	now    time.Time

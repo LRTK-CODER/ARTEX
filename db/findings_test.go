@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TestDeleteFinding은 취약점을 삭제하면 findings 행과 그 출처 탐색 노드
+// TestDeleteFinding 은 취약점을 삭제하면 findings 행과 그 출처 탐색 노드
 // (kind='finding')가 함께 지워지는지 확인한다.
 func TestDeleteFinding(t *testing.T) {
 	d, err := Open(testDSN(t))

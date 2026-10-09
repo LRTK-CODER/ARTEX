@@ -68,7 +68,7 @@ type CompanyScopeValidationError struct{ Message string }
 
 func (e *CompanyScopeValidationError) Error() string { return e.Message }
 
-// ValidateCompanyScopeInputBounds는 파싱 전에 요청 전체에 제한을 적용한다.
+// ValidateCompanyScopeInputBounds 는 파싱 전에 요청 전체에 제한을 적용한다.
 // HTTP가 아닌 호출자도 제한을 피하지 못하도록 저장 메서드가 다시 부른다.
 // 규칙 하나의 길이만 제한하고 규칙 수는 제한하지 않는다.
 func ValidateCompanyScopeInputBounds(inputs []ScopeInput) error {

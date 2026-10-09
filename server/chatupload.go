@@ -30,13 +30,13 @@ type chatAttachment struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
-	// Abs 는 저장한 파일의 절대 경로다(m.dir 가 이미 절대 경로다). 작업을 만들기 전에 임시 저장할 때
-	// (scope=staging) 프런트엔드가 이 값으로 프롬프트를 작업 설명에 써 넣는다. task·session 은
-	// composeAgentMessage 가 백엔드에서 경로를 이어 붙이므로 이 필드에 기대지 않는다.
+	// Abs 는 저장한 파일의 절대 경로다(m.dir가 이미 절대 경로다). 작업을 만들기 전에 임시 저장할 때
+	// (scope=staging) 프런트엔드가 이 값으로 프롬프트를 작업 설명에 써 넣는다. task·session은
+	// composeAgentMessage가 백엔드에서 경로를 이어 붙이므로 이 필드에 기대지 않는다.
 	Abs string `json:"abs,omitempty"`
 }
 
-// chatUpload는 파일 첨부의 첫 번째 방식이다. 파일 하나 이상을 대화 작업 디렉터리의
+// chatUpload 는 파일 첨부의 첫 번째 방식이다. 파일 하나 이상을 대화 작업 디렉터리의
 // uploads/ 아래에 저장해, 에이전트가 기존 Read/Bash 도구로 열고 보낸 메시지에 그 경로가
 // 실리게 한다. LLM 계층은 바꾸지 않고 멀티모달도 쓰지 않는다.
 //
@@ -118,9 +118,9 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"attachments": out})
 }
 
-// createUniqueUpload 는 root 안의 dir 에 name, 이미 있으면 name-1, name-2… 순서로 새 파일을 만들고
+// createUniqueUpload 는 root 안의 dir에 name, 이미 있으면 name-1, name-2… 순서로 새 파일을 만들고
 // 고른 이름을 돌려준다. 같은 이름을 다시 올려도 앞 첨부를 덮어쓰지 않는다.
-// O_EXCL 로 만들므로 이름 고르기와 만들기 사이에 경쟁이 없고, 그 이름에 링크(끊긴 링크 포함)가 있으면
+// O_EXCL로 만들므로 이름 고르기와 만들기 사이에 경쟁이 없고, 그 이름에 링크(끊긴 링크 포함)가 있으면
 // 따라가지 않고 이미 있는 이름으로 본다.
 func createUniqueUpload(root *os.Root, dir, name string) (*os.File, string, error) {
 	ext := filepath.Ext(name)
@@ -180,7 +180,7 @@ func humanBytes(n int64) string {
 	}
 }
 
-// saveUniqueUpload 는 채팅 첨부를 root 안의 dir 에 겹치지 않는 이름으로 쓰고 그 이름을 돌려준다.
+// saveUniqueUpload 는 채팅 첨부를 root 안의 dir에 겹치지 않는 이름으로 쓰고 그 이름을 돌려준다.
 // 닫기 오류도 돌려준다(늦게 비워지는 쓰기 실패).
 func saveUniqueUpload(root *os.Root, dir string, hdr *multipart.FileHeader, name string) (string, error) {
 	src, err := hdr.Open()

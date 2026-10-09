@@ -117,7 +117,7 @@ func run() int {
 	if err != nil {
 		log.Printf("[config] 키 디렉터리: %v", err)
 		if errors.Is(err, server.ErrKeyDirInsideDataDir) {
-			log.Printf("[config] 키가 파일 관리자로 노출되지 않게 환경 변수 %s 를 작업 공간(-data) 밖 디렉터리로 정한다", server.KeyDirEnv)
+			log.Printf("[config] 키가 파일 관리자로 노출되지 않게 환경 변수 %s를 작업 공간(-data) 밖 디렉터리로 정한다", server.KeyDirEnv)
 		}
 		return 1
 	}

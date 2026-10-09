@@ -321,7 +321,7 @@ WHERE exploration_id=$1 AND kind='intent' AND state='running'`, s.expID)
 
 // ReopenIntent 는 성공하지 못하고 끝난 탐색 의도(blocked/exhausted/stopped) 하나를 'open' 으로 되돌려
 // 워커가 다시 할당받게 한다(이미 그래프에 쓴 결과는 남는다). 워커는 처음부터 다시 하지 않고 이전 LLM
-// 대화 기록에서 이어 간다. done/open/running 은 건드리지 않는다. 행이 바뀌었는지 돌려준다. "재실행"이 쓴다.
+// 대화 기록에서 이어 간다. done/open/running은 건드리지 않는다. 행이 바뀌었는지 돌려준다. "재실행"이 쓴다.
 func (s *ExplorationStore) ReopenIntent(id int64) (bool, error) {
 	res, err := s.db.Exec(`UPDATE exploration_nodes
 SET state='open', completed_at=NULL, blocked_reason=NULL
@@ -381,7 +381,7 @@ type IntentCleanup struct {
 	Activities int64 `json:"activities"`
 }
 
-// SoftDeleteIntent는 할당 대기·실행 중·일시 중지된 의도를 소프트 삭제한다. state='deleted'로
+// SoftDeleteIntent 는 할당 대기·실행 중·일시 중지된 의도를 소프트 삭제한다. state='deleted'로
 // 바꾸고 사용자가 적은 삭제 이유를 delete_reason 필드에 기록하며, 의도 노드와 그 결과물·계보는
 // 모두 유지한다(이전 구현처럼 그래프에 fact를 따로 달지 않는다). 삭제 전 의도의 summary를
 // 돌려주어 planner 알림에 쓴다. 별도 질문 세션은 삭제와 함께 정리한다.
@@ -425,7 +425,7 @@ func (s *ExplorationStore) SoftDeleteIntent(id int64, reason string) (string, er
 	return summary, tx.Commit()
 }
 
-// CancelIntent는 의도 하나와 "그 의도만이 받치는" 전용 하위 노드를 모두 영구 삭제한다. 대상은
+// CancelIntent 는 의도 하나와 "그 의도만이 받치는" 전용 하위 노드를 모두 영구 삭제한다. 대상은
 // 그 의도에서 yields/derived_from을 따라 내려가 닿을 수 있고, 모든 부모(그 노드를 가리키는 모든
 // 간선의 출발점)가 삭제 집합 안에 있는 노드다. goal과 origin fact는 절대 삭제하지 않는다. 삭제
 // 집합 밖의 의도·digest가 아직 참조하는 공유 노드도 다른 분기를 망가뜨리거나 끊긴 연결을 만들지
@@ -854,7 +854,7 @@ type NodeFilter struct {
 
 // NodesPage 는 이 탐색의 노드 한 페이지(1부터 센다)와 조건에 맞는 전체 개수를 돌려준다.
 // 활동 피드는 그래프를 시간순으로 읽으므로 Nodes 처럼 그래프 전체를 가져오지 않고 SQL 에서 페이지를 나눈다.
-// 정렬은 id 순이다. id 는 BIGSERIAL 이라 만든 순서와 같아서, 여러 노드의 created_at 초가 같아도 순서가 흔들리지 않는다.
+// 정렬은 id 순이다. id는 BIGSERIAL 이라 만든 순서와 같아서, 여러 노드의 created_at 초가 같아도 순서가 흔들리지 않는다.
 func (s *ExplorationStore) NodesPage(f NodeFilter, page, size int) ([]*Node, int, error) {
 	if page < 1 {
 		page = 1
@@ -1273,7 +1273,7 @@ func (d *DB) TokenTotalsAll() (map[int64]TokenUsage, error) {
 }
 
 // LastActivityAll 은 탐색마다 가장 최근 활동의 unix 시각(exploration_id → 최대 created_at epoch)을
-// 모든 작업에 대해 질의 한 번으로 돌려준다. Engine.LastActivity 의 메모리 맵과 달리 DB 에 저장된 값이라
+// 모든 작업에 대해 질의 한 번으로 돌려준다. Engine.LastActivity의 메모리 맵과 달리 DB에 저장된 값이라
 // 재시작 뒤에도 남고, 끝난 작업의 실행 시간을 계산할 때 쓸 "마지막 실행 시각"이 바뀌지 않는다.
 func (d *DB) LastActivityAll() (map[int64]int64, error) {
 	rows, err := d.Query(`SELECT exploration_id, EXTRACT(EPOCH FROM MAX(created_at))::bigint FROM activity GROUP BY exploration_id`)
@@ -1549,12 +1549,12 @@ func (s *ExplorationStore) ActivityListForTerminalIntent(nodeID, sinceID int64, 
 	return out, cursor, rows.Err()
 }
 
-// ActivitySessionFilter 는 작업 활동 흐름에서 UI 의 "세션" 하나를 고른다.
+// ActivitySessionFilter 는 작업 활동 흐름에서 UI의 "세션" 하나를 고른다.
 // 의미 있는 필드는 정확히 하나다:
 //   - Main == true  → 한 구간의 메인 에이전트 세션(worker="mainagent")
 //     (MainSeg. nil/0 = 원래 구간이며 이전의 NULL 행도 맞는다).
 //   - Worker != ""  → 워커 이름으로 거른다(Plan = "planner").
-//     Goal Agent 의 0회차 목표 분해도 worker="planner" 로 저장되므로 Plan 세션은 Goal+Planner 를 모두 담는다.
+//     Goal Agent의 0회차 목표 분해도 worker="planner" 로 저장되므로 Plan 세션은 Goal+Planner를 모두 담는다.
 //   - NodeID != nil → node_id(= 탐색 의도 id)로 거른 Worker 세션.
 //
 // 영값(모두 비어 있음)은 작업 전체에 맞는다(세션 필터 없음).
@@ -1691,7 +1691,7 @@ func (s *ExplorationStore) ActivityMaxID() (int64, error) {
 	return max.Int64, nil
 }
 
-// MainSession 은 작업의 메인 에이전트 대화를 새로 시작한 구간 하나다. 구간 0 은 원래 세션이다(암묵적이라
+// MainSession 은 작업의 메인 에이전트 대화를 새로 시작한 구간 하나다. 구간 0은 원래 세션이다(암묵적이라
 // 저장하지 않는다). 그다음 구간은 "새 세션"으로 만들어 메인 에이전트를 빈 대화 기록에서 시작하며,
 // 작업의 그래프·자산·목표는 계속 공유한다.
 type MainSession struct {

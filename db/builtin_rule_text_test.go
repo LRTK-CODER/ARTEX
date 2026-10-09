@@ -58,7 +58,7 @@ VALUES (false, 'exact_domain', $1, $2, $3) RETURNING id`,
 	}
 
 	for run := 1; run <= 2; run++ {
-		reopen(t) // 다시 시작할 때마다 seed 와 이전이 돈다
+		reopen(t) // 다시 시작할 때마다 seed와 이전이 돈다
 		for i, tc := range ruleCases {
 			t.Run(tc.name, func(t *testing.T) {
 				var gotName, gotMessage string

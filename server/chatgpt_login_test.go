@@ -67,7 +67,7 @@ func (a *fakeAuthServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"device_auth_id":"dev-1","user_code":"ABCD-1234","interval":"1"}`))
 	case "/api/accounts/deviceauth/token":
 		if a.isDeviceTokenHanging {
-			// 본문을 다 읽어야 서버가 클라이언트의 연결 끊김을 알아채 r.Context 를 끝낸다.
+			// 본문을 다 읽어야 서버가 클라이언트의 연결 끊김을 알아채 r.Context를 끝낸다.
 			_, _ = io.Copy(io.Discard, r.Body)
 			<-r.Context().Done()
 			return
@@ -117,7 +117,7 @@ func serveLogin(t *testing.T, s *Server, method, path string, body any) (int, ma
 	return rec.Code, out, rec.Body.String()
 }
 
-// startPaste 는 붙여넣기 로그인을 시작하고 흐름 ID 와 authorize URL 의 state 를 돌려준다.
+// startPaste 는 붙여넣기 로그인을 시작하고 흐름 ID와 authorize URL의 state를 돌려준다.
 func startPaste(t *testing.T, f *oauthFixture) (flowID, state string) {
 	t.Helper()
 	code, out, body := serveLogin(t, f.s, http.MethodPost, "/api/llm/oauth/chatgpt/start", map[string]any{"profile_id": f.profile.ID})
@@ -265,7 +265,7 @@ func TestChatGPTPasteLoginRejects(t *testing.T) {
 	}
 }
 
-// TestChatGPTLoginWithoutCredentialKey 는 oauth.key 를 쓰지 못한 서버가 로그인을 고정 문구로 거절하는지 본다.
+// TestChatGPTLoginWithoutCredentialKey 는 oauth.key를 쓰지 못한 서버가 로그인을 고정 문구로 거절하는지 본다.
 func TestChatGPTLoginWithoutCredentialKey(t *testing.T) {
 	f := newLoginFixture(t, newFakeAuthServer(t))
 	f.s.oauth = nil
@@ -278,7 +278,7 @@ func TestChatGPTLoginWithoutCredentialKey(t *testing.T) {
 	}
 }
 
-// deviceFlow 는 흐름 ID 로 디바이스 흐름을 꺼낸다. goroutine 이 끝나기를 기다릴 때 쓴다.
+// deviceFlow 는 흐름 ID로 디바이스 흐름을 꺼낸다. goroutine이 끝나기를 기다릴 때 쓴다.
 func deviceFlow(t *testing.T, s *Server, flowID string) *loginFlow {
 	t.Helper()
 	s.loginFlows.mu.Lock()
@@ -347,7 +347,7 @@ func TestChatGPTDeviceLoginDisabled(t *testing.T) {
 	}
 }
 
-// TestChatGPTDeviceLoginStops 는 서버 종료와 연결 해제가 폴링 goroutine 을 끝내고 저장하지 않는지 본다.
+// TestChatGPTDeviceLoginStops 는 서버 종료와 연결 해제가 폴링 goroutine을 끝내고 저장하지 않는지 본다.
 func TestChatGPTDeviceLoginStops(t *testing.T) {
 	cases := []struct {
 		name string
@@ -430,7 +430,7 @@ func TestChatGPTDeviceLoginExpiresAfterTTL(t *testing.T) {
 	if out := deviceStatus(t, f.s, flowID); out["status"] != string(deviceLoginExpired) || out["code"] != string(loginErrFlowExpired) {
 		t.Fatalf("device status = %v, want expired", out)
 	}
-	f.s.loginFlows.dropProfile(f.profile.ID) // 폴링 goroutine 을 끝낸다
+	f.s.loginFlows.dropProfile(f.profile.ID) // 폴링 goroutine을 끝낸다
 }
 
 // TestChatGPTDeviceLoginHTTPTimeoutIsNetworkError 는 폴링 요청 하나의 타임아웃을 흐름 만료로 보지 않는지 본다.

@@ -13,13 +13,13 @@ import (
 )
 
 // 작업 단위 시간 초과 조정자.
-// 실제 경과 시간 기준: timeout 이 있는 작업마다 타이머 goroutine 하나를 두고, 시각이 되면 마무리 단계를 차례로 진행한다:
-//   ① settling → ② 워커가 새 탐색 의도 할당을 멈춤 / ③ 플래너가 일반 notify 를 버림
+// 실제 경과 시간 기준: timeout이 있는 작업마다 타이머 goroutine 하나를 두고, 시각이 되면 마무리 단계를 차례로 진행한다:
+//   ① settling → ② 워커가 새 탐색 의도 할당을 멈춤 / ③ 플래너가 일반 notify를 버림
 //   ④ 실행 중인 워커의 drain 대기(grace 까지) → ⑤ 플래너 최종 판정 한 회차 → ⑥ 종료 상태 결정(가드 포함)
 
 const (
 	settleDrainGrace     = 90 * time.Second // 실행 중인 워커의 정상 마무리를 기다리는 최대 시간. 넘으면 강제 cancel
-	deadlinePollInterval = 2 * time.Second  // deadline 이 기록되지 않았거나 LLM 이 준비되지 않았을 때의 폴링 간격
+	deadlinePollInterval = 2 * time.Second  // deadline이 기록되지 않았거나 LLM이 준비되지 않았을 때의 폴링 간격
 	deadlineMaxSleep     = 30 * time.Second // 한 번에 자는 최대 시간(종료 상태를 주기적으로 다시 보려고)
 )
 
@@ -37,7 +37,7 @@ func (e *Engine) markSettling(taskID string) bool {
 	return !loaded
 }
 
-// ---------- 실행 중인 수(worker.Execute + planner.Plan), drain 에 쓴다 ----------
+// ---------- 실행 중인 수(worker.Execute + planner.Plan), drain에 쓴다 ----------
 
 func (e *Engine) inflightCounter(taskID string) *int64 {
 	v, _ := e.inflight.LoadOrStore(taskID, new(int64))
@@ -187,8 +187,8 @@ func (e *Engine) settleTask(ctx context.Context, t *Task) {
 	}
 	log.Printf("[deadline] task %s 시간 초과 한도 도달, 마무리 단계 시작", t.ID)
 
-	// ④ 실행 중인 워커·플래너의 drain 을 기다린다(실행 중인 run 은 줄어든 MaxDuration 때문에 스스로 마무리에 들어간다).
-	// grace 가 지나도 비지 않으면 → 이 작업의 exec ctx 를 강제 cancel 한다(settling 을 아는 분기가 올바르게 분류한다).
+	// ④ 실행 중인 워커·플래너의 drain을 기다린다(실행 중인 run은 줄어든 MaxDuration 때문에 스스로 마무리에 들어간다).
+	// grace가 지나도 비지 않으면 → 이 작업의 exec ctx를 강제 cancel 한다(settling을 아는 분기가 올바르게 분류한다).
 	hardStop := time.Now().Add(settleDrainGrace)
 	for e.inflightCount(t.ID) > 0 {
 		if time.Now().After(hardStop) {
@@ -209,7 +209,7 @@ func (e *Engine) settleTask(ctx context.Context, t *Task) {
 	}
 	defer e.decInflight(t.ID)
 
-	// ⑥ 종료 상태 결정(가드 포함): met → done(completed), 아니면 timeout. 일반 경로가 먼저 done 을 기록했으면
+	// ⑥ 종료 상태 결정(가드 포함): met → done(completed), 아니면 timeout. 일반 경로가 먼저 done을 기록했으면
 	// 가드(SetTaskStatusGuarded)가 덮어쓰기를 거부해 completed 의미를 지킨다.
 	status := "timeout"
 	if met {
@@ -246,7 +246,7 @@ func (e *Engine) runFinalPlannerRound(ctx context.Context, t *Task) (met bool) {
 		}
 		planner, _ = e.snapshotFor(t)
 	}
-	// 별도 ctx(execCancel 에 걸지 않아 pause·강제 cancel 이 이 마지막 회차를 끊지 않게 한다). Final 로 작업 시간 초과 프롬프트를 넣는다.
+	// 별도 ctx(execCancel에 걸지 않아 pause·강제 cancel이 이 마지막 회차를 끊지 않게 한다). Final로 작업 시간 초과 프롬프트를 넣는다.
 	fctx := e.clockCtx(ctx, t, true)
 	if !e.beginTaskOperation(t.ID) {
 		return false

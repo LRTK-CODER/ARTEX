@@ -54,7 +54,7 @@ func TestIsThinkingOnlyTurn(t *testing.T) {
 	}
 }
 
-// fakeHooks 는 값을 정할 수 있는 inner HookRunner 로, steerHooks 가 inner 의 결정을 따르는지 확인한다.
+// fakeHooks 는 값을 정할 수 있는 inner HookRunner로, steerHooks가 inner의 결정을 따르는지 확인한다.
 type fakeHooks struct {
 	prevent  bool
 	blocking []string
@@ -110,7 +110,7 @@ func TestSteerHooksStopNudgesEmptyTurn(t *testing.T) {
 		}
 	})
 
-	// '빈 응답 재시도 횟수'를 -1로 설정하면 이 단계가 꺼지고 emptyTurnNudgeLimit 는 0이 된다.
+	// '빈 응답 재시도 횟수'를 -1로 설정하면 이 단계가 꺼지고 emptyTurnNudgeLimit는 0이 된다.
 	t.Run("설정으로 끄면 개입하지 않는다", func(t *testing.T) {
 		h := steerHooks{nudges: &atomic.Int64{}, limit: 0}
 		if _, blocking, _ := h.Stop(context.Background(), empty); blocking != nil {
@@ -118,27 +118,27 @@ func TestSteerHooksStopNudgesEmptyTurn(t *testing.T) {
 		}
 	})
 
-	t.Run("inner 가 강제로 멈추면 겹치지 않는다", func(t *testing.T) {
-		h := steerHooks{inner: fakeHooks{prevent: true, msg: "guard 가 종료를 거부함"}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
+	t.Run("inner가 강제로 멈추면 겹치지 않는다", func(t *testing.T) {
+		h := steerHooks{inner: fakeHooks{prevent: true, msg: "guard가 종료를 거부함"}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
 		prevent, blocking, msg := h.Stop(context.Background(), empty)
-		if !prevent || msg != "guard 가 종료를 거부함" || blocking != nil {
-			t.Fatalf("inner 의 강제 멈춤이 바뀜: prevent=%v blocking=%v msg=%q", prevent, blocking, msg)
+		if !prevent || msg != "guard가 종료를 거부함" || blocking != nil {
+			t.Fatalf("inner의 강제 멈춤이 바뀜: prevent=%v blocking=%v msg=%q", prevent, blocking, msg)
 		}
 		if n := h.nudges.Load(); n != 0 {
-			t.Fatalf("inner 에 넘길 때 nudges = %d, 기대값 0", n)
+			t.Fatalf("inner에 넘길 때 nudges = %d, 기대값 0", n)
 		}
 	})
 
-	t.Run("inner 가 이미 이어 가게 하면 겹치지 않는다", func(t *testing.T) {
-		h := steerHooks{inner: fakeHooks{blocking: []string{"guard 의 이어 가기 이유"}}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
+	t.Run("inner가 이미 이어 가게 하면 겹치지 않는다", func(t *testing.T) {
+		h := steerHooks{inner: fakeHooks{blocking: []string{"guard의 이어 가기 이유"}}, nudges: &atomic.Int64{}, limit: defaultEmptyTurnNudges}
 		_, blocking, _ := h.Stop(context.Background(), empty)
-		if len(blocking) != 1 || blocking[0] != "guard 의 이어 가기 이유" {
-			t.Fatalf("inner 의 이어 가기 메시지가 바뀜: blocking = %v", blocking)
+		if len(blocking) != 1 || blocking[0] != "guard의 이어 가기 이유" {
+			t.Fatalf("inner의 이어 가기 메시지가 바뀜: blocking = %v", blocking)
 		}
 	})
 
 	t.Run("횟수 카운터가 없으면 동작이 그대로다", func(t *testing.T) {
-		h := steerHooks{limit: defaultEmptyTurnNudges} // 예: 앞으로 다른 호출 지점이 nudges 를 넘기지 않은 경우
+		h := steerHooks{limit: defaultEmptyTurnNudges} // 예: 앞으로 다른 호출 지점이 nudges를 넘기지 않은 경우
 		if _, blocking, _ := h.Stop(context.Background(), empty); blocking != nil {
 			t.Fatalf("카운터 없이 주입함: blocking = %v, 기대값 nil", blocking)
 		}

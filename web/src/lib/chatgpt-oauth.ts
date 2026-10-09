@@ -38,7 +38,7 @@ export const DEVICE_POLL_INTERVAL_MS = 3000;
 // 서버의 흐름은 살아 있으므로 잠깐의 끊김으로 사용자가 코드를 다시 받게 하지 않는다.
 export const MAX_POLL_RETRIES = 3;
 
-// errorCode 는 api.ts의 ApiError처럼 code를 실은 오류에서 code를 꺼낸다.
+// errorCode는 api.ts의 ApiError처럼 code를 실은 오류에서 code를 꺼낸다.
 export function errorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
@@ -54,13 +54,13 @@ export function loginErrorMessage(code: string | undefined, provider: "chatgpt" 
     : message;
 }
 
-// deviceFailureMessage 는 폴링이 끝난 상태(failed·expired)의 문구다. expired에는 code가 없을 수 있다.
+// deviceFailureMessage는 폴링이 끝난 상태(failed·expired)의 문구다. expired에는 code가 없을 수 있다.
 export function deviceFailureMessage(status: ChatGPTDeviceStatus, code: string | undefined): string {
   if (status === "expired") return LOGIN_ERROR_MESSAGES.flow_expired;
   return loginErrorMessage(code);
 }
 
-// shouldRetryPoll 은 폴링 오류 뒤 같은 흐름을 계속 기다릴지 정한다. failedAttempts는 이 오류를 포함한
+// shouldRetryPoll은 폴링 오류 뒤 같은 흐름을 계속 기다릴지 정한다. failedAttempts는 이 오류를 포함한
 // 연속 실패 수다. code가 있는 오류(flow_not_found 등)는 서버가 흐름을 끝낸 것이라 다시 시도하지 않는다.
 export function shouldRetryPoll(error: unknown, failedAttempts: number): boolean {
   return errorCode(error) === undefined && failedAttempts <= MAX_POLL_RETRIES;

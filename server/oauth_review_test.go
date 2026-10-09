@@ -49,7 +49,7 @@ func TestTaskResolutionChatGPTOAuth(t *testing.T) {
 }
 
 // TestOAuthTokensStayOnCodexHost 는 구독 토큰이 서버가 정한 Codex 주소로만 가는지 본다.
-// 요청의 base_url 과 DB 에 남은 BaseURL(예: API 키용 중계)이 다른 호스트를 가리켜도 그 호스트는
+// 요청의 base_url과 DB에 남은 BaseURL(예: API 키용 중계)이 다른 호스트를 가리켜도 그 호스트는
 // 요청을 하나도 받지 않아야 한다.
 func TestOAuthTokensStayOnCodexHost(t *testing.T) {
 	f := newOAuthFixture(t, nil)
@@ -63,7 +63,7 @@ func TestOAuthTokensStayOnCodexHost(t *testing.T) {
 	}))
 	defer other.Close()
 	f.s.codexBaseURL = codex.URL
-	// 저장 API 는 이제 BaseURL 을 비우므로 예전 행처럼 DB 에 직접 넣는다.
+	// 저장 API는 이제 BaseURL을 비우므로 예전 행처럼 DB에 직접 넣는다.
 	if _, err := f.pg.Exec(`UPDATE llm_profiles SET base_url=$1 WHERE id=$2`, other.URL, f.profile.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestOAuthTokensStayOnCodexHost(t *testing.T) {
 	}
 }
 
-// TestSaveProfileOAuthFixedRules 는 OAuth 로 저장하거나 바꾸면 BaseURL·API 키·힌트가 지워지고,
+// TestSaveProfileOAuthFixedRules 는 OAuth로 저장하거나 바꾸면 BaseURL·API 키·힌트가 지워지고,
 // auth_type 없이 수정해도 기존 OAuth 행에 같은 고정 규칙이 적용되는지 본다.
 func TestSaveProfileOAuthFixedRules(t *testing.T) {
 	f := newOAuthFixture(t, nil)
@@ -151,7 +151,7 @@ FROM llm_profiles WHERE id=$1`, id).Scan(&authType, &format, &baseURL, &apiKey, 
 func TestListProfilesWithoutRegistryShowsDisconnected(t *testing.T) {
 	f := newOAuthFixture(t, nil)
 	f.connect(t, time.Now().Add(time.Hour))
-	f.s.oauth = nil // oauth.key 를 쓰지 못해 레지스트리가 없는 서버
+	f.s.oauth = nil // oauth.key를 쓰지 못해 레지스트리가 없는 서버
 	var got struct {
 		Profiles []LLMProfileDTO `json:"profiles"`
 	}
@@ -186,8 +186,8 @@ func TestDeleteProfileForgetsTokenSource(t *testing.T) {
 	}
 }
 
-// TestOAuthRegistryConcurrentAccess 는 여러 goroutine 이 레지스트리를 함께 써도 같은 프로필에
-// TokenSource 가 하나만 남는지 본다. 경쟁 상태는 go test -race 가 잡는다.
+// TestOAuthRegistryConcurrentAccess 는 여러 goroutine이 레지스트리를 함께 써도 같은 프로필에
+// TokenSource가 하나만 남는지 본다. 경쟁 상태는 go test -race가 잡는다.
 func TestOAuthRegistryConcurrentAccess(t *testing.T) {
 	reg := newOAuthTokenRegistry(nil, nil, &llmauth.Client{})
 	loginErr := &llmauth.TokenError{Op: "refresh", StatusCode: http.StatusBadRequest, Code: llmauth.ErrorCodeInvalidGrant}

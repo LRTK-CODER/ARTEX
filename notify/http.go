@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// allowLocalTargets 는 루프백 / 링크 로컬 주소로 메시지 전달을 허용할지 정한다.
+// allowLocalTargets는 루프백 / 링크 로컬 주소로 메시지 전달을 허용할지 정한다.
 //
 // 기본값은 거부다. 이 주소 대역은 IM 봇이나 공인 메일 서버가 있을 곳이 아닌데, 여기로
 // 닿는 대상은 민감하다. 같은 기기의 다른 서비스 관리 포트와 클라우드 환경의 메타데이터 엔드포인트
@@ -29,7 +29,7 @@ import (
 // 일괄로 막으면 사람이 막힌다. 그래서 하드코딩으로 허용하지 않고 명시적인 탈출구를 남긴다.
 // ARTEX_NOTIFY_ALLOW_LOCAL=1로 설정하면 허용한다.
 //
-// AllowLocalTargetsEnv 로 내보내는 것은 테스트가 이것을 분명히 켤 수 있게 하려는 것이다. 이 패키지와 server 패키지의
+// AllowLocalTargetsEnv로 내보내는 것은 테스트가 이것을 분명히 켤 수 있게 하려는 것이다. 이 패키지와 server 패키지의
 // 테스트는 127.0.0.1의 httptest 가짜 수신 측을 많이 쓰므로, 켜지 않으면 모두 방어에 막힌다.
 const AllowLocalTargetsEnv = "ARTEX_NOTIFY_ALLOW_LOCAL"
 

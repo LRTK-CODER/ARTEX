@@ -207,8 +207,8 @@ func taskNodeDTO(n *db.Node) TaskNodeDTO {
 	return d
 }
 
-// GoalDTO 는 payload 를 text/vulnclass 로 풀어 둔 목표 노드다. 개요 탭 '목표 관리' UI가 쓰는
-// 형태다(TaskNodeDTO 는 payload JSON 원문을 그대로 담는다).
+// GoalDTO 는 payload를 text/vulnclass로 풀어 둔 목표 노드다. 개요 탭 '목표 관리' UI가 쓰는
+// 형태다(TaskNodeDTO는 payload JSON 원문을 그대로 담는다).
 type GoalDTO struct {
 	ID        string `json:"id"`
 	Text      string `json:"text"`
@@ -312,7 +312,7 @@ type FindingDTO struct {
 	ID        string `json:"id"`
 	FindingID string `json:"finding_id,omitempty"` // standalone findings-table id — the handle for status updates
 	VulnClass string `json:"vulnclass"`
-	Name      string `json:"name,omitempty"` // 취약점 이름. 비어 있으면 프런트엔드가 vulnclass 를 대신 보여 준다
+	Name      string `json:"name,omitempty"` // 취약점 이름. 비어 있으면 프런트엔드가 vulnclass를 대신 보여 준다
 	Severity  string `json:"severity"`       // critical | high | medium | low
 	Status    string `json:"status"`         // pending | in_progress | confirmed | resolved | fixed | false_positive | ignored | duplicate | risk_accepted
 	Summary   string `json:"summary"`
@@ -397,10 +397,10 @@ func findingDTO(n *db.Node) FindingDTO {
 	return d
 }
 
-// findingDTOsForTask 는 작업의 발견 사항 노드를 DTO 로 바꾸고, 전역 발견 사항 화면이 작업을 넘어
-// 묶을 수 있게 소속 작업의 id·설명을 붙인다. meta 는 노드 id → 따로 있는 findings 행(id + 상태 +
+// findingDTOsForTask 는 작업의 발견 사항 노드를 DTO로 바꾸고, 전역 발견 사항 화면이 작업을 넘어
+// 묶을 수 있게 소속 작업의 id·설명을 붙인다. meta는 노드 id → 따로 있는 findings 행(id + 상태 +
 // 자산 id)이라, 작업별 보기도 전역 화면과 같은 처리 상태와 연결 자산을 보여 준다. 행이 없는 노드는
-// 기본값 'pending'으로 남고 finding_id 가 없다(수정할 수 없다). assets 는 라벨을 그리려고 연결
+// 기본값 'pending'으로 남고 finding_id가 없다(수정할 수 없다). assets는 라벨을 그리려고 연결
 // 자산 행을 미리 찾아 둔 것이다.
 func findingDTOsForTask(t *Task, in []*db.Node, meta map[int64]db.FindingMeta, assets map[int64]*db.Asset) []FindingDTO {
 	return findingDTOsForOwner(t.ID, t.Description, in, meta, assets)
@@ -598,11 +598,11 @@ type LLMProfileDTO struct {
 	ThinkingType    string  `json:"thinking_type"`
 	ReasoningEffort string  `json:"reasoning_effort"`
 	IsDefault       bool    `json:"is_default"`
-	// 장애 조치 파라미터. priority 가 클수록 먼저 고른다(활성 프로필은 늘 체인 맨 앞이다).
+	// 장애 조치 파라미터. priority가 클수록 먼저 고른다(활성 프로필은 늘 체인 맨 앞이다).
 	// pool_exclude=true 면 장애 조치 대상에서 빠지지만, 에이전트·작업에 직접 연결할 수는 있다.
 	Priority    int  `json:"priority"`
 	PoolExclude bool `json:"pool_exclude"`
-	// 송수신 방식: true=스트리밍(SSE) | false=비스트리밍. omitempty 가 없다. false 가 응답에
+	// 송수신 방식: true=스트리밍(SSE) | false=비스트리밍. omitempty가 없다. false가 응답에
 	// 꼭 있어야 프런트엔드가 '비스트리밍'을 읽고, 없으면 스위치가 기본값인 스트리밍으로 돌아간다.
 	Streaming bool `json:"streaming"`
 	// 응답 한 번의 출력 최대 토큰(0=보내지 않음, 서버 기본값을 따른다)과 그 값을 담을 요청 필드 이름
@@ -617,13 +617,13 @@ type LLMProfileDTO struct {
 	// 0=전역 정책 상속 | -1=이 단계 재시도 끄기 | >0=횟수. interval_ms: 0=기본 지수 백오프 |
 	// >0=이 고정 밀리초 간격 사용. 모두 0이면 전역을 그대로 따른다(이전 동작).
 	Retry db.RetryOverride `json:"retry"`
-	// AuthType은 API 키·ChatGPT 구독·Claude 구독 인증 방식이다.
+	// AuthType 은 API 키·ChatGPT 구독·Claude 구독 인증 방식이다.
 	AuthType db.AuthType `json:"auth_type"`
-	// OAuth는 구독 프로필의 연결 상태다. API 키 방식이면 빠진다. 토큰은 싣지 않는다.
+	// OAuth 는 구독 프로필의 연결 상태다. API 키 방식이면 빠진다. 토큰은 싣지 않는다.
 	OAuth *LLMProfileOAuthDTO `json:"oauth,omitempty"`
 }
 
-// LLMProfileOAuthDTO는 화면에 보일 구독 연결 상태다.
+// LLMProfileOAuthDTO 는 화면에 보일 구독 연결 상태다.
 type LLMProfileOAuthDTO struct {
 	Connected bool      `json:"connected"`
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
@@ -634,7 +634,7 @@ type LLMProfileOAuthDTO struct {
 	Plan string `json:"plan,omitempty"`
 }
 
-// llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth 가 nil 이면(oauth.key 를 쓰지 못함) 저장된
+// llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth가 nil 이면(oauth.key를 쓰지 못함) 저장된
 // 자격 증명을 풀 수 없으므로 연결되지 않은 것으로 보인다.
 func llmProfileDTO(p *db.LLMProfile, oauth *oauthTokenRegistry) LLMProfileDTO {
 	var state *LLMProfileOAuthDTO

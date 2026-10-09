@@ -58,7 +58,7 @@ type NotificationChannel struct {
 	Mode   string          `json:"mode"`
 	Config json.RawMessage `json:"config"`
 	Filter json.RawMessage `json:"filter"`
-	// Enabled를 포인터로 두는 것은 '필드를 보내지 않음'과 '명시적으로 false를 보냄'을
+	// Enabled 를 포인터로 두는 것은 '필드를 보내지 않음'과 '명시적으로 false를 보냄'을
 	// 구분하기 위해서다. 프런트엔드 토글은 바뀐 필드만 제출한다.
 	Enabled    *bool     `json:"enabled,omitempty"`
 	RatePerMin int       `json:"rate_per_min"`

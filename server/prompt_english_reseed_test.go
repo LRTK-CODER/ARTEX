@@ -10,7 +10,7 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// promptVersionCount 는 한 agent 의 agent_prompts 버전 개수를 센다. 마이그레이션이 새
+// promptVersionCount 는 한 agent의 agent_prompts 버전 개수를 센다. 마이그레이션이 새
 // 버전을 추가했는지(기본값 행), 또는 건드리지 않았는지(사용자 수정 행)를 확인하는 데 쓴다.
 func promptVersionCount(t *testing.T, pg *db.DB, agentID int64) int {
 	t.Helper()
@@ -21,8 +21,8 @@ func promptVersionCount(t *testing.T, pg *db.DB, agentID int64) int {
 	return n
 }
 
-// seedTestAgent 는 고유 키의 테스트용 agent 를 만들고 active 프롬프트를 body 로 씨앗으로 넣는다.
-// 끝나면 그 agent 와 프롬프트 행을 지운다.
+// seedTestAgent 는 고유 키의 테스트용 agent를 만들고 active 프롬프트를 body로 씨앗으로 넣는다.
+// 끝나면 그 agent와 프롬프트 행을 지운다.
 func seedTestAgent(t *testing.T, pg *db.DB, key, body string) *db.Agent {
 	t.Helper()
 	a, err := pg.CreateAgent(key, key, "")
@@ -61,7 +61,7 @@ func TestMigratePromptsToEnglish(t *testing.T) {
 	// (2) 사용자가 고친 행(중국어 기본값과 다름).
 	const editedBody = "my own custom worker prompt, do not touch"
 	editedAgent := seedTestAgent(t, pg, fmt.Sprintf("t102edit_%d", uniq), editedBody)
-	// (3) 사용자 지정 대화 agent 의 기본값(assistant) 그대로인 행.
+	// (3) 사용자 지정 대화 agent의 기본값(assistant) 그대로인 행.
 	assistantAgent := seedTestAgent(t, pg, fmt.Sprintf("t102asst_%d", uniq), legacyAssistantZH)
 
 	defVersions := promptVersionCount(t, pg, defaultAgent.ID)

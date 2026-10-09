@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// chatUploadRequest 는 scope=session 채팅 첨부 요청을 만든다. 파일 이름은 report.txt 로 고정한다.
+// chatUploadRequest 는 scope=session 채팅 첨부 요청을 만든다. 파일 이름은 report.txt로 고정한다.
 func chatUploadRequest(t *testing.T, id, content string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer

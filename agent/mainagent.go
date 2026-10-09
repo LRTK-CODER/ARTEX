@@ -82,7 +82,7 @@ func (m *MainAgent) SetWebSearch(o WebSearchOpts) { m.webSearch = o }
 func (m *MainAgent) SetSteerWork(fn func(intentID int64, msg string) error) { m.steerWork = fn }
 
 // mainAgentDefaultTmpl 은 메인 agent 프롬프트의 내장 편집 가능 본문(섹션 [A])이며
-// agent_prompts 에 씨앗으로 들어간다. Goal 은 {{.Goal}} 템플릿 변수이고, 중간 산출물
+// agent_prompts에 씨앗으로 들어간다. Goal은 {{.Goal}} 템플릿 변수이고, 중간 산출물
 // 출력 규약 꼬리(artifactSpec)는 코드 소유로 렌더링 뒤에 붙는다.
 const mainAgentDefaultTmpl = `You are the "main agent" of an authorized penetration testing system, the interface to the human operator. You do not explore yourself and do not autonomously generate intents in sequence (that is the planner's job). Your responsibilities:
 
@@ -118,12 +118,12 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	tsx.SetTaskID(taskID)
 	tsx.SetCoverageEnabled(as == nil || as.CoverageEnabled(taskID))
 	tsx.SetNotify(notify)         // 범용 깨우기(전용 콜백이 없는 쓰기 작업이 이걸 탄다. 디바운스됨)
-	tsx.SetResumeTask(resume)     // set_goals 목표 추가 → 완료/일시 중지된 작업을 running 으로 되돌린다
-	tsx.SetNotifyGoal(notifyGoal) // set_goals 목표 추가 → planner 에 "사람이 목표를 추가함: …" 트리거를 하나 기록한다
-	tsx.SetNotifyHint(notifyHint) // add_hint 힌트 추가 → planner 에 "사람이 전략 힌트 N개를 추가함: …" 트리거를 하나 기록한다
+	tsx.SetResumeTask(resume)     // set_goals 목표 추가 → 완료/일시 중지된 작업을 running으로 되돌린다
+	tsx.SetNotifyGoal(notifyGoal) // set_goals 목표 추가 → planner에 "사람이 목표를 추가함: …" 트리거를 하나 기록한다
+	tsx.SetNotifyHint(notifyHint) // add_hint 힌트 추가 → planner에 "사람이 전략 힌트 N개를 추가함: …" 트리거를 하나 기록한다
 	tsx.steerWork = m.steerWork   // enable steer_work tool (nil = unavailable)
 	// 도메인 도구 + 기본 도구 집합(Read/Write/Edit/MultiEdit/LS/Glob/Grep/Bash).
-	// 자산 커버리지 기능이 꺼져 있으면 add_task_scope/list_untested_assets 를 뺀다(프롬프트에 넣지 않는다).
+	// 자산 커버리지 기능이 꺼져 있으면 add_task_scope/list_untested_assets를 뺀다(프롬프트에 넣지 않는다).
 	base := append(tsx.DropCoverageTools(tsx.MainAgentTools()), actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
@@ -140,11 +140,11 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA 를 실어 MITM 이 재서명한 HTTPS 인증서를 검증한다
+		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA를 실어 MITM이 재서명한 HTTPS 인증서를 검증한다
 		WebFetchProxy:   m.proxyAddr,
 		WebFetchCACert:  m.proxyCACert,
-		// 웹 검색(선택). ddgs 는 키가 필요 없다. brave-free 는 BraveKey, tavily 는 TavilyKey 가 필요하다.
-		// WebSearchProxy 는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
+		// 웹 검색(선택). ddgs는 키가 필요 없다. brave-free는 BraveKey, tavily는 TavilyKey가 필요하다.
+		// WebSearchProxy는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
 		EnableWebSearch:       m.webSearch.Enabled,
 		WebSearchBackend:      m.webSearch.Backend,
 		BraveSearchAPIKey:     m.webSearch.BraveKey,
@@ -153,16 +153,16 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		DeepSeekSearchAPIKey:  m.webSearch.DeepSeekAPIKey,
 		DeepSeekSearchModel:   m.webSearch.DeepSeekModel,
 		WebSearchProxy:        m.webSearch.Proxy,
-		BashEnv:               proxyEnv(m.proxyAddr, m.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA 를 탄다
+		BashEnv:               proxyEnv(m.proxyAddr, m.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
 		WorkingDir:            mainDir,                              // 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID>
 		ToolOutputDir:         cmdOutDir(mainDir),
 		MaxTurns:              m.maxTurns,                             // 0 = unlimited (configurable in agent management)
 		Compaction:            compactionConfig(m.compactionWindow()), // long chats stay within the window
 		Todos:                 actool.NewTodoStore(),                  // 세션 단위 임시 할 일(TodoWrite). 순수 계획용이며 나가면 버려진다
-		// 단계 한도에 걸리면 → SDK 가 마무리를 돈다: 사용자에게 진행 요약 한 줄을 낸다. 프롬프트와
+		// 단계 한도에 걸리면 → SDK가 마무리를 돈다: 사용자에게 진행 요약 한 줄을 낸다. 프롬프트와
 		// 마무리 회합 수는 백오피스에서 편집할 수 있다(기본 10회).
 		Settlement:   wrapupSettlement("mainagent", nil),
-		NonStreaming: m.nonStreaming(), // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		NonStreaming: m.nonStreaming(), // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다
 		MaxTokens:    m.maxTokens(),    // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}
 	if m.tx != nil { // persist raw human↔AI conversation; one accumulating file per segment
@@ -174,8 +174,8 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 			opts.SessionID = fmt.Sprintf("exp%d-main-s%d", ts.ID(), mainSeg)
 		}
 	}
-	// 실험 기능: 켜면 noa 가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
-	// session id 는 transcript 와 같은 규칙(분할 인식)이라 아카이브와 복원이 맞물린다.
+	// 실험 기능: 켜면 noa가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
+	// session id는 transcript와 같은 규칙(분할 인식)이라 아카이브와 복원이 맞물린다.
 	noaSession := fmt.Sprintf("exp%d-main", ts.ID())
 	if mainSeg > 0 {
 		noaSession = fmt.Sprintf("exp%d-main-s%d", ts.ID(), mainSeg)

@@ -132,11 +132,11 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeferredTools:   def.Deferred,
 		UnlockSet:       def.Unlock,
 		PermissionMode:  permission.ModeBypass,
-		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA 를 실어 MITM 이 재서명한 HTTPS 인증서를 검증한다
+		EnableWebFetch:  true, // 기록 프록시를 타 흔적을 남긴다. 프록시 CA를 실어 MITM이 재서명한 HTTPS 인증서를 검증한다
 		WebFetchProxy:   c.proxyAddr,
 		WebFetchCACert:  c.proxyCACert,
-		// 웹 검색(선택). ddgs 는 키가 필요 없다. brave-free 는 BraveKey, tavily 는 TavilyKey 가 필요하다.
-		// WebSearchProxy 는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
+		// 웹 검색(선택). ddgs는 키가 필요 없다. brave-free는 BraveKey, tavily는 TavilyKey가 필요하다.
+		// WebSearchProxy는 독립 출구 프록시(http/https/socks5)로, 트래픽을 기록하는 MITM 프록시와 무관하다. 비우면 직접 연결한다.
 		EnableWebSearch:       ws.Enabled,
 		WebSearchBackend:      ws.Backend,
 		BraveSearchAPIKey:     ws.BraveKey,
@@ -145,19 +145,19 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeepSeekSearchAPIKey:  ws.DeepSeekAPIKey,
 		DeepSeekSearchModel:   ws.DeepSeekModel,
 		WebSearchProxy:        ws.Proxy,
-		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA 를 탄다
+		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
 		WorkingDir:            sessionWorkDir,
 		MaxTurns:              maxTurns,
 		MaxDuration:           maxDuration,
 		Compaction:            compactionConfig(c.window),
 		Todos:                 actool.NewTodoStore(),
 		// large tool output spills to cmd-output/ under the session dir.
-		// 잘림 상한은 SDK 기본값(tool.Capture 의 30000자)을 쓴다.
+		// 잘림 상한은 SDK 기본값(tool.Capture의 30000자)을 쓴다.
 		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
-		// 단계 한도에 걸리면 → SDK 가 마무리를 돈다: 요약 한 줄을 낸다. 프롬프트와 마무리 회합 수는 이 agent key 기준으로
-		// 백오피스에서 편집할 수 있다(사용자 지정 agent 는 각자 한 벌. 비우거나 0 이면 범용 기본값 10회).
+		// 단계 한도에 걸리면 → SDK가 마무리를 돈다: 요약 한 줄을 낸다. 프롬프트와 마무리 회합 수는 이 agent key 기준으로
+		// 백오피스에서 편집할 수 있다(사용자 지정 agent는 각자 한 벌. 비우거나 0 이면 범용 기본값 10회).
 		Settlement:   wrapupSettlement(agentKey, nil),
-		NonStreaming: c.nonStreaming(), // 이 profile 이 비스트리밍을 고르면 Provider.Complete 로 간다
+		NonStreaming: c.nonStreaming(), // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다
 		MaxTokens:    c.maxTokens(),    // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다
 	}
 	if c.guard != nil {
@@ -167,7 +167,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		opts.Transcript = c.tx
 		opts.SessionID = sessionID
 	}
-	// 실험 기능: 켜면 noa 가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
+	// 실험 기능: 켜면 noa가 컨텍스트 압축을 맡는다(아카이브는 <workDir>/noa/<SessionID> 아래에 모이며 영속한다).
 	enableNoa(&opts, c.noaEnabledFn, c.workDir, "chat-"+sessionID, noaWarn("chat-"+sessionID))
 	ctx = attachSideCapture(ctx, &opts)
 	s := agentcore.NewSession(opts)

@@ -10,7 +10,7 @@ import (
 	"github.com/Autumn-27/artex/selfupdate"
 )
 
-// releaseCache 는 GitHub 사용 한도를 지키는 계층이다. 인증하지 않은 API는 IP당 시간당 60회뿐인데,
+// releaseCache는 GitHub 사용 한도를 지키는 계층이다. 인증하지 않은 API는 IP당 시간당 60회뿐인데,
 // 상단 막대의 '새 버전 있음' 안내는 페이지를 새로 불러올 때마다 조회한다. 캐시가 듣지 않으면 탭을
 // 몇 개만 열어도 한도를 다 써서, 정작 업데이트하려 할 때 조회하지 못한다.
 

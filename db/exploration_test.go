@@ -248,7 +248,7 @@ func TestIntentPauseResumeAndCancelCleanup(t *testing.T) {
 }
 
 // TestNodesPageQueryMatchesID 는 활동 피드 검색이 payload/origin 뿐 아니라 노드 id 로도
-// (숫자만, 그리고 UI 가 보여 주는 '#id' 형태 모두) 거르는지 본다.
+// (숫자만, 그리고 UI가 보여 주는 '#id' 형태 모두) 거르는지 본다.
 func TestNodesPageQueryMatchesID(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {

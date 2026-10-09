@@ -110,7 +110,7 @@ import type {
   WorkspaceListing,
 } from "@/lib/types";
 
-// ApiError 는 서버 오류 응답이다. 화면 문구를 서버 문구 대신 code로 고르는 곳(ChatGPT 로그인)이 쓴다.
+// ApiError는 서버 오류 응답이다. 화면 문구를 서버 문구 대신 code로 고르는 곳(ChatGPT 로그인)이 쓴다.
 // code가 없는 오류(예: DB 미연결 503)도 있으므로 code는 선택이다.
 export class ApiError extends Error {
   constructor(

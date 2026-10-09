@@ -101,7 +101,7 @@ func (s *AssetStore) upsertTaskScope(ts TaskScope) error {
 	return err
 }
 
-// AddAutoScope는 명시적으로 넣은 자산 항목 "하나"가 뜻하는 보수적인 작업 범위를
+// AddAutoScope 는 명시적으로 넣은 자산 항목 "하나"가 뜻하는 보수적인 작업 범위를
 // 기록한다(source='auto'). 반드시 insertAssets의 최상위 반복에서만 부른다. db 층의 부수
 // 효과(linkHostAssets)에서는 부르지 않으므로 파생 자산이 범위를 함부로 넓히지 않는다.
 // 규칙: 범위의 단위는 자산 자신의 유형을 따른다. taskID<=0이면 아무것도 하지 않는다.

@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// emailDialTimeout / emailSessionTimeout 은 각각 연결 수립과 SMTP 세션 전체를 제한한다.
+// emailDialTimeout / emailSessionTimeout은 각각 연결 수립과 SMTP 세션 전체를 제한한다.
 // net/smtp 자체에는 시간 초과 장치가 전혀 없어서, 이 둘을 두지 않으면 멈춘 상대 하나가
 // 전달 goroutine을 영원히 붙잡는다. dispatcher는 goroutine 하나로 차례로 처리하므로,
 // 알림 시스템 전체가 멈추는 것과 같다.

@@ -86,11 +86,11 @@ func (c *Compactor) OnPlannerRound(ctx context.Context, ts *db.ExplorationStore)
 		defer c.finish(ts.ID())
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.maxDur)
 		defer cancel()
-		// 압축은 벌거벗은 provider 호출이다(compress 안에서 바로 prov.Complete). agentcore 의
-		// 세션 루프를 거치지 않으므로 ctx 에 session id 가 없다. session-id 헤더로 프롬프트 캐시/고정
-		// 라우팅을 하는 게이트웨이(opencode zen 은 x-opencode-session 이 없으면 바로 400)는 그 헤더를
-		// 받지 못한다. 여기서 탐색 기준의 안정적인 id 를 보태 준다: 같은 탐색의 모든 압축 요청이 그것을
-		// 공유해 헤더를 실을 수 있고, llmrec 이 이 호출의 token 을 그 탐색에 귀속할 수 있다(전에는 기록하지 못했다).
+		// 압축은 벌거벗은 provider 호출이다(compress 안에서 바로 prov.Complete). agentcore의
+		// 세션 루프를 거치지 않으므로 ctx에 session id가 없다. session-id 헤더로 프롬프트 캐시/고정
+		// 라우팅을 하는 게이트웨이(opencode zen은 x-opencode-session이 없으면 바로 400)는 그 헤더를
+		// 받지 못한다. 여기서 탐색 기준의 안정적인 id를 보태 준다: 같은 탐색의 모든 압축 요청이 그것을
+		// 공유해 헤더를 실을 수 있고, llmrec이 이 호출의 token을 그 탐색에 귀속할 수 있다(전에는 기록하지 못했다).
 		bg = transcript.WithSessionID(bg, fmt.Sprintf("exp%d-compactor", ts.ID()))
 		if needMajor {
 			c.major(bg, ts)

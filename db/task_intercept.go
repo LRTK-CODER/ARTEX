@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// TaskInterceptRuleInput은 작업을 만들 때 받는 작업 단위 규칙 하나다.
+// TaskInterceptRuleInput 은 작업을 만들 때 받는 작업 단위 규칙 하나다.
 // Action: 'block'=차단, 'allow'=허용(허용 목록). 비면 'block'으로 본다.
 type TaskInterceptRuleInput struct {
 	Enabled bool   `json:"enabled"`

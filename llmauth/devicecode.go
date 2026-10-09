@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	// deviceCodeTimeout 은 사용자가 코드를 입력하기를 기다리는 상한이다. Codex CLI 와 같다.
+	// deviceCodeTimeout 은 사용자가 코드를 입력하기를 기다리는 상한이다. Codex CLI와 같다.
 	deviceCodeTimeout = 15 * time.Minute
-	// defaultPollInterval 은 서버가 interval 을 주지 않을 때의 폴링 간격이다.
+	// defaultPollInterval 은 서버가 interval을 주지 않을 때의 폴링 간격이다.
 	defaultPollInterval = 5 * time.Second
 )
 
@@ -26,7 +26,7 @@ var (
 	ErrDeviceCodeTimeout = errors.New("llmauth: device code login timed out")
 )
 
-// DeviceCode 는 디바이스 코드 로그인을 시작한 결과다. 사용자에게 VerificationURL 과 UserCode 를 보여 준다.
+// DeviceCode 는 디바이스 코드 로그인을 시작한 결과다. 사용자에게 VerificationURL과 UserCode를 보여 준다.
 type DeviceCode struct {
 	DeviceAuthID    string
 	UserCode        string
@@ -36,7 +36,7 @@ type DeviceCode struct {
 }
 
 // StartDeviceCode 는 디바이스 코드 로그인을 시작한다.
-// 서버가 404 를 돌려주면 ErrDeviceCodeDisabled 를 올린다.
+// 서버가 404를 돌려주면 ErrDeviceCodeDisabled를 올린다.
 func (c *Client) StartDeviceCode(ctx context.Context) (DeviceCode, error) {
 	const op = "start device code"
 	payload, err := json.Marshal(map[string]string{"client_id": ClientID})
@@ -56,9 +56,9 @@ func (c *Client) StartDeviceCode(ctx context.Context) (DeviceCode, error) {
 	var body struct {
 		DeviceAuthID string `json:"device_auth_id"`
 		UserCode     string `json:"user_code"`
-		// 서버에 따라 user_code 대신 usercode 를 쓴다.
+		// 서버에 따라 user_code 대신 usercode를 쓴다.
 		UserCodeAlt string `json:"usercode"`
-		// 서버는 interval 을 "5" 같은 문자열로 준다. 숫자도 받는다.
+		// 서버는 interval을 "5" 같은 문자열로 준다. 숫자도 받는다.
 		Interval json.RawMessage `json:"interval"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
@@ -101,7 +101,7 @@ func parseInterval(raw json.RawMessage) (time.Duration, error) {
 }
 
 // WaitDeviceCode 는 사용자가 코드를 입력할 때까지 폴링한 뒤 토큰으로 교환한다.
-// 서버의 403·404 는 아직 입력 전이라는 뜻이라 기다린다. 15분이 지나면 ErrDeviceCodeTimeout 을 올린다.
+// 서버의 403·404는 아직 입력 전이라는 뜻이라 기다린다. 15분이 지나면 ErrDeviceCodeTimeout을 올린다.
 func (c *Client) WaitDeviceCode(ctx context.Context, dc DeviceCode) (Tokens, error) {
 	const op = "poll device code"
 	payload, err := json.Marshal(map[string]string{
@@ -113,7 +113,7 @@ func (c *Client) WaitDeviceCode(ctx context.Context, dc DeviceCode) (Tokens, err
 	}
 	interval := dc.Interval
 	if interval <= 0 {
-		// 호출자가 DeviceCode 를 직접 만들어 간격을 비우면 쉬지 않고 폴링하게 된다.
+		// 호출자가 DeviceCode를 직접 만들어 간격을 비우면 쉬지 않고 폴링하게 된다.
 		interval = defaultPollInterval
 	}
 	deadline := c.clock().Add(deviceCodeTimeout)

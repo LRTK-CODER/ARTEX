@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// refreshBefore 는 만료 몇 분 전부터 미리 갱신할지다. Codex CLI 와 같다.
+	// refreshBefore 는 만료 몇 분 전부터 미리 갱신할지다. Codex CLI와 같다.
 	refreshBefore = 5 * time.Minute
-	// refreshTimeout 은 갱신과 저장 한 번에 주는 상한이다. 호출자 ctx 와 떼어 놓으므로 따로 둔다.
+	// refreshTimeout 은 갱신과 저장 한 번에 주는 상한이다. 호출자 ctx와 떼어 놓으므로 따로 둔다.
 	refreshTimeout = 30 * time.Second
 )
 
@@ -22,26 +22,26 @@ var ErrNoTokens = errors.New("llmauth: no stored tokens")
 // Store 는 토큰을 영속하는 곳이다. refresh 토큰은 갱신마다 회전하므로, 갱신과 저장을
 // 저장소의 잠금 안에서 함께 해야 여러 TokenSource·프로세스가 서로의 회전을 깨지 않는다.
 type Store interface {
-	// Load 는 저장된 토큰을 읽는다. 없으면 ErrNoTokens 를 감싸 올린다.
+	// Load 는 저장된 토큰을 읽는다. 없으면 ErrNoTokens를 감싸 올린다.
 	Load(ctx context.Context) (Tokens, error)
-	// Refresh 는 저장된 토큰을 잠그고 다시 읽는다. 저장된 access token 이 staleAccessToken 과
-	// 다르면 다른 쪽이 이미 갱신한 것이므로 refresh 를 부르지 않고 그 토큰을 돌려준다.
-	// 같으면 refresh 를 불러 받은 토큰을 같은 잠금 안에서 저장하고 돌려준다.
-	// refresh 나 저장이 실패하면 아무것도 저장하지 않고 오류를 올린다(refresh 의 오류는 감싸 올린다).
+	// Refresh 는 저장된 토큰을 잠그고 다시 읽는다. 저장된 access token이 staleAccessToken과
+	// 다르면 다른 쪽이 이미 갱신한 것이므로 refresh를 부르지 않고 그 토큰을 돌려준다.
+	// 같으면 refresh를 불러 받은 토큰을 같은 잠금 안에서 저장하고 돌려준다.
+	// refresh 나 저장이 실패하면 아무것도 저장하지 않고 오류를 올린다(refresh의 오류는 감싸 올린다).
 	Refresh(ctx context.Context, staleAccessToken string, refresh func(ctx context.Context, current Tokens) (Tokens, error)) (Tokens, error)
 }
 
 // TokenSource 는 구독 백엔드 호출에 쓸 access token을 건넨다. 만료 5분 전이면 갱신하고,
-// 같은 TokenSource 를 여러 goroutine 이 불러도 갱신은 한 번에 하나만 한다.
-// 토큰을 담고 있으므로 fmt 로 출력해도 내용은 보이지 않는다(String).
+// 같은 TokenSource를 여러 goroutine이 불러도 갱신은 한 번에 하나만 한다.
+// 토큰을 담고 있으므로 fmt로 출력해도 내용은 보이지 않는다(String).
 type TokenSource struct {
 	revoked atomic.Bool
 	client  TokenRefresher
 	store   Store
 	now     func() time.Time
 
-	// lock 은 크기 1 채널이다. sync.Mutex 와 달리 기다리는 쪽이 ctx 취소로 빠질 수 있다.
-	// 아래 필드는 lock 을 잡고서만 읽고 쓴다.
+	// lock 은 크기 1 채널이다. sync.Mutex와 달리 기다리는 쪽이 ctx 취소로 빠질 수 있다.
+	// 아래 필드는 lock을 잡고서만 읽고 쓴다.
 	lock      chan struct{}
 	tokens    Tokens
 	hasTokens bool
@@ -51,18 +51,18 @@ type TokenSource struct {
 	hasPending bool
 	// loginErr 는 다시 로그인해야 하는 갱신 오류다. 저장된 토큰이 바뀔 때까지 서버를 다시 부르지 않는다.
 	loginErr error
-	// mustRefresh 는 Invalidate 로 요청된 갱신을 끝내지 못했다는 표시다. 다음 호출이 다시 갱신한다.
+	// mustRefresh 는 Invalidate로 요청된 갱신을 끝내지 못했다는 표시다. 다음 호출이 다시 갱신한다.
 	mustRefresh bool
 
-	// rejectedMu 는 rejected 를 지킨다. Invalidate 는 lock 을 기다리지 않아야 하므로 따로 둔다.
+	// rejectedMu 는 rejected를 지킨다. Invalidate는 lock을 기다리지 않아야 하므로 따로 둔다.
 	rejectedMu sync.Mutex
-	// rejected 는 백엔드가 거부해 Invalidate 로 넘어온 access token 이다. 다음 Token 이 지금 토큰과
+	// rejected 는 백엔드가 거부해 Invalidate로 넘어온 access token 이다. 다음 Token이 지금 토큰과
 	// 견주고 비운다. 이미 갱신돼 지난 토큰이면 다시 갱신하지 않는다.
 	rejected map[string]struct{}
 }
 
-// NewTokenSource 는 store 의 토큰을 client 로 갱신하는 TokenSource 를 만든다.
-// now 가 nil 이면 time.Now 를 쓴다.
+// NewTokenSource 는 store의 토큰을 client로 갱신하는 TokenSource를 만든다.
+// now가 nil 이면 time.Now를 쓴다.
 func NewTokenSource(client TokenRefresher, store Store, now func() time.Time) *TokenSource {
 	if now == nil {
 		now = time.Now
@@ -76,9 +76,9 @@ func (s *TokenSource) String() string { return "llmauth.TokenSource{...}" }
 // GoString 은 %#v 에서도 토큰 원문을 숨긴다.
 func (s *TokenSource) GoString() string { return s.String() }
 
-// Token 은 유효한 access token 과 계정 ID 를 돌려준다.
-// 저장소에 토큰이 없으면 ErrNoTokens, 갱신이 거절되면 *TokenError 를 올린다.
-// 갱신과 저장은 호출자 ctx 의 취소와 떼어 최대 30초 동안 끝까지 한다. 회전된 토큰을 저장하기 전에
+// Token 은 유효한 access token과 계정 ID를 돌려준다.
+// 저장소에 토큰이 없으면 ErrNoTokens, 갱신이 거절되면 *TokenError를 올린다.
+// 갱신과 저장은 호출자 ctx의 취소와 떼어 최대 30초 동안 끝까지 한다. 회전된 토큰을 저장하기 전에
 // 멈추면 저장소의 refresh 토큰이 무효가 되기 때문이다. 그동안 호출자는 기다린다.
 // 갱신은 됐지만 저장이 실패하면 오류를 올리고, 다음 호출이 저장을 다시 시도한다.
 func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string, err error) {
@@ -119,7 +119,7 @@ func (s *TokenSource) Token(ctx context.Context) (accessToken, accountID string,
 // 갱신 중의 저장은 끝까지 마치되 이후 Token 호출에는 자격 증명을 돌려주지 않는다.
 func (s *TokenSource) Revoke() { s.revoked.Store(true) }
 
-// Invalidate 는 staleAccessToken 이 지금 토큰이면 다음 Token 호출이 갱신하게 한다.
+// Invalidate 는 staleAccessToken이 지금 토큰이면 다음 Token 호출이 갱신하게 한다.
 // 구독 백엔드가 그 토큰에 401을 돌려줄 때 부른다. 여러 요청이 같은 옛 토큰으로 401을 받아도
 // 갱신은 한 번만 한다. 이미 갱신돼 지난 토큰이면 아무것도 하지 않는다.
 func (s *TokenSource) Invalidate(staleAccessToken string) {
@@ -131,8 +131,8 @@ func (s *TokenSource) Invalidate(staleAccessToken string) {
 	s.rejected[staleAccessToken] = struct{}{}
 }
 
-// takeRejected 는 current 가 거부된 토큰인지 알려 주고 기록을 비운다. 남은 기록은 모두 current 보다
-// 앞선 토큰이라 다시 볼 일이 없다. lock 을 잡고 부른다.
+// takeRejected 는 current가 거부된 토큰인지 알려 주고 기록을 비운다. 남은 기록은 모두 current 보다
+// 앞선 토큰이라 다시 볼 일이 없다. lock을 잡고 부른다.
 func (s *TokenSource) takeRejected(current string) bool {
 	s.rejectedMu.Lock()
 	defer s.rejectedMu.Unlock()
@@ -178,7 +178,7 @@ func (s *TokenSource) refresh(ctx context.Context) error {
 	return nil
 }
 
-// rotate 는 Store.Refresh 가 잠금 안에서 부르는 갱신 함수다. 지난번에 회전만 하고 저장하지 못한
+// rotate 는 Store.Refresh가 잠금 안에서 부르는 갱신 함수다. 지난번에 회전만 하고 저장하지 못한
 // 토큰이 있으면 서버를 다시 부르지 않고 그것을 돌려준다.
 func (s *TokenSource) rotate(ctx context.Context, current Tokens) (Tokens, error) {
 	if s.hasPending {

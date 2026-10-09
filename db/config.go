@@ -25,10 +25,10 @@ type LLMProfile struct {
 	// ContextWindowK is the model's context window in K tokens, used to size
 	// compaction thresholds. 0 = use a 200K default; capped at 1000 (1M).
 	ContextWindowK int `json:"context_window_k"`
-	// ThinkingType은 사고 '켜기·끄기'(thinking.type)를 따로 정한다: "" = 보내지 않음(기본값),
+	// ThinkingType 은 사고 '켜기·끄기'(thinking.type)를 따로 정한다: "" = 보내지 않음(기본값),
 	// "disabled" = 명시적으로 끔, "enabled" = 켬. ReasoningEffort와 독립이다.
 	ThinkingType string `json:"thinking_type"`
-	// ReasoningEffort는 사고 '강도'를 따로 정한다: "" = 보내지 않음(기본값),
+	// ReasoningEffort 는 사고 '강도'를 따로 정한다: "" = 보내지 않음(기본값),
 	// "low"/"medium"/"high"/"xhigh"/"max" = 해당 강도. agent.Config.NewProvider 참고.
 	ReasoningEffort string `json:"reasoning_effort"`
 	IsDefault       bool   `json:"is_default"`
@@ -65,20 +65,20 @@ type LLMProfile struct {
 	// inherit the global policy (LLMRetryPolicy), so an untouched profile behaves
 	// exactly as before. See RetryOverride.
 	Retry RetryOverride `json:"retry"`
-	// AuthType 은 요청을 어떻게 인증할지 정한다. 빈 값은 저장할 때 AuthAPIKey 로 본다.
+	// AuthType 은 요청을 어떻게 인증할지 정한다. 빈 값은 저장할 때 AuthAPIKey로 본다.
 	AuthType AuthType `json:"auth_type"`
 	// OAuth 는 구독 프로필의 연결 상태다. ListProfiles 만 채운다.
 	// 토큰은 싣지 않는다. 토큰은 OAuthCredentials 로만 읽는다.
 	OAuth *OAuthStatus `json:"oauth,omitempty"`
 }
 
-// AuthType 은 LLM 프로필의 인증 방식이다. schema.sql 의 llm_profiles_auth_type_check 와 값이 같다.
+// AuthType 은 LLM 프로필의 인증 방식이다. schema.sql의 llm_profiles_auth_type_check와 값이 같다.
 type AuthType string
 
 const (
 	// AuthAPIKey 는 api_key 열의 키로 인증한다(기존 동작).
 	AuthAPIKey AuthType = "api_key"
-	// AuthChatGPTOAuth 는 llm_oauth_credentials 의 ChatGPT 구독 OAuth 토큰으로 인증한다.
+	// AuthChatGPTOAuth 는 llm_oauth_credentials의 ChatGPT 구독 OAuth 토큰으로 인증한다.
 	AuthChatGPTOAuth AuthType = "chatgpt_oauth"
 	// AuthClaudeOAuth 는 Claude 구독 계정의 OAuth 토큰으로 인증한다.
 	AuthClaudeOAuth AuthType = "claude_oauth"
@@ -95,7 +95,7 @@ type OAuthStatus struct {
 	PlanType string `json:"plan,omitempty"`
 }
 
-// RetryOverride는 엔드포인트별인 재시도 세 계층을 프로필 하나가 선택적으로 덮어쓰는 값이다:
+// RetryOverride 는 엔드포인트별인 재시도 세 계층을 프로필 하나가 선택적으로 덮어쓰는 값이다:
 // 연결(connect) / 빈 응답(empty) / 같은 제공자 안전 구간(stream). 각 규칙의 0 값은
 // "전역 정책을 따른다"는 뜻이다. -1 / 0 / >0의 의미는 RetryRule을 참고한다.
 type RetryOverride struct {
@@ -112,7 +112,7 @@ const profileColsKey = `id,name,format,COALESCE(base_url,''),COALESCE(proxy,''),
 
 // scanProfile reads one row in the profileCols / profileColsKey column order. The
 // 7th column lands in APIKeyHint or APIKey depending on which list the caller used.
-// extra 는 열 목록 뒤에 덧붙인 열의 대상이다.
+// extra는 열 목록 뒤에 덧붙인 열의 대상이다.
 func scanProfile(sc interface{ Scan(...any) error }, into *string, p *LLMProfile, extra ...any) error {
 	dests := []any{&p.ID, &p.Name, &p.Format, &p.BaseURL, &p.Proxy, &p.Model, into,
 		&p.RatePerSecond, &p.RatePerMinute, &p.ContextWindowK, &p.ReasoningEffort, &p.IsDefault, &p.Priority, &p.PoolExclude, &p.ThinkingType, &p.Streaming,
@@ -198,8 +198,8 @@ ORDER BY is_default DESC, priority DESC, id ASC`)
 }
 
 // SaveProfile inserts (id==0) or updates a profile. Empty apiKey on update keeps existing.
-// 빈 AuthType 은 새로 만들 때 AuthAPIKey 이고, 수정할 때는 기존 값을 지킨다.
-// 저장 뒤의 인증 방식이 구독 OAuth면 API 키와 힌트를 같은 문장에서 NULL 로 둔다. 쓰지 않을 비밀값을
+// 빈 AuthType은 새로 만들 때 AuthAPIKey 이고, 수정할 때는 기존 값을 지킨다.
+// 저장 뒤의 인증 방식이 구독 OAuth면 API 키와 힌트를 같은 문장에서 NULL로 둔다. 쓰지 않을 비밀값을
 // 남기지 않으려는 것이고, 따로 지우면 저장과 지우기 사이에 실패해 키가 남을 수 있다.
 func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {
 	tx, err := d.Begin()
@@ -262,7 +262,7 @@ api_key=`+keyUnlessOAuth("COALESCE(NULLIF($23,''),auth_type)", "api_key")+`,api_
 }
 
 // keyUnlessOAuth 는 구독 인증이면 API 키를 NULL로 지우는 SQL 식이다.
-// UPDATE 의 SET 식은 바뀌기 전 행을 보므로 authExpr 에 저장 뒤의 값을 계산하는 식을 넘긴다.
+// UPDATE의 SET 식은 바뀌기 전 행을 보므로 authExpr에 저장 뒤의 값을 계산하는 식을 넘긴다.
 func keyUnlessOAuth(authExpr, value string) string {
 	return "CASE WHEN " + authExpr + " IN ('chatgpt_oauth','claude_oauth') THEN NULL ELSE " + value + " END"
 }
@@ -589,7 +589,7 @@ func (d *DB) GetAgentByKey(key string) (*Agent, error) {
 	return a, nil
 }
 
-// AgentBindingCounts는 agent별 연결 수를 묶음 쿼리 몇 개로 돌려준다(N+1 없음): 보이는
+// AgentBindingCounts 는 agent별 연결 수를 묶음 쿼리 몇 개로 돌려준다(N+1 없음): 보이는
 // MCP 서버와 스킬은 agent id로, 연결한 도구는 agent key로 센다(tools.agents는 agent key의
 // JSONB 배열). 없는 키는 0이다. agent 카드에 "MCP N · Skill N · 도구 N"을 보일 때 쓴다.
 func (d *DB) AgentBindingCounts() (mcp map[int64]int, skill map[int64]int, tools map[string]int, err error) {
@@ -725,7 +725,7 @@ func (d *DB) SetAgentWebSearch(key string, on bool) error {
 	return err
 }
 
-// SetAgentInteractiveShell은 agent에 대화형 shell(지속 PTY 세션) 도구 묶음과 그에 맞춘
+// SetAgentInteractiveShell 은 agent에 대화형 shell(지속 PTY 세션) 도구 묶음과 그에 맞춘
 // Bash 프롬프트 안내를 줄지 켜고 끈다.
 func (d *DB) SetAgentInteractiveShell(key string, on bool) error {
 	_, err := d.Exec(`UPDATE agents SET interactive_shell=$1 WHERE key=$2`, on, key)
@@ -763,7 +763,7 @@ func (d *DB) SetAgentRunSeconds(key string, runSecs int) error {
 	return err
 }
 
-// SetAgentTriggerBehavior는 agent의 트리거 후처리 정책을 저장한다:
+// SetAgentTriggerBehavior 는 agent의 트리거 후처리 정책을 저장한다:
 // runMode(serial|parallel) / mergeMode(by_task|all|none) / maxParallel(parallel에서 사용, 0=제한 없음).
 // 열거 값은 허용 목록으로 검사하고 잘못된 값은 기본값으로 돌린다. 잘못된 데이터가 스케줄 pump를
 // 엉뚱하게 움직이지 않게 하려는 것이다.
@@ -836,7 +836,7 @@ func (d *DB) SeedPromptIfEmpty(agentID int64, tmpl string) error {
 	return err
 }
 
-// ResetPromptToDefault 는 코드 기본 템플릿을 새 버전으로 덧붙이고 current 가 그것을 가리키게 한다.
+// ResetPromptToDefault 는 코드 기본 템플릿을 새 버전으로 덧붙이고 current가 그것을 가리키게 한다.
 // 사용자가 명시적으로 고르는 "내장 기본값으로 복원" 동작이다.
 func (d *DB) ResetPromptToDefault(agentID int64, tmpl string) (int, error) {
 	return d.SavePrompt(agentID, tmpl, "내장 기본값으로 복원", "system")

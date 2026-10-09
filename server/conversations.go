@@ -558,7 +558,7 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 			log.Printf("[conv %d] append activity failed: %v", c.ID, err)
 		}
 	}
-	// 수동으로 중지하면 ctx 가 취소되고 Chat 이 이미 깔끔한 '수동 중지' 단계를 남긴다.
+	// 수동으로 중지하면 ctx가 취소되고 Chat이 이미 깔끔한 '수동 중지' 단계를 남긴다.
 	// 그래서 원래 오류 항목은 건너뛰고 진짜 실패만 보여 준다.
 	if _, err := ca.Chat(ctx, c.AgentKey, sessionID, msg, maxTurns, maxDuration, webSearch, emit); err != nil {
 		finishReason = err.Error()
@@ -573,10 +573,10 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 }
 
 // triggerBehavior 는 에이전트의 P3 트리거 후처리 정책을 읽어 둔 값이다(agents 표의 trigger_*
-// 열). StartTriggeredRun 에서 트리거마다 한 번 읽어, 펌프가 queueMu 를 잡은 채 DB에 닿지 않게 한다.
+// 열). StartTriggeredRun 에서 트리거마다 한 번 읽어, 펌프가 queueMu를 잡은 채 DB에 닿지 않게 한다.
 type triggerBehavior struct {
 	runMode     string // serial | parallel
-	mergeMode   string // by_task | all | none (serial 에서 쓴다. parallel 은 무시하고 트리거마다 대화를 따로 연다)
+	mergeMode   string // by_task | all | none (serial 에서 쓴다. parallel은 무시하고 트리거마다 대화를 따로 연다)
 	maxParallel int    // parallel 에서 쓰는 에이전트별 동시 실행 최대 개수. <=0 이면 제한 없음
 }
 
@@ -602,9 +602,9 @@ func (s *Server) readTriggerBehavior(agentKey string) triggerBehavior {
 	return b
 }
 
-// StartTriggeredRun 은 agentKey 의 P3 트리거 실행을 큐에 넣고 큐를 돌린다. 동시 실행과 병합은
-// 에이전트의 정책이 정한다. serial 은 한 번에 하나씩 실행한다(작업별 / 전체 / 병합 안 함 중에서
-// 병합할 수 있다). parallel 은 트리거마다 대화를 따로 열어 trigger_max_parallel 까지 동시에
+// StartTriggeredRun 은 agentKey의 P3 트리거 실행을 큐에 넣고 큐를 돌린다. 동시 실행과 병합은
+// 에이전트의 정책이 정한다. serial은 한 번에 하나씩 실행한다(작업별 / 전체 / 병합 안 함 중에서
+// 병합할 수 있다). parallel은 트리거마다 대화를 따로 열어 trigger_max_parallel 까지 동시에
 // 실행한다. 서로 다른 에이전트는 늘 동시에 실행한다.
 func (s *Server) StartTriggeredRun(agentKey, title, message string, taskID int64, mergeable bool, taskDesc, taskGoal string) {
 	if s.m.pg == nil || s.chatAgentRef() == nil {
@@ -829,7 +829,7 @@ func firstLine(s string, max int) string {
 	return s
 }
 
-// isDefaultConvTitle은 첫 메시지로 제목을 바꿔도 되는 기본 제목인지 판단한다.
+// isDefaultConvTitle 은 첫 메시지로 제목을 바꿔도 되는 기본 제목인지 판단한다.
 func isDefaultConvTitle(title string) bool {
 	// "新对话"는 옛 중국어 기본 제목이다. 기존 설치 호환, 지우지 않는다.
 	return title == "" || title == "새 대화" || title == "新对话"

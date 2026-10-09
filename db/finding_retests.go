@@ -157,7 +157,7 @@ func (d *DB) FindingRetestForConversation(ctx context.Context, conversationID in
 	return r, err
 }
 
-// FailPendingRetestForConversation은 실행기가 재검사를 읽지조차 못했을 때 그 대화의
+// FailPendingRetestForConversation 은 실행기가 재검사를 읽지조차 못했을 때 그 대화의
 // 끝나지 않은 재검사를 닫는다. 이 경로에서는 재검사 ID를 모르므로 대화 ID만 쓸 수 있다.
 // 이것이 없으면 일시적인 읽기 오류 하나로 행이 영원히 'pending'에 남는다. 발견 사항
 // 목록은 계속 "재검사 중"을 보여 주고, 이후의 "재검사 시작"은 실제로 돌지 않는 실행과

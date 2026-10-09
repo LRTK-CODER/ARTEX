@@ -32,14 +32,14 @@ func (t *runTrace) done(id string) {
 
 var reasonHint = map[harness.TerminalReason]string{
 	harness.ReasonCompleted:         "모델이 이번 회차를 정상적으로 끝냈지만 글로 된 요약을 남기지 않았습니다. 사실과 자산은 이번 회차의 도구 호출 기록을 기준으로 합니다",
-	harness.ReasonMaxTurns:          "단계 한도(MaxTurns)에 도달했습니다. SDK 가 마무리를 수행해 사실과 자산을 기록했고, 의도는 실패로 처리하지 않고 exhausted 로 표시해 플래너가 방향을 바꿔 이어 가게 합니다",
-	harness.ReasonTimeout:           "한 번 실행의 실제 경과 시간 예산(MaxDuration)에 도달했습니다. 시간이 되면 실행 중인 도구를 끊고 그 자리에서 마무리에 들어가, 이미 식별한 사실과 자산을 기록하며 의도는 exhausted 로 표시됩니다",
-	harness.ReasonModelError:        "모델 또는 API 호출이 실패했습니다(네트워크, 인증, 속도 제한, 제공자 5xx 등). 재시도를 모두 쓰고 나면 의도는 blocked 로 표시됩니다. 전송 계층 장애로 이 의도는 사실상 제대로 탐색하지 못했습니다. 그 실행 과정(get_worker_trace)을 확인한 뒤 다시 배정할지 방법을 바꿀지 정하세요",
+	harness.ReasonMaxTurns:          "단계 한도(MaxTurns)에 도달했습니다. SDK가 마무리를 수행해 사실과 자산을 기록했고, 의도는 실패로 처리하지 않고 exhausted로 표시해 플래너가 방향을 바꿔 이어 가게 합니다",
+	harness.ReasonTimeout:           "한 번 실행의 실제 경과 시간 예산(MaxDuration)에 도달했습니다. 시간이 되면 실행 중인 도구를 끊고 그 자리에서 마무리에 들어가, 이미 식별한 사실과 자산을 기록하며 의도는 exhausted로 표시됩니다",
+	harness.ReasonModelError:        "모델 또는 API 호출이 실패했습니다(네트워크, 인증, 속도 제한, 제공자 5xx 등). 재시도를 모두 쓰고 나면 의도는 blocked로 표시됩니다. 전송 계층 장애로 이 의도는 사실상 제대로 탐색하지 못했습니다. 그 실행 과정(get_worker_trace)을 확인한 뒤 다시 배정할지 방법을 바꿀지 정하세요",
 	harness.ReasonBlockingLimit:     "컨텍스트 길이가 강제 최대치에 도달해 요청이 보내지기 전에 차단됐습니다. 의도 단위를 좁히거나 도구 반환을 압축해야 합니다",
 	harness.ReasonPromptTooLong:     "프롬프트가 너무 길고 컨텍스트 압축 재시도도 모두 소진해 더 이상 실행할 수 없습니다",
 	harness.ReasonImageError:        "현재 모델이 이번 회차의 멀티모달 내용을 지원하지 않습니다. 비전을 지원하는 모델로 바꾸거나 도구가 이미지를 반환하지 않게 하세요",
 	harness.ReasonStopHookPrevented: "Stop 훅이 이번 회차의 종료를 막았고 이어 가지도 못했습니다. 작업 Guard 규칙이 너무 엄격하지 않은지 확인하세요",
-	harness.ReasonHookStopped:       "도구 또는 훅이 실행을 직접 멈췄습니다. 예를 들어 범위를 벗어난 대상이나 금지된 명령입니다. 마지막 tool_result 의 차단 설명을 확인하세요",
+	harness.ReasonHookStopped:       "도구 또는 훅이 실행을 직접 멈췄습니다. 예를 들어 범위를 벗어난 대상이나 금지된 명령입니다. 마지막 tool_result의 차단 설명을 확인하세요",
 	harness.ReasonAbortedStreaming:  "모델 출력 스트리밍 생성 단계에서 실행이 취소됐습니다",
 	harness.ReasonAbortedTools:      "도구 실행 단계에서 실행이 취소됐습니다",
 }
@@ -86,7 +86,7 @@ func terminalText(ctx context.Context, term *harness.Terminal, tr *runTrace) (st
 		if ok {
 			fmt.Fprintf(&b, "- **중단 원인** (`%s`): %s\n", code, why)
 		} else {
-			b.WriteString("- **중단 원인**: 가져올 수 없음. 취소한 쪽이 context.WithCancelCause 로 이름 있는 원인을 붙이지 않았을 수 있습니다\n")
+			b.WriteString("- **중단 원인**: 가져올 수 없음. 취소한 쪽이 context.WithCancelCause로 이름 있는 원인을 붙이지 않았을 수 있습니다\n")
 		}
 	}
 	if term.Err != nil {
@@ -130,9 +130,9 @@ func terminalReasonHint(reason harness.TerminalReason) string {
 		return hint
 	}
 	if reason == "" {
-		return "실행의 context 가 취소됐지만 하위 계층이 Terminal 이벤트를 만들지 않았습니다"
+		return "실행의 context가 취소됐지만 하위 계층이 Terminal 이벤트를 만들지 않았습니다"
 	}
-	return "알 수 없는 최종 상태. harness 가 TerminalReason 을 새로 추가했을 수 있으니 reasonHint 를 보완하세요"
+	return "알 수 없는 최종 상태. harness가 TerminalReason을 새로 추가했을 수 있으니 reasonHint를 보완하세요"
 }
 
 func progressSuffix(term *harness.Terminal, tr *runTrace) string {

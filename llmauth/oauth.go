@@ -1,5 +1,5 @@
 // Package llmauth 는 ChatGPT 구독 계정의 OAuth 토큰을 받고 갱신한다.
-// Codex CLI 와 같은 공개 client_id 로 브라우저 로그인(PKCE)과 디바이스 코드 로그인을 하고,
+// Codex CLI와 같은 공개 client_id로 브라우저 로그인(PKCE)과 디바이스 코드 로그인을 하고,
 // 만료가 다가온 토큰을 갱신한다. 저장은 Store 인터페이스로만 연결한다.
 package llmauth
 
@@ -21,16 +21,16 @@ import (
 const (
 	// DefaultIssuer 는 OpenAI 인증 서버 주소다.
 	DefaultIssuer = "https://auth.openai.com"
-	// ClientID 는 Codex CLI 의 공개 OAuth client_id 다.
+	// ClientID 는 Codex CLI의 공개 OAuth client_id 다.
 	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 	// RedirectURI 는 브라우저 로그인 콜백 주소다. 서버 허용 목록에 고정돼 있다.
 	RedirectURI = "http://localhost:1455/auth/callback"
 	// Originator 는 authorize 요청과 Codex 백엔드 호출에 싣는 호출자 식별값이다.
-	// Codex CLI 의 기본값과 같게 둔다.
+	// Codex CLI의 기본값과 같게 둔다.
 	Originator = "codex_cli_rs"
 
 	authorizeScope = "openid profile email offline_access"
-	// refreshScope 는 Codex CLI 가 refresh 요청에 싣는 scope 다.
+	// refreshScope 는 Codex CLI가 refresh 요청에 싣는 scope 다.
 	refreshScope = "openid profile email"
 
 	defaultHTTPTimeout = 30 * time.Second
@@ -38,16 +38,16 @@ const (
 	maxResponseBytes = 1 << 20
 )
 
-// Client 는 OpenAI 인증 서버와 이야기한다. 제로값은 기본 issuer 와 30초 타임아웃 HTTP 클라이언트를 쓴다.
+// Client 는 OpenAI 인증 서버와 이야기한다. 제로값은 기본 issuer와 30초 타임아웃 HTTP 클라이언트를 쓴다.
 type Client struct {
 	// HTTPClient 가 nil 이면 30초 타임아웃에 리다이렉트를 따르지 않는 클라이언트를 쓴다.
-	// 직접 넘길 때도 리다이렉트를 따르지 않게 한다(CheckRedirect 가 http.ErrUseLastResponse).
-	// 따르면 refresh 토큰·code_verifier 가 든 본문이 리다이렉트 대상에 다시 간다.
+	// 직접 넘길 때도 리다이렉트를 따르지 않게 한다(CheckRedirect가 http.ErrUseLastResponse).
+	// 따르면 refresh 토큰·code_verifier가 든 본문이 리다이렉트 대상에 다시 간다.
 	HTTPClient *http.Client
-	// Issuer 가 비면 DefaultIssuer 를 쓴다. 끝의 "/"는 붙이지 않는다.
+	// Issuer 가 비면 DefaultIssuer를 쓴다. 끝의 "/"는 붙이지 않는다.
 	Issuer string
 
-	// now 와 sleep 은 디바이스 코드 폴링의 시계다. nil 이면 실제 시계를 쓴다.
+	// now 와 sleep은 디바이스 코드 폴링의 시계다. nil 이면 실제 시계를 쓴다.
 	now   func() time.Time
 	sleep func(ctx context.Context, d time.Duration) error
 }
@@ -57,9 +57,9 @@ type Tokens struct {
 	IDToken      string
 	AccessToken  string
 	RefreshToken string
-	// AccountID 는 JWT 의 chatgpt_account_id 클레임이다. Codex 백엔드 호출 헤더에 쓴다.
+	// AccountID 는 JWT의 chatgpt_account_id 클레임이다. Codex 백엔드 호출 헤더에 쓴다.
 	AccountID string
-	// ExpiresAt 은 access token 의 exp 클레임이다.
+	// ExpiresAt 은 access token의 exp 클레임이다.
 	ExpiresAt time.Time
 	// PlanType 은 chatgpt_plan_type 클레임이다(예: "plus"). 없으면 비어 있다.
 	PlanType string
@@ -114,7 +114,7 @@ func (e *TokenError) NeedsLogin() bool {
 }
 
 // AuthorizeURL 은 브라우저로 열 authorize 주소를 만든다.
-// challenge 는 PKCE challenge, state 는 호출자가 콜백에서 대조할 무작위 값이다.
+// challenge는 PKCE challenge, state는 호출자가 콜백에서 대조할 무작위 값이다.
 func (c *Client) AuthorizeURL(redirectURI, challenge, state string) string {
 	query := url.Values{
 		"response_type":              {"code"},
@@ -131,8 +131,8 @@ func (c *Client) AuthorizeURL(redirectURI, challenge, state string) string {
 	return c.issuer() + "/oauth/authorize?" + query.Encode()
 }
 
-// ExchangeCode 는 authorization code 를 토큰으로 바꾼다. 요청은 form 형식이다.
-// redirectURI 는 authorize 때와 같아야 한다.
+// ExchangeCode 는 authorization code를 토큰으로 바꾼다. 요청은 form 형식이다.
+// redirectURI는 authorize 때와 같아야 한다.
 func (c *Client) ExchangeCode(ctx context.Context, code, verifier, redirectURI string) (Tokens, error) {
 	form := url.Values{
 		"grant_type":    {"authorization_code"},
@@ -157,7 +157,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, redirectURI s
 }
 
 // Refresh 는 refresh 토큰으로 새 토큰을 받는다. refresh 토큰은 갱신마다 회전하므로
-// 돌려받은 Tokens 를 곧바로 저장해야 한다. 응답에 새 refresh 토큰이나 id token 이 없으면
+// 돌려받은 Tokens를 곧바로 저장해야 한다. 응답에 새 refresh 토큰이나 id token이 없으면
 // 각각 넘긴 refresh 토큰을 유지하고 access token 에서 계정을 꺼낸다.
 func (c *Client) Refresh(ctx context.Context, refreshToken string) (Tokens, error) {
 	payload, err := json.Marshal(map[string]string{
@@ -169,7 +169,7 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (Tokens, erro
 	if err != nil {
 		return Tokens{}, fmt.Errorf("llmauth: refresh: encode request: %w", err)
 	}
-	// Codex CLI 와 같이 refresh 는 JSON 으로 보낸다.
+	// Codex CLI와 같이 refresh는 JSON으로 보낸다.
 	raw, err := c.post(ctx, "refresh", "/oauth/token", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return Tokens{}, err
@@ -216,11 +216,11 @@ func (r tokenResponse) tokens() (Tokens, error) {
 		if err != nil {
 			return Tokens{}, fmt.Errorf("llmauth: id token: %w", err)
 		}
-		// Codex CLI 는 id token 의 계정을 쓴다. access token 에 같은 클레임이 있어도 id token 을 앞세운다.
+		// Codex CLI는 id token의 계정을 쓴다. access token에 같은 클레임이 있어도 id token을 앞세운다.
 		if id.AccountID != "" {
 			accountID = id.AccountID
 		}
-		// Codex CLI 는 플랜도 id token 에서 읽는다(token_data.rs IdTokenInfo).
+		// Codex CLI는 플랜도 id token 에서 읽는다(token_data.rs IdTokenInfo).
 		if id.PlanType != "" {
 			planType = id.PlanType
 		}
@@ -238,8 +238,8 @@ func (r tokenResponse) tokens() (Tokens, error) {
 	}, nil
 }
 
-// post 는 issuer 의 path 로 body 를 보내고 2xx 응답 본문을 돌려준다.
-// 2xx 가 아니면 *TokenError 를 돌려준다.
+// post 는 issuer의 path로 body를 보내고 2xx 응답 본문을 돌려준다.
+// 2xx가 아니면 *TokenError를 돌려준다.
 func (c *Client) post(ctx context.Context, op, path, contentType string, body io.Reader) ([]byte, error) {
 	status, raw, err := c.do(ctx, op, path, contentType, body)
 	if err != nil {
@@ -293,7 +293,7 @@ func errorCode(raw []byte) ErrorCode {
 		Code string `json:"code"`
 	}
 	switch {
-	// "error": null 은 문자열로 읽히지만 빈 값이라 최상위 code 를 덮지 않게 한다.
+	// "error": null은 문자열로 읽히지만 빈 값이라 최상위 code를 덮지 않게 한다.
 	case json.Unmarshal(body.Error, &text) == nil && text != "":
 		code = text
 	case json.Unmarshal(body.Error, &nested) == nil && nested.Code != "":
@@ -316,7 +316,7 @@ func (c *Client) httpClient() *http.Client {
 	if c.HTTPClient == nil {
 		return &http.Client{
 			Timeout: defaultHTTPTimeout,
-			// 3xx 는 따르지 않고 그대로 돌려받아 TokenError 가 되게 한다.
+			// 3xx는 따르지 않고 그대로 돌려받아 TokenError가 되게 한다.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		}
 	}

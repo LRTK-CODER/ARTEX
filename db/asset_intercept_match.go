@@ -11,7 +11,7 @@ import (
 // 여기서는 '대상 자산'의 도메인/IP/URL을 사용 중인 규칙과 대조한다. 에이전트 도구
 // (add_intent, insert_assets)가 의도를 내리거나 자산을 넣기 전에 부르고, 일치하면 거부한다.
 
-// AssetInterceptKindLabel은 kind의 표시 라벨을 돌려준다. 에이전트에게 보내는 안내 메시지에 쓴다.
+// AssetInterceptKindLabel 은 kind의 표시 라벨을 돌려준다. 에이전트에게 보내는 안내 메시지에 쓴다.
 func AssetInterceptKindLabel(kind string) string {
 	switch kind {
 	case "exact_domain":
@@ -32,7 +32,7 @@ func AssetInterceptKindLabel(kind string) string {
 	return kind
 }
 
-// Reason은 읽을 수 있는 일치 이유를 돌려준다. 형식: 자산 차단 규칙과 일치 [도메인(부분 일치): .gov.cn](메모).
+// Reason 은 읽을 수 있는 일치 이유를 돌려준다. 형식: 자산 차단 규칙과 일치 [도메인(부분 일치): .gov.cn](메모).
 func (r AssetInterceptRule) Reason() string {
 	s := fmt.Sprintf("자산 차단 규칙과 일치 [%s: %s]", AssetInterceptKindLabel(r.Kind), r.Pattern)
 	if note := strings.TrimSpace(r.Note); note != "" {
@@ -41,7 +41,7 @@ func (r AssetInterceptRule) Reason() string {
 	return s
 }
 
-// matchOne은 사용 중인 규칙 하나가 주어진 도메인/IP/URL 후보 문자열과 일치하는지 판정하고, 일치한 값을 돌려준다.
+// matchOne 은 사용 중인 규칙 하나가 주어진 도메인/IP/URL 후보 문자열과 일치하는지 판정하고, 일치한 값을 돌려준다.
 func matchOne(r AssetInterceptRule, domains, ips, urls []string) (string, bool) {
 	p := strings.TrimSpace(r.Pattern)
 	if p == "" {
@@ -100,7 +100,7 @@ func matchOne(r AssetInterceptRule, domains, ips, urls []string) (string, bool) 
 	return "", false
 }
 
-// MatchAssetInterceptRules는 주어진 도메인/IP/URL 후보 문자열과 처음 일치한 사용 중인 규칙과
+// MatchAssetInterceptRules 는 주어진 도메인/IP/URL 후보 문자열과 처음 일치한 사용 중인 규칙과
 // 일치한 값을 돌려준다. insert_assets가 원본 입력(아직 저장하지 않은 assetInputItem)을 대조할 때 쓴다.
 func MatchAssetInterceptRules(rules []AssetInterceptRule, domains, ips, urls []string) (AssetInterceptRule, string, bool) {
 	for _, r := range rules {
@@ -114,7 +114,7 @@ func MatchAssetInterceptRules(rules []AssetInterceptRule, domains, ips, urls []s
 	return AssetInterceptRule{}, "", false
 }
 
-// interceptCandidates는 저장된 자산에서 차단 판정에 쓸 도메인/IP/URL 후보 문자열을 뽑는다.
+// interceptCandidates 는 저장된 자산에서 차단 판정에 쓸 도메인/IP/URL 후보 문자열을 뽑는다.
 // URL의 host를 떼어 분류하므로 'URL만 있는' 서비스 자산도 도메인/IP 규칙과 일치할 수 있다.
 func (a *Asset) interceptCandidates() (domains, ips, urls []string) {
 	add := func(dst *[]string, s string) {
@@ -143,7 +143,7 @@ func (a *Asset) interceptCandidates() (domains, ips, urls []string) {
 	return domains, ips, urls
 }
 
-// InterceptLabel은 자산의 짧은 표시를 돌려준다. 에이전트에게 보내는 안내 메시지에 쓴다.
+// InterceptLabel 은 자산의 짧은 표시를 돌려준다. 에이전트에게 보내는 안내 메시지에 쓴다.
 func (a *Asset) InterceptLabel() string {
 	var target string
 	switch {
@@ -159,7 +159,7 @@ func (a *Asset) InterceptLabel() string {
 	return fmt.Sprintf("자산#%d[%s] %s", a.ID, a.Type, target)
 }
 
-// hasEnabledRule은 규칙 집합에 사용 중인 규칙이 하나라도 있는지 판정한다.
+// hasEnabledRule 은 규칙 집합에 사용 중인 규칙이 하나라도 있는지 판정한다.
 func hasEnabledRule(rules []AssetInterceptRule) bool {
 	for _, r := range rules {
 		if r.Enabled {
@@ -169,13 +169,13 @@ func hasEnabledRule(rules []AssetInterceptRule) bool {
 	return false
 }
 
-// AssetGateDecision은 '차단 먼저, 허용 다음' 검사가 후보 문자열 묶음에 내린 판정 결과다.
+// AssetGateDecision 은 '차단 먼저, 허용 다음' 검사가 후보 문자열 묶음에 내린 판정 결과다.
 type AssetGateDecision struct {
 	Allowed bool
 	Reason  string // 거부 이유(자산 표시 제외). Allowed=true이면 비어 있다
 }
 
-// EvaluateAssetGate는 작업 단위 검사를 판정한다.
+// EvaluateAssetGate 는 작업 단위 검사를 판정한다.
 //  1. 사용 중인 blockRules 중 하나와 일치하면 거부한다(차단 이유).
 //  2. 아니면, 사용 중인 allowRules가 있는데 하나도 일치하지 않으면 거부한다(허용 범위 밖).
 //  3. 그 밖에는 허용한다.
@@ -194,24 +194,24 @@ func EvaluateAssetGate(blockRules, allowRules []AssetInterceptRule, domains, ips
 	return AssetGateDecision{Allowed: true}
 }
 
-// AssetInterceptHit는 검사에서 거부된 자산 하나를 나타낸다(차단 규칙과 일치했거나 허용 범위 밖).
+// AssetInterceptHit 는 검사에서 거부된 자산 하나를 나타낸다(차단 규칙과 일치했거나 허용 범위 밖).
 type AssetInterceptHit struct {
 	Asset  *Asset
 	Reason string // 읽을 수 있는 이유
 }
 
-// Describe는 읽을 수 있는 설명(자산 정보 + 이유)을 돌려준다.
+// Describe 는 읽을 수 있는 설명(자산 정보 + 이유)을 돌려준다.
 func (h AssetInterceptHit) Describe() string {
 	return fmt.Sprintf("%s → %s", h.Asset.InterceptLabel(), h.Reason)
 }
 
-// ListAssetInterceptRules는 *DB의 같은 이름 메서드를 그대로 부른다. AssetStore만 가진
+// ListAssetInterceptRules 는 *DB의 같은 이름 메서드를 그대로 부른다. AssetStore만 가진
 // 호출자(에이전트 도구 등)도 규칙을 읽을 수 있게 한다.
 func (s *AssetStore) ListAssetInterceptRules() ([]AssetInterceptRule, error) {
 	return s.db.ListAssetInterceptRules()
 }
 
-// CheckAssetsIntercept는 id로 자산을 불러와 하나씩 '차단 먼저, 허용 다음' 검사를 판정하고,
+// CheckAssetsIntercept 는 id로 자산을 불러와 하나씩 '차단 먼저, 허용 다음' 검사를 판정하고,
 // 거부된 자산을 모두 돌려준다. 차단 규칙 = 전역 ∪ 작업 단위 block, 허용 규칙 = 작업 단위
 // allow(이 작업만). id가 없으면 바로 돌아간다. 작업 범위로 거르지 않는 전역 GetByIDs를 써서
 // scope 때문에 차단이 약해지지 않게 한다.
