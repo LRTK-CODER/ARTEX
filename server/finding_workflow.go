@@ -15,15 +15,21 @@ import (
 )
 
 func (s *Server) seedFindingWorkflowTools() {
-	// v4: traffic_search 설명을 영어로 옮겼다(#110). 사용자가 고치지 않은, v3 중국어 값과
-	// 정확히 같은 행만 바꾼다. legacy 의 중국어는 기존 설치 행을 찾는 데 쓰는 데이터다.
+	// v4: traffic_search 설명을 영어로 옮겼다(#110). 사용자가 고치지 않은, 이전 기본
+	// 중국어 값(v2·v3) 중 하나와 정확히 같은 행만 바꾼다. legacy 의 중국어는 기존 설치
+	// 행을 찾는 데 쓰는 데이터다.
 	const hostSearchDescriptionFlag = "finding_workflow_tools_v4_english_search_description"
 	if value, _, _ := s.m.pg.GetSetting(hostSearchDescriptionFlag); value != "true" {
-		// Only replace the previous built-in (v3) text. A user-edited description is
-		// authoritative and must survive upgrades. Matching the exact v3 string keeps
-		// this idempotent: a re-run finds no v3 rows left and changes nothing.
-		legacy := "查询记录代理已抓取的目标流量（必须指定 host；支持裸主机、主机:端口或完整 URL，可再按 URL 子串或正文关键词过滤）。指定端口时只返回该服务的流量，避免同一 IP 的不同端口串包。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符）。仅返回极轻量索引(id/method/url/status/resp_len)，不含响应内容；结果非空后必须用 traffic_get 逐条核实请求/响应，再把确实支持当前漏洞的 ID 交给 bind_finding_traffic。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页。"
-		if _, err := s.m.pg.Exec(`UPDATE tools SET description=$1,updated_at=now() WHERE key='traffic_search' AND system AND description=$2`, traffic.TrafficSearchDescription, legacy); err != nil {
+		// 이전 기본 문구만 바꾼다. 사용자가 고친 설명이 우선이라 업그레이드에도 남아야 한다.
+		// v2 는 v0.4.0 이전 기본 문구다. v3 이전을 거치지 않고 바로 올라온 설치도 옮긴다.
+		// 정확한 문구로 찾으므로 다시 돌려도 남은 행이 없어 바뀌는 것이 없다.
+		legacy := []string{
+			// v2
+			"查询记录代理已抓取的目标流量（必须指定 host，可再按 URL 子串或正文关键词过滤）。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符），可用来找响应里的密码、密钥、报错、内网地址等。仅返回极轻量索引(id/method/url/status/resp_len)，不含任何响应内容。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页（page=0 起）；要看某条的请求/响应原文用 traffic_get(id)。回看已访问资源、找端点先用它，避免重复 curl 同一 URL。",
+			// v3
+			"查询记录代理已抓取的目标流量（必须指定 host；支持裸主机、主机:端口或完整 URL，可再按 URL 子串或正文关键词过滤）。指定端口时只返回该服务的流量，避免同一 IP 的不同端口串包。body_contains 会在已抓取的请求/响应头与正文中做全文搜索，支持任意子串和中文（至少 3 个字符）。仅返回极轻量索引(id/method/url/status/resp_len)，不含响应内容；结果非空后必须用 traffic_get 逐条核实请求/响应，再把确实支持当前漏洞的 ID 交给 bind_finding_traffic。默认只返回 3 条、每页最多 10 条；结果多时用 page 翻页。",
+		}
+		if _, err := s.m.pg.Exec(`UPDATE tools SET description=$1,updated_at=now() WHERE key='traffic_search' AND system AND description=ANY($2::text[])`, traffic.TrafficSearchDescription, legacy); err != nil {
 			// Log and leave the flag unset so the next startup retries; do not
 			// return, or a transient error here would also skip the reporter
 			// migration below — the two are independent.
