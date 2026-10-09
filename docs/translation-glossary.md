@@ -137,7 +137,7 @@
 | Agent | 에이전트 | agent | |
 | 主 Agent | 메인 에이전트 | main agent | |
 | 规划 | 계획 | planning | |
-| 领取 | 맡기 | claim | 워커가 의도·작업을 맡는 것. 예: "의도를 맡는다" |
+| 领取 | 할당받다 | claim | 워커가 의도·작업을 할당받는다. 예: "의도를 할당받는다" |
 | 派生 | 파생 | derive | |
 | 产出 | 결과물 | output | 동사일 때는 "만들어 내다" |
 | 达成 | 달성 | achieve | |
@@ -299,6 +299,76 @@
 | 详细 | 상세 | details | |
 | 中文技能 (테스트 입력) | 번역하지 않음 | — | 스킬 이름 검사의 비ASCII 입력값. 공통 규칙 3번 |
 
+### 화면 기능(#111에서 더함)
+
+web 기능 화면(`web/src/app/(main)/function/**`)을 옮기며 정한 말이다.
+
+| 중국어 | 한국어 | 영어(프롬프트) | 비고 |
+|---|---|---|---|
+| 端点 / 接口 (자산 종류 `endpoint`) | 엔드포인트 | endpoint | URL 경로 자산. HTTP API 일반을 뜻하는 "接口 → API"와 구분한다 |
+| C段 | /24 대역 | /24 range | CIDR 표기. 클래스 이름(C 클래스)은 쓰지 않는다 |
+| 解析类型 / 解析值 | 레코드 유형 / 레코드 값 | record type / record value | DNS 표준 용어 |
+| 指纹 | 핑거프린트 | fingerprint | 업계 표준 음차 |
+| 绑定域名 / 开放端口 | 연결된 도메인 / 열린 포트 | bound domain / open port | |
+| 归属 / 未归属 | 소속 / 소속 없음 | belongs to / unassigned | 자산이 기업에 속하는 관계. "所属任务"은 "소속 작업" |
+| 利用 | 익스플로잇 | exploit | 업계 표준 원어 |
+| 深入利用 / 深入 | 취약점 심화 검증 / 심화 검증 | deep verification | 발견 사항을 다시 검증하는 기능 |
+| 链路 / 攻击链路图 | 공격 경로 / 공격 경로 그래프 | attack path / attack path graph | "attack path"가 업계 표준 |
+| 探索链路 | 탐색 경로 | exploration path | |
+| 图谱 / 态势图 | 그래프 / 현황 그래프 | graph / status graph | |
+| 资产覆盖图 | 자산 커버리지 그래프 | asset coverage graph | |
+| 播报 / 播报板 | 활동 피드 / 피드 | activity feed | 작업 상세의 시간순 활동 탭 |
+| 黑板 | 블랙보드 | blackboard | 에이전트 구조의 표준 용어(blackboard architecture) |
+| 心跳 | 하트비트 | heartbeat | |
+| 故障转移 | 장애 조치 | failover | Microsoft 표준 용어 |
+| 配置链 | LLM 프로필 체인 | profile chain | 기존 LLM 화면의 "프로필" |
+| 额度 | 사용 한도 | quota | |
+| 并发限制 | 동시 실행 제한 | concurrency limit | |
+| 归档 / 已归档 | 보관 / 보관됨 | archive / archived | Microsoft 한국어 표기 |
+| 还原 | 복원 | restore | |
+| 冷存储 | 콜드 스토리지 | cold storage | |
+| 快照 | 스냅숏 | snapshot | 국립국어원 표기 |
+| 置顶 | 상단 고정 | pin | |
+| 重命名 | 이름 바꾸기 | rename | Microsoft 한국어 |
+| 分类 / 类别 | 분류 | category | "类型(유형)"과 구분한다 |
+| 处理状态 / 待处理 | 처리 상태 / 처리 대기 | triage status / pending | |
+| 已确认 / 已否定 | 확인됨 / 기각됨 | confirmed / rejected | |
+| 待采纳 / 已采纳 / 已替代 | 반영 대기 / 반영됨 / 대체됨 | pending / adopted / superseded | 제약 조건 상태 |
+| 生效中 | 적용 중 | active | |
+| 排队中 / 已暂停 / 已创建 | 대기 중 / 일시 중지됨 / 생성됨 | queued / paused / created | |
+| 待领取 | 할당 대기 | unclaimed | "领取 → 할당받다"를 따른다 |
+| 重跑 | 재실행 | rerun | |
+| 优雅收尾 | 정상 마무리 | graceful wrap-up | |
+| 终局判定 | 최종 판정 | final verdict | |
+| 态势研判 | 상황 판단 | situation assessment | |
+| 系统审计 | 시스템 감사 | system audit | |
+| 旁路问题 (/btw) | 별도 질문 | side question | |
+| 起点 / 根任务 | 시작점 / 루트 작업 | origin / root task | |
+| 移出 (작업 자산) | 작업에서 제외 | remove from task | "排除 → 제외"를 따른다 |
+| 缓存读取 / 缓存写入 | 캐시 읽기 / 캐시 쓰기 | cache read / cache write | |
+| 命中率 | 적중률 | hit rate | "命中(캐시) → 적중"을 따른다 |
+| 入 / 缓 / 出 (토큰 줄임) | 입력 / 캐시 / 출력 | input / cache / output | 줄임말을 풀어 쓴다 |
+| 录制 | 기록 | record | 트래픽·LLM 호출 기록. "录制中"은 "기록 중" |
+| 延迟 | 지연 시간 | latency | |
+| 方法 (HTTP) | 메서드 | method | |
+| 原文 (HTTP 원본) | 원본 | raw | |
+| 报文 / 数据包 | 메시지 / 패킷 | message / packet | |
+| 归一化 | 정규화 | normalize | |
+| 数据源 / 同步 | 데이터 소스 / 동기화 | data source / sync | |
+| 不可达 | 연결할 수 없음 | unreachable | 상태 라벨 |
+| 统计 / 筛选 | 통계 / 필터 | statistics / filter | |
+| 导出 / 搜索·检索 / 刷新 | 내보내기 / 검색 / 새로 고침 | export / search / refresh | 버튼 |
+| 折叠 / 展开 | 접기 / 펼치기 | collapse / expand | |
+| 视图 | 보기 | view | 예: "그룹 보기" |
+| 条 (건수) / 已选 | 건 / 선택됨 | items / selected | 예: "총 N건", "N건 선택됨" |
+| 正序 / 倒序 | 오름차순 / 내림차순 | ascending / descending | |
+| 上一页 / 下一页 | 이전 / 다음 | previous / next | |
+| 上传 / 下载 / 文件夹 | 업로드 / 다운로드 / 폴더 | upload / download / folder | |
+| 关键词 / 标签 / 备注 | 키워드 / 태그 / 메모 | keyword / tag / note | |
+| 概览 | 개요 | overview | |
+| 不可撤销 | 되돌릴 수 없습니다 | cannot be undone | "이 작업"은 task로 읽히므로 대상을 쓴다 |
+
 ## 고친 기록
 
 - 2026-10-10: 처음 만든다(#101). 근거 명령과 결과는 이 문서를 더한 PR 본문에 있다.
+- 2026-10-10: web 기능 화면 번역(#111)에서 정한 용어를 "화면 기능" 표로 더한다.
