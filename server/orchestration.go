@@ -512,7 +512,7 @@ func (s *Server) seedOrchestrationTools() {
 
 // refreshBuiltinToolSchemas propagates code schema/description changes on the
 // orchestration + platform tools into already-seeded rows ONCE per version flag —
-// SeedTool is first-insert-only, so a new param (e.g. spawn_task 的 llm_profile) never
+// SeedTool is first-insert-only, so a new param (e.g. spawn_task's llm_profile) never
 // reaches an old DB otherwise. Preserves each tool's agent binding + enabled flag.
 // Bump the flag whenever these tools' schemas/descriptions change in code.
 func (s *Server) refreshBuiltinToolSchemas() {
@@ -789,7 +789,7 @@ func (s *Server) seedAutoReportFindingBinding() {
 		return
 	}
 	if err := s.m.pg.AddAgentToToolBinding("auto", []string{"report_finding"}); err != nil {
-		log.Printf("[auto] report_finding 默认绑定失败: %v", err)
+		log.Printf("[auto] report_finding 기본 연결 실패: %v", err)
 		return
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
@@ -805,7 +805,7 @@ func (s *Server) seedPlannerDefaultBindings() {
 		return
 	}
 	if err := s.m.pg.AddAgentToToolBinding("planner", []string{"report_finding"}); err != nil {
-		log.Printf("[planner] report_finding 默认绑定失败: %v", err)
+		log.Printf("[planner] report_finding 기본 연결 실패: %v", err)
 		return
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
@@ -822,7 +822,7 @@ func (s *Server) seedPlannerListAssetsBinding() {
 		return
 	}
 	if err := s.m.pg.AddAgentToToolBinding("planner", []string{"list_assets"}); err != nil {
-		log.Printf("[planner] list_assets 默认绑定失败: %v", err)
+		log.Printf("[planner] list_assets 기본 연결 실패: %v", err)
 		return
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
@@ -835,16 +835,16 @@ func (s *Server) seedPlannerListAssetsBinding() {
 // PlannerTools() and lack worker via WorkerTools(); this only backfills old rows.
 // One-shot + flag-guarded so a user who later re-binds worker isn't overridden.
 func (s *Server) seedCompanyScopeRebind() {
-	const flag = "company_scope_rebind_v1" // worker→planner 默认绑定切换
+	const flag = "company_scope_rebind_v1" // worker→planner 기본 연결 전환
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
 	if err := s.m.pg.AddAgentToToolBinding("planner", []string{"add_company_scope"}); err != nil {
-		log.Printf("[planner] add_company_scope 默认绑定失败: %v", err)
+		log.Printf("[planner] add_company_scope 기본 연결 실패: %v", err)
 		return
 	}
 	if err := s.m.pg.RemoveAgentFromTool("worker", "add_company_scope"); err != nil {
-		log.Printf("[worker] add_company_scope 解绑失败: %v", err)
+		log.Printf("[worker] add_company_scope 연결 해제 실패: %v", err)
 		return
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
@@ -871,8 +871,8 @@ func (s *Server) seedWorkerReadToolsUnbind() {
 		"list_facts", "list_companies", "list_worker_traces",
 	} {
 		if err := s.m.pg.RemoveAgentFromTool("worker", k); err != nil {
-			log.Printf("[worker] %s 从 worker 解绑失败: %v", k, err)
-			return // 出错则不落 flag，下次启动重试
+			log.Printf("[worker] %s worker 연결 해제 실패: %v", k, err)
+			return // 오류가 나면 flag를 세우지 않고 다음 시작 때 다시 시도한다
 		}
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
@@ -885,15 +885,15 @@ func (s *Server) seedWorkerReadToolsUnbind() {
 // Fresh DBs already have them via WorkerTools() and this is a harmless no-op there.
 // One-shot + flag-guarded so a user who later deliberately unbinds them isn't overridden.
 func (s *Server) seedWorkerReadbackRebind() {
-	const flag = "worker_readback_rebind_v2" // v2: 追加 node_detail
+	const flag = "worker_readback_rebind_v2" // v2: node_detail 추가
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
 	if err := s.m.pg.AddAgentToToolBinding("worker", []string{
 		"search_all_worker_traces", "get_worker_trace", "node_detail",
 	}); err != nil {
-		log.Printf("[worker] 回看/详情工具补绑失败: %v", err)
-		return // 出错则不落 flag，下次启动重试
+		log.Printf("[worker] 되돌아보기·상세 도구 다시 연결 실패: %v", err)
+		return // 오류가 나면 flag를 세우지 않고 다음 시작 때 다시 시도한다
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
 }
@@ -903,7 +903,7 @@ func (s *Server) seedWorkerReadbackRebind() {
 // before Auto existed still give Auto its default toolset — without re-adding it
 // after a user deliberately unbinds.
 func (s *Server) seedAutoDefaultBindings() {
-	const flag = "auto_default_bindings_v3" // v3: 替换旧资产工具名，加入 insert_assets/add_company_scope
+	const flag = "auto_default_bindings_v3" // v3: 옛 자산 도구 이름 교체, insert_assets/add_company_scope 추가
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
@@ -912,10 +912,10 @@ func (s *Server) seedAutoDefaultBindings() {
 		keys = append(keys, t.Name())
 	}
 	keys = append(keys, platformToolKeys...)
-	// 资产工具：Auto 操作平台常要看/登记资产、管理公司范围。
+	// 자산 도구: Auto는 플랫폼을 조작하며 자산을 자주 보고/등록하고 기업 범위를 관리한다.
 	keys = append(keys, "insert_assets", "add_company_scope", "list_assets")
 	if err := s.m.pg.AddAgentToToolBinding("auto", keys); err != nil {
-		log.Printf("[auto] 默认绑定失败: %v", err)
+		log.Printf("[auto] 기본 연결 실패: %v", err)
 		return
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
