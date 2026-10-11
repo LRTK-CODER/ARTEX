@@ -283,8 +283,8 @@ export default function WorkspacePage() {
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
                   <p className="text-muted-foreground text-sm">
                     {edit.file.too_large
-                      ? "파일이 너무 커서 미리 보기·편집을 지원하지 않습니다."
-                      : "바이너리 파일이라 미리 보기·편집을 지원하지 않습니다."}
+                      ? "파일이 너무 커서 미리 보기·편집을 지원하지 않습니다"
+                      : "바이너리 파일이라 미리 보기·편집을 지원하지 않습니다"}
                   </p>
                   <Button variant="outline" onClick={() => api.workspaceDownload(edit.file.path)}>
                     <DownloadIcon /> 파일 다운로드

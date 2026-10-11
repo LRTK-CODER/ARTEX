@@ -1358,7 +1358,7 @@ func (s *Server) fsUploadSkill(w http.ResponseWriter, r *http.Request) {
 	skillPath := filepath.Join(s.skillDir, name)
 	overwrite := r.URL.Query().Get("overwrite") == "true"
 	if _, err := os.Stat(skillPath); err == nil && !overwrite {
-		writeErr(w, 409, "스킬 '"+name+"'이(가) 이미 있습니다. 덮어쓰려면 확인한 뒤 다시 시도하세요")
+		writeErr(w, 409, "스킬 '"+name+"'이(가) 이미 있습니다. 덮어쓰려면 확인한 뒤 다시 시도하세요.")
 		return
 	}
 

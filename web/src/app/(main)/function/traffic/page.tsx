@@ -711,7 +711,7 @@ export default function TrafficPage() {
                 {exchanges.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                      {traffic === null ? "불러오는 중…" : "일치하는 트래픽이 없습니다."}
+                      {traffic === null ? "불러오는 중…" : "일치하는 트래픽이 없습니다"}
                     </TableCell>
                   </TableRow>
                 )}

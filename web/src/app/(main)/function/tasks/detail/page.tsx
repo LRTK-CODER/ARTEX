@@ -135,7 +135,7 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
         toast.success(
           result.reopened_intents > 0
             ? `LLM 프로필을 바꿨습니다. 한도 초과로 멈춘 탐색 의도 ${result.reopened_intents}개를 재개했습니다.`
-            : "LLM 프로필을 바꿨습니다.",
+            : "LLM 프로필을 바꿨습니다",
         );
       }
       setOpen(false);
@@ -305,7 +305,7 @@ function TaskDetailInner() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
         <p className="text-muted-foreground">
-          {loaded ? `작업 ${id}이(가) 삭제됐거나 보관됐거나 없습니다.` : "불러오는 중…"}
+          {loaded ? `작업 ${id}이(가) 삭제됐거나 보관됐거나 없습니다` : "불러오는 중…"}
         </p>
         {loaded && (
           <Button asChild variant="outline">
@@ -323,8 +323,8 @@ function TaskDetailInner() {
   const archiveLifecycleEligible = terminal || paused || task.status === "paused";
   const canArchive = archiveLifecycleEligible && !task.archive_blocked_by_task_id;
   let archiveDisabledReason = task.queued
-    ? "대기 중인 작업은 먼저 일시 중지해야 합니다."
-    : "실행 중인 작업은 먼저 일시 중지해야 합니다.";
+    ? "대기 중인 작업은 먼저 일시 중지해야 합니다"
+    : "실행 중인 작업은 먼저 일시 중지해야 합니다";
   if (archiveLifecycleEligible && task.archive_blocked_by_task_id) {
     archiveDisabledReason = `보관되지 않은 작업 #${task.archive_blocked_by_task_id}이(가) 이 작업을 직접 이어받았습니다. 그 작업을 먼저 보관하세요.`;
   }

@@ -658,7 +658,7 @@ func (s *Server) reseedPlannerPrompt() {
 
 // reseedWorkerPrompt 는 worker 프롬프트를 '현재 코드 기본값'으로 다시 쓴다. 기본 본문의 record_fact 단락에서 '부정 계열 결론은
 // 관찰로 적고 탐색적으로 읽는다'는 문장 전체를 지우고, confidence(observed/inferred)를 '이 의도의 수단을 다 썼는지'와 분리했으며(이들은 플래너를 쉽게 오해시킨다),
-// 아울러 facts 배열을 여러 항목으로 나누는 것을 '서로 완전히 독립적이어서 합칠 수 없는' 극소수 예외로 좁혔다. flag를 v3으로 올려 기존 구버전 DB가 다시 한 번 반영하게 한다.
+// 아울러 facts 배열을 여러 항목으로 나누는 것을 '서로 완전히 독립적이어서 합칠 수 없는' 극소수 예외로 좁혔다. flag를 v4(worker_prompt_compact_v4)로 올려 기존 구버전 DB가 다시 한 번 반영하게 한다.
 // SeedPromptIfEmpty는 첫 삽입에만 적용돼 구버전 DB의 기존 버전이 받지 못하므로, 버전 관리로 '새 버전을 하나 추가'해 그쪽으로 전환한다. 옛 버전은 이력에 남아 되찾을 수 있다.
 // settings flag로 막아 한 번만 한다. 완전 새 DB는 처리할 필요가 없다. reseedGoalsPrompt와 완전히 같은 구조다.
 func (s *Server) reseedWorkerPrompt() {

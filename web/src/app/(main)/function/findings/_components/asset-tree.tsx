@@ -233,9 +233,9 @@ export function AssetTree({
     [isExpanded],
   );
 
-  let emptyHint = "현재 필터에서 자산과 관련된 발견 사항이 없습니다.";
+  let emptyHint = "현재 필터에서 자산과 관련된 발견 사항이 없습니다";
   if (loading) emptyHint = "불러오는 중…";
-  else if (searching) emptyHint = "일치하는 자산이 없습니다.";
+  else if (searching) emptyHint = "일치하는 자산이 없습니다";
 
   const rows: React.ReactNode[] = [];
   const pushRows = (list: TreeNode[]) => {

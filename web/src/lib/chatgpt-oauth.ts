@@ -24,7 +24,7 @@ export const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   device_login_disabled:
     "이 ChatGPT 계정은 디바이스 코드 로그인이 꺼져 있습니다. ChatGPT 보안 설정에서 켜거나 콜백 주소 붙여넣기를 쓰세요.",
   device_start_failed: "디바이스 코드를 받지 못했습니다. 프록시와 네트워크를 확인하세요.",
-  not_connected: "이미 연결이 해제돼 있습니다.",
+  not_connected: "이미 연결이 해제돼 있습니다",
   disconnect_failed: "연결을 해제하지 못했습니다. 잠시 뒤 다시 시도하세요.",
 };
 

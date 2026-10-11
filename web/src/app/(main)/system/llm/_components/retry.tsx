@@ -294,7 +294,7 @@ export function RetryPolicyPanel() {
       // 백엔드가 범위를 벗어난 값을 범위 안으로 맞춰 돌려주므로, 돌려받은 값으로 갱신해 화면과 저장값을 같게 한다.
       const saved = await api.saveLLMRetryPolicy(policy);
       setPolicy({ ...ZERO_POLICY, ...saved });
-      toast.success("저장했습니다. 바로 적용됩니다(지금 진행 중인 호출은 이전 값을 씁니다)");
+      toast.success("저장했습니다. 바로 적용됩니다(지금 진행 중인 호출은 이전 값을 씁니다).");
     } catch (e) {
       toast.error(`재시도 설정을 저장하지 못했습니다: ${(e as Error).message}`);
     } finally {

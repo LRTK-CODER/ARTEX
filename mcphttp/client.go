@@ -299,7 +299,7 @@ func (c *Client) wrap(rt remoteTool) actool.CoreTool {
 			}
 			raw, err := c.call(ctx, "tools/call", map[string]any{"name": rt.Name, "arguments": args})
 			if err != nil {
-				return actool.Errorf("Error: " + err.Error()), nil
+				return actool.Errorf("MCP 도구를 호출하지 못했습니다: " + err.Error()), nil
 			}
 			var res struct {
 				Content []struct {
@@ -309,7 +309,7 @@ func (c *Client) wrap(rt remoteTool) actool.CoreTool {
 				IsError bool `json:"isError"`
 			}
 			if err := json.Unmarshal(raw, &res); err != nil {
-				return actool.Errorf("Error: bad MCP response: " + err.Error()), nil
+				return actool.Errorf("MCP 응답을 해석하지 못했습니다: " + err.Error()), nil
 			}
 			var text string
 			for _, blk := range res.Content {

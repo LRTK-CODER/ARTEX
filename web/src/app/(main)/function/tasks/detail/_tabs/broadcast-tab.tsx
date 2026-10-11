@@ -663,7 +663,7 @@ export function BroadcastTab({ taskId }: { taskId: string }) {
           </div>
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            {query || kinds.length > 0 ? "조건에 맞는 항목이 없습니다." : "이 작업에는 아직 탐색 노드가 없습니다."}
+            {query || kinds.length > 0 ? "조건에 맞는 항목이 없습니다" : "이 작업에는 아직 탐색 노드가 없습니다"}
           </p>
         ) : (
           groups.map((group) => (

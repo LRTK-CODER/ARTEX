@@ -216,7 +216,7 @@ function deleteDetails(result: DeleteCounts): string[] {
 
 function deleteSummary(result: DeleteTaskResult): string {
   const details = deleteDetails(result);
-  return details.length > 0 ? `작업을 삭제했습니다(${details.join(", ")}).` : "작업을 삭제했습니다.";
+  return details.length > 0 ? `작업을 삭제했습니다(${details.join(", ")}).` : "작업을 삭제했습니다";
 }
 
 // fmtDateTime renders a unix-seconds timestamp as a compact local date-time
@@ -552,8 +552,8 @@ export default function TasksPage() {
         const result = await api.controlTask(id, action);
         toast.success(
           action === "pause"
-            ? `작업 #${id}을 일시 중지했습니다.`
-            : `작업 #${id}을 재개했습니다.${result.queued ? " 대기열에 들어갔습니다." : ""}`,
+            ? `작업 #${id}을 일시 중지했습니다`
+            : `작업 #${id}을 재개했습니다${result.queued ? ". 대기열에 들어갔습니다." : ""}`,
         );
       } catch (e) {
         toast.error(`작업을 ${action === "pause" ? "일시 중지" : "재개"}하지 못했습니다: ${(e as Error).message}`);
@@ -587,7 +587,7 @@ export default function TasksPage() {
       try {
         await api.pinTask(task.id, !pinned);
         toast.success(
-          pinned ? `작업 #${task.id}의 상단 고정을 해제했습니다.` : `작업 #${task.id}을 상단에 고정했습니다.`,
+          pinned ? `작업 #${task.id}의 상단 고정을 해제했습니다` : `작업 #${task.id}을 상단에 고정했습니다`,
         );
         lastRef.current = "";
         load();
@@ -726,8 +726,8 @@ export default function TasksPage() {
         if (succeeded.length > 0) {
           toast.success(
             action === "pause"
-              ? `작업 ${succeeded.length}개를 일시 중지했습니다.`
-              : `작업 ${succeeded.length}개를 재개했습니다.${succeeded.some((item) => item.queued) ? " 일부 작업은 대기열에 들어갔습니다." : ""}`,
+              ? `작업 ${succeeded.length}개를 일시 중지했습니다`
+              : `작업 ${succeeded.length}개를 재개했습니다${succeeded.some((item) => item.queued) ? ". 일부 작업은 대기열에 들어갔습니다." : ""}`,
           );
         }
         if (failed.length > 0) {
@@ -1105,7 +1105,7 @@ function ConcurrencySettingsDialog() {
       toast.success(
         enabled
           ? `동시 실행 제한을 켰습니다. 작업을 최대 ${nextLimit}개까지 동시에 실행합니다.`
-          : "작업 동시 실행 제한을 껐습니다.",
+          : "작업 동시 실행 제한을 껐습니다",
       );
       setOpen(false);
     } catch (error) {
@@ -1459,7 +1459,7 @@ function TaskControlButton({
       size="icon"
       variant="ghost"
       aria-label={label}
-      title={action ? label : "이 상태에서는 일시 중지하거나 재개할 수 없습니다."}
+      title={action ? label : "이 상태에서는 일시 중지하거나 재개할 수 없습니다"}
       disabled={!action || pending}
       onClick={async () => {
         if (!action) return;
@@ -1477,8 +1477,8 @@ function TaskControlButton({
 }
 
 function archiveBlockReason(task: Task): string {
-  if (task.queued) return "대기 중인 작업은 먼저 일시 중지해야 합니다.";
-  if (!ARCHIVABLE_STATUSES.has(task.status)) return "실행 중이거나 아직 끝나지 않은 작업은 먼저 일시 중지해야 합니다.";
+  if (task.queued) return "대기 중인 작업은 먼저 일시 중지해야 합니다";
+  if (!ARCHIVABLE_STATUSES.has(task.status)) return "실행 중이거나 아직 끝나지 않은 작업은 먼저 일시 중지해야 합니다";
   if (task.archive_blocked_by_task_id) {
     return `보관되지 않은 작업 #${task.archive_blocked_by_task_id}이(가) 이 작업을 직접 이어받았습니다. 그 작업을 먼저 보관하세요.`;
   }
