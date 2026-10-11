@@ -105,7 +105,7 @@ func applyStaged(p Paths) (Action, State) {
 // confirmOrRollback 은 "바이너리 교체 뒤의 시작"을 처리한다. 시도 횟수를 세고, 한도를 넘으면 이전 버전으로 되돌린다.
 //
 // 횟수는 Go 코드가 실행된 뒤에야 늘어나므로, 이것이 다루는 것은 "실행은 되지만 초기화 중에 죽는"
-// (설정 비호환, 포트 점유, DB 마이그레이션 실패) 종류의 장애다. "아예 exec 할 수 없는" 경우는 바이너리 교체 전의
+// (설정 비호환, 포트 점유, DB 마이그레이션 실패) 종류의 장애다. "아예 exec할 수 없는" 경우는 바이너리 교체 전의
 // 스모크 테스트가 막는다. 둘을 합쳐야 완전하다.
 func confirmOrRollback(p Paths, m marker) (Action, State) {
 	m.Attempts++

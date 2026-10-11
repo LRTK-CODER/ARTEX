@@ -47,7 +47,7 @@ func (s *Server) wsOpenRoot() (*os.Root, error) {
 	return os.OpenRoot(filepath.Clean(s.m.dir))
 }
 
-// wsAbs 는 사용자가 준 상대 경로를 작업 공간 아래 절대 경로로 바꾼다. ".." 는 루트에 묶어 접는다.
+// wsAbs 는 사용자가 준 상대 경로를 작업 공간 아래 절대 경로로 바꾼다. ".."는 루트에 묶어 접는다.
 // 링크는 풀지 않으므로 이 결과만으로 작업 공간 안이라고 판정하지 않는다.
 func (s *Server) wsAbs(rel string) string {
 	base := filepath.Clean(s.m.dir)
@@ -68,7 +68,7 @@ func (s *Server) wsResolve(rel string) (wsPath, bool) {
 	return wsPath{abs: abs, name: name}, true
 }
 
-// wsRootName 은 abs의 링크를 푼 실제 경로가 작업 공간 안이면 루트 기준 상대 이름을 돌려준다. 루트 자신은 "." 다.
+// wsRootName 은 abs의 링크를 푼 실제 경로가 작업 공간 안이면 루트 기준 상대 이름을 돌려준다. 루트 자신은 "."다.
 func (s *Server) wsRootName(abs string) (string, bool) {
 	realBase, err := filepath.EvalSymlinks(filepath.Clean(s.m.dir))
 	if err != nil {

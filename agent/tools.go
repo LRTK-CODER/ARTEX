@@ -1182,7 +1182,7 @@ func (t *ToolSet) proveGoal() actool.CoreTool {
 			}
 			_ = t.ts.Link(ev, db.RelProves, goal)
 			_ = t.ts.SetNodeState(goal, "met")
-			// 목표를 하나 met로 표시할 때마다 이 작업의 [모든 목표]가 met 됐는지 확인한다. 그렇다면
+			// 목표를 하나 met로 표시할 때마다 이 작업의 [모든 목표]가 met됐는지 확인한다. 그렇다면
 			// 작업 완료로 자동 판정하고(GoalMet 설정), 모델이 goal_met를 명시적으로 부르는 데 더는 기대지 않는다.
 			if goals, err := t.ts.ListByKind(db.KindGoal, 1000); err == nil && len(goals) > 0 {
 				allMet := true
@@ -1194,7 +1194,7 @@ func (t *ToolSet) proveGoal() actool.CoreTool {
 				}
 				if allMet {
 					t.GoalMet = true
-					t.Reason = fmt.Sprintf("모든 %d 개 목표가 met 됨(마지막은 goal %d가 트리거)", len(goals), goal)
+					t.Reason = fmt.Sprintf("모든 %d 개 목표가 met됨(마지막은 goal %d가 트리거)", len(goals), goal)
 					return actool.Text(fmt.Sprintf("goal %d marked met; all goals of this task are achieved, the task is automatically judged complete", goal)), nil
 				}
 			}
@@ -1445,7 +1445,7 @@ type goalItem struct {
 
 // addOneGoal 은 goal 노드(open)를 탐색 그래프에 달고, 작업 루트(origin fact, rel spawns)에 잇는다.
 // origin은 t.worker(기본 system)를 쓴다: goals 분해기가 쓴 것은 "goals", 메인 agent 런타임은
-// "human" 으로 기록한다. planner 깨우기는 setGoals가 일괄을 다 쓴 뒤 한 번에 한다(아래 참고). 여기서는 저장만 맡는다.
+// "human"으로 기록한다. planner 깨우기는 setGoals가 일괄을 다 쓴 뒤 한 번에 한다(아래 참고). 여기서는 저장만 맡는다.
 func (t *ToolSet) addOneGoal(it goalItem) (int64, error) {
 	text := strings.TrimSpace(it.Text)
 	if text == "" {
@@ -1470,7 +1470,7 @@ func (t *ToolSet) addOneGoal(it goalItem) (int64, error) {
 }
 
 // setGoals 는 [이 작업]에 탐색 목표(goal 노드)를 추가한다. 목표 분해기의 제출 도구이자, 메인 agent가
-// 런타임에 목표를 보태는 도구다 — 같은 관리 도구이며, web에서 설명/schema를 바꾸고 agent 별로 묶을 수 있다.
+// 런타임에 목표를 보태는 도구다 — 같은 관리 도구이며, web에서 설명/schema를 바꾸고 agent별로 묶을 수 있다.
 func (t *ToolSet) setGoals() actool.CoreTool {
 	return writeTool("set_goals",
 		"Add exploration goals (goal) to [this task]. A goal = a final deliverable/verifiable result, not an attack step or recon action.\n"+
@@ -1545,7 +1545,7 @@ type constraintItem struct {
 }
 
 // addOneConstraint 은 작업 제약 조건 하나를 task_constraints에 저장한다. origin은 t.worker(기본 system)를 쓴다:
-// 분해기는 "goals", 메인 agent는 "human" 으로 쓴다.
+// 분해기는 "goals", 메인 agent는 "human"으로 쓴다.
 func (t *ToolSet) addOneConstraint(it constraintItem) (int64, error) {
 	text := strings.TrimSpace(it.Text)
 	if text == "" {
@@ -1563,7 +1563,7 @@ func (t *ToolSet) addOneConstraint(it constraintItem) (int64, error) {
 
 // setConstraints 는 [이 작업]에 작업 제약 조건(allow=무엇을 허용 / deny=무엇을 금지)을 추가한다. 목표
 // 분해기가 round-0에 제약을 뽑아 제출하는 도구이자, 메인 agent가 런타임에 제약을 보태는 도구다 — 같은 관리 도구이며, web에서
-// 설명/schema를 바꾸고 agent 별로 묶을 수 있다. 제약은 planner/worker의 시스템 프롬프트에 주입되어 탐색 경계를 제약한다.
+// 설명/schema를 바꾸고 agent별로 묶을 수 있다. 제약은 planner/worker의 시스템 프롬프트에 주입되어 탐색 경계를 제약한다.
 func (t *ToolSet) setConstraints() actool.CoreTool {
 	return writeTool("set_constraints",
 		"Add operation constraints to [this task] to frame the exploration boundary: type=allow (allowed actions) or deny (forbidden actions).\n"+

@@ -30,7 +30,7 @@ func runEvidenceSuite(m *testing.M) int {
 	conn, err := lockDB.Conn(ctx)
 	if err != nil {
 		// 데이터베이스가 아직 없으면 lock을 잡을 DB가 없으므로 db.Open으로 먼저 만든다.
-		// 이 단계는 lock 밖이다. `go test ./...` 에서 다른 패키지(db·agent·server·llmrec)도
+		// 이 단계는 lock 밖이다. `go test ./...`에서 다른 패키지(db·agent·server·llmrec)도
 		// 같은 순간 DB를 만들거나 스키마를 적용할 수 있어 겹칠 상대가 없다고 장담할 수 없다.
 		pg, openErr := db.Open(dsn)
 		if openErr != nil {

@@ -2,7 +2,7 @@ package db
 
 import "fmt"
 
-// builtinTextMigration 은 #108 이전에 seed 한 중국어 값(legacy)과 지금 seed 하는 한국어 값(current)의 쌍이다.
+// builtinTextMigration 은 #108 이전에 seed한 중국어 값(legacy)과 지금 seed하는 한국어 값(current)의 쌍이다.
 type builtinTextMigration struct{ legacy, current string }
 
 // 명령 차단 규칙과 자산 차단 규칙의 seed는 설정 플래그로 한 번만 돌아, 기존 설치에는 중국어 행이

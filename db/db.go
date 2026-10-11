@@ -223,7 +223,7 @@ ON CONFLICT (agent_id, var_name) DO UPDATE
 	}
 	// Drop catalog entries for variables that were renamed, so the white-list no
 	// longer advertises a name templates can't resolve (EngagementTitle→Description).
-	// 'Now' 를 각 agent 목록에서 전역 runtime 변수로 올린 뒤에도 이전 DB의 goals에 'Now' 한 줄이 남아
+	// 'Now'를 각 agent 목록에서 전역 runtime 변수로 올린 뒤에도 이전 DB의 goals에 'Now' 한 줄이 남아
 	// 전역 항목과 이름이 겹친다(프런트 변수 목록 key 중복). 함께 지운다.
 	if _, err := d.Exec(`DELETE FROM agent_prompt_vars WHERE var_name IN ('EngagementTitle', 'CoverageGaps', 'Now')`); err != nil {
 		return fmt.Errorf("cleanup renamed vars: %w", err)

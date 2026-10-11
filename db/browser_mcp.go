@@ -18,7 +18,7 @@ const browserMCPCommand = "npx"
 // 명시한다(#85).
 var browserMCPDefaultArgs = []string{"@playwright/mcp", "--headless", "--browser", "chromium"}
 
-// legacyBrowserMCPArgs 는 #85 이전에 seed 하던 기본 인자다. 이 값 그대로 남은 행만
+// legacyBrowserMCPArgs 는 #85 이전에 seed하던 기본 인자다. 이 값 그대로 남은 행만
 // 새 기본값으로 바꾼다.
 var legacyBrowserMCPArgs = []string{"@playwright/mcp", "--headless"}
 

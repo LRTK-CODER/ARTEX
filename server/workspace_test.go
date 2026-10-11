@@ -102,7 +102,7 @@ func TestWorkspaceReadRoutesConfinedAfterSymlinks(t *testing.T) {
 		{name: "밖을 가리키는 링크 디렉터리", path: "out", routes: dirRoutes, wantStatus: http.StatusBadRequest},
 		{name: "중첩 링크 아래 파일", path: "nested/secret.txt", routes: fileRoutes, wantStatus: http.StatusBadRequest},
 		{name: "중첩 링크 디렉터리", path: "nested", routes: dirRoutes, wantStatus: http.StatusBadRequest},
-		// ".." 는 루트에 묶여 작업 공간 안의 없는 경로가 된다.
+		// ".."는 루트에 묶여 작업 공간 안의 없는 경로가 된다.
 		{name: "점점 경로", path: "../outside/secret.txt", routes: fileRoutes, wantStatus: http.StatusNotFound},
 		{name: "안을 가리키는 링크 아래 파일", path: "in/ok.txt", routes: fileRoutes, wantStatus: http.StatusOK},
 		{name: "안을 가리키는 링크 디렉터리", path: "in", routes: dirRoutes, wantStatus: http.StatusOK},

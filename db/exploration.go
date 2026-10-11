@@ -319,7 +319,7 @@ WHERE exploration_id=$1 AND kind='intent' AND state='running'`, s.expID)
 	return n, nil
 }
 
-// ReopenIntent 는 성공하지 못하고 끝난 탐색 의도(blocked/exhausted/stopped) 하나를 'open' 으로 되돌려
+// ReopenIntent 는 성공하지 못하고 끝난 탐색 의도(blocked/exhausted/stopped) 하나를 'open'으로 되돌려
 // 워커가 다시 할당받게 한다(이미 그래프에 쓴 결과는 남는다). 워커는 처음부터 다시 하지 않고 이전 LLM
 // 대화 기록에서 이어 간다. done/open/running은 건드리지 않는다. 행이 바뀌었는지 돌려준다. "재실행"이 쓴다.
 func (s *ExplorationStore) ReopenIntent(id int64) (bool, error) {
@@ -1554,7 +1554,7 @@ func (s *ExplorationStore) ActivityListForTerminalIntent(nodeID, sinceID int64, 
 //   - Main == true  → 한 구간의 메인 에이전트 세션(worker="mainagent")
 //     (MainSeg. nil/0 = 원래 구간이며 이전의 NULL 행도 맞는다).
 //   - Worker != ""  → 워커 이름으로 거른다(Plan = "planner").
-//     Goal Agent의 0회차 목표 분해도 worker="planner" 로 저장되므로 Plan 세션은 Goal+Planner를 모두 담는다.
+//     Goal Agent의 0회차 목표 분해도 worker="planner"로 저장되므로 Plan 세션은 Goal+Planner를 모두 담는다.
 //   - NodeID != nil → node_id(= 탐색 의도 id)로 거른 Worker 세션.
 //
 // 영값(모두 비어 있음)은 작업 전체에 맞는다(세션 필터 없음).

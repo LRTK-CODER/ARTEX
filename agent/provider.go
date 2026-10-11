@@ -539,7 +539,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	defer logTestConnection(c, capt)
 	// 연결 테스트는 단발 경로라 agentcore의 세션 루프를 거치지 않으므로 아무도 context에 session id를 달지 않는다.
 	// SessionHeaderKey를 설정한 엔드포인트(예: opencode zen은 x-opencode-session 헤더를 강제하고,
-	// 없으면 바로 400 MissingSessionID)에서는 '대화는 정상인데 테스트만 400' 이 되는 어긋남이 생긴다.
+	// 없으면 바로 400 MissingSessionID)에서는 '대화는 정상인데 테스트만 400'이 되는 어긋남이 생긴다.
 	// 여기서 일회성 무작위 session id를 달아, 테스트가 실제 대화와 같은 헤더 발송 로직을 타게 한다.
 	// SessionHeaderKey를 설정하지 않은 엔드포인트는 이를 읽지 않으므로 부작용이 없다.
 	ctx = transcript.WithSessionID(ctx, "conntest-"+transcript.NewSessionID())
@@ -547,7 +547,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	// MaxTokens는 넉넉히 준다. 추론 모델(예: deepseek-v4-pro)은 답을 내기 전에 사고를 한참 쏟아 낸다
 	// ("ping" 한마디에도 실측 ~2900 토큰). 32 토큰만 주면 모델이 '사고 단계'에 머물다 출력 최대 토큰에 걸려
 	// (finish=length) 잘리고, 연결 테스트는 통과(err=nil)로 치면서도 화면에는
-	// '중단됨/length/resume' 로 엉망으로 보인다. 예산을 넉넉히 줘서 OK를 깨끗이 끝까지 내게 한다(finish=stop).
+	// '중단됨/length/resume'로 엉망으로 보인다. 예산을 넉넉히 줘서 OK를 깨끗이 끝까지 내게 한다(finish=stop).
 	// EscalateMaxTokens는 false로 둔다. 잘림 때문에 최대 토큰을 올려 재시도하지 않아 resume 루프의 헛돎을 막는다.
 	reply, err := agentcore.Run(ctx, agentcore.Options{
 		Provider:       prov,

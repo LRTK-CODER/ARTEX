@@ -36,7 +36,7 @@ const postgresPingTimeout = 5 * time.Second
 
 // skipWithoutPostgres 는 DB 설정이 없거나 DB에 연결하지 못하면 테스트를 건너뛴다.
 // 설정 판별과 연결 확인만 skip으로 돌리고, 그 뒤의 오류(스키마 적용 등)는
-// 호출자가 그대로 t.Fatal 하도록 남긴다.
+// 호출자가 그대로 t.Fatal하도록 남긴다.
 func skipWithoutPostgres(t *testing.T) {
 	t.Helper()
 	dsn, _, err := db.DSN()

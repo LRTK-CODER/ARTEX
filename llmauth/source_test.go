@@ -216,7 +216,7 @@ func TestTokenSourceInvalidate(t *testing.T) {
 }
 
 // TestTokenSourceRefreshesOnceForConcurrentRejections 는 여러 요청이 같은 옛 토큰으로 401을 받아
-// 저마다 Invalidate 해도 갱신은 한 번만 하는지 확인한다.
+// 저마다 Invalidate해도 갱신은 한 번만 하는지 확인한다.
 func TestTokenSourceRefreshesOnceForConcurrentRejections(t *testing.T) {
 	const callers = 8
 	now := time.Unix(1_800_000_000, 0)
