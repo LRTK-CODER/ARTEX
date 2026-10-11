@@ -472,8 +472,8 @@ func (s *Server) deriveTaskStatus(t *Task) string {
 // are bindable per-agent (default: bound to nobody — opt-in for orchestration
 // agents). First-insert only, like the traffic seeds.
 func (s *Server) seedOrchestrationTools() {
-	// task-op + platform tools default-bind to the built-in Auto agent (它天生用来
-	// 操作平台)。SeedTool 首插入生效;老库已 seed 的行由 seedAutoDefaultBindings 补绑。
+	// task-op·platform 도구는 내장 Auto 에이전트에 기본 연결한다(Auto는 본래 플랫폼을 조작하는 역할이다).
+	// SeedTool은 첫 삽입에만 적용된다. 구버전 DB에 이미 seed된 행은 seedAutoDefaultBindings가 다시 연결한다.
 	autoAgents, _ := json.Marshal([]string{"auto"})
 	for _, t := range s.orchestrationTools() {
 		schema, _ := json.Marshal(t.InputSchema())
@@ -492,22 +492,22 @@ func (s *Server) seedOrchestrationTools() {
 	s.seedPlannerDefaultBindings()
 	s.seedPlannerListAssetsBinding()
 	s.seedCompanyScopeRebind()
-	s.seedWorkerReadToolsUnbind() // list_facts/list_companies/list_worker_traces 从 worker 默认解绑(一次性)
-	s.seedWorkerReadbackRebind()  // 修复旧迁移误删：把 search_all_worker_traces/get_worker_trace/node_detail 补绑回 worker(一次性)
+	s.seedWorkerReadToolsUnbind() // list_facts/list_companies/list_worker_traces를 worker 기본 연결에서 해제한다(일회성)
+	s.seedWorkerReadbackRebind()  // 옛 마이그레이션이 잘못 지운 것을 고친다: search_all_worker_traces/get_worker_trace/node_detail를 worker에 다시 연결한다(일회성)
 	s.seedAutoReportFindingBinding()
 	s.unbindGoalMetDefault()
-	s.reseedGoalsPrompt()             // goals 提示词加入「抽操作约束」步 → 旧库追加一版新默认(一次性)
-	s.reseedMainAgentPrompt()         // mainagent 提示词加入「目标达成后 add_intent 反问是否建目标」(一次性)
-	s.reseedPlannerPrompt()           // planner 提示词:重写「0 意图」正当理由 + 加量化验收核对(一次性)
-	s.reseedWorkerPrompt()            // worker 提示词:加否定结论证据门槛(一次性)
+	s.reseedGoalsPrompt()             // goals 프롬프트에 '작업 제약 조건 추출' 단계를 더한다 → 구버전 DB에 새 기본값 버전을 하나 추가한다(일회성)
+	s.reseedMainAgentPrompt()         // mainagent 프롬프트에 '목표 달성 뒤 add_intent 때 목표로 등록할지 되묻기'를 더한다(일회성)
+	s.reseedPlannerPrompt()           // planner 프롬프트: '0 의도'의 정당한 이유를 다시 쓰고 정량 검수 점검을 더한다(일회성)
+	s.reseedWorkerPrompt()            // worker 프롬프트: 부정 결론의 증거 기준을 더한다(일회성)
 	reseedPromptsToEnglish(s.m.pg)    // #102: 중국어 기본 프롬프트가 영어로 바뀐 것을 기존 설치의 미수정 기본값 행에 반영(한 번만)
-	s.seedReporterAgent()             // 预置「报告撰写」agent + 工具绑定 + finding 触发器(一次性)
-	s.upgradeReporterTriggerMessage() // 老库补迁移:让 reporter 回传 evidence_version(一次性)
-	s.seedFindingTrafficTools()       // 增加可选证据参数及只读证据工具，保留用户配置
+	s.seedReporterAgent()             // '보고서 작성' agent + 도구 연결 + finding 트리거를 미리 준비한다(일회성)
+	s.upgradeReporterTriggerMessage() // 구버전 DB 보완 마이그레이션: reporter가 evidence_version을 돌려보내게 한다(일회성)
+	s.seedFindingTrafficTools()       // 선택 증거 파라미터와 읽기 전용 증거 도구를 더하고, 사용자 설정은 보존한다
 	s.seedFindingWorkflowTools()
-	// 注：pentest 的默认工具绑定无需迁移——BuiltinToolSeeds 在全新初始化时就把
-	// list_assets/insert_assets/report_finding/list_findings/list_companies 连同
-	// pentest 一起 seed 好了（项目尚无旧库，不做迁移）。
+	// 참고: pentest의 기본 도구 연결은 마이그레이션이 필요 없다. BuiltinToolSeeds가 완전 새 초기화 때
+	// list_assets/insert_assets/report_finding/list_findings/list_companies를 pentest와
+	// 함께 seed해 둔다(프로젝트에 아직 구버전 DB가 없어 마이그레이션하지 않는다).
 }
 
 // refreshBuiltinToolSchemas propagates code schema/description changes on the
@@ -527,13 +527,13 @@ func (s *Server) refreshBuiltinToolSchemas() {
 			log.Printf("[tools] refresh %s schema failed: %v", t.Name(), err)
 		}
 	}
-	// 同时把部分内置 agent 工具刷成代码默认：
-	//   - goal_met：旧库 seed 的描述带“结束本轮规划”的误导，会让 planner 把它当成
-	//     “结束空轮”的手段、刚开跑就误判整个任务完成。
-	//   - insert_assets：新增 related 入参(标记资产是否与当前任务相关、决定是否入覆盖度)，
-	//     SeedTool 首插入only，旧库已 seed 的 schema 否则收不到这个新参数。
-	//   - list_facts：改为分页，新增 limit/before/q 入参；旧库已 seed 的空 schema 否则
-	//     在工具管理页显示「无参数」，模型也拿不到这几个参数说明。
+	// 아울러 일부 내장 agent 도구를 코드 기본값으로 다시 쓴다:
+	//   - goal_met: 구버전 DB에 seed된 설명에 '이번 계획 회차를 끝낸다'는 오해를 부르는 문구가 있어, planner가 이를
+	//     '공회전 회차를 끝내는' 수단으로 여기고 막 시작하자마자 작업 전체가 완료됐다고 잘못 판정한다.
+	//   - insert_assets: related 파라미터를 새로 더한다(자산이 현재 작업과 관련 있는지 표시하고 커버리지에 넣을지 정한다).
+	//     SeedTool은 첫 삽입에만 적용되므로, 구버전 DB에 이미 seed된 schema는 이 새 파라미터를 받지 못한다.
+	//   - list_facts: 페이징으로 바꾸며 limit/before/q 파라미터를 더한다. 구버전 DB에 이미 seed된 빈 schema는
+	//     도구 관리 페이지에 '파라미터 없음'으로 보이고, 모델도 이 파라미터 설명을 받지 못한다.
 	refreshBuiltin := map[string]bool{"goal_met": true, "insert_assets": true, "list_facts": true}
 	for _, sd := range agent.BuiltinToolSeeds() {
 		if !refreshBuiltin[sd.Key] {
@@ -545,7 +545,7 @@ func (s *Server) refreshBuiltinToolSchemas() {
 		}
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
-	log.Printf("[tools] 已刷新 orchestration/platform 工具 schema 到代码默认(一次性)")
+	log.Printf("[tools] orchestration/platform 도구 schema를 코드 기본값으로 다시 썼다(일회성)")
 }
 
 // unbindGoalMetDefault removes goal_met's default "planner" binding ONCE (guarded by
@@ -559,7 +559,7 @@ func (s *Server) unbindGoalMetDefault() {
 		return
 	}
 	if err := s.m.pg.RemoveAgentFromTool("planner", "goal_met"); err != nil {
-		log.Printf("[tools] goal_met 解绑 planner 失败: %v", err)
+		log.Printf("[tools] goal_met planner 연결 해제 실패: %v", err)
 		return
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
