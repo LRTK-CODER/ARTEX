@@ -206,6 +206,42 @@ class PaneFilterTest(unittest.TestCase):
                 self.assertEqual(self.waits(["101", "202", "303", "999"], MY_PANE), ["202"])
 
 
+class InvalidUtf8OutputTest(unittest.TestCase):
+    """pgrep·ps 출력에 잘못된 UTF-8이 섞여도 대기 확인이 멈추지 않는다(#143).
+
+    pgrep·ps 자리에 정해진 바이트를 내는 실제 프로세스를 띄워, 호출 인자(디코딩 방식)는
+    hook 코드의 것을 그대로 쓴다.
+    """
+
+    # 바이트 단위로 잘린 "한"(ed 95 9c의 앞 두 바이트)
+    BROKEN = b"\xed\x95"
+
+    def run_emitting(self, outputs):
+        real_run = subprocess.run
+
+        def run(cmd, *a, **kw):
+            data = outputs[cmd[0]]
+            script = "import sys; sys.stdout.buffer.write({!r})".format(data)
+            return real_run([sys.executable, "-c", script], *a, **kw)
+        return mock.patch.object(wait_guard.subprocess, "run", run)
+
+    def setUp(self):
+        # /proc가 없는 것으로 두어 ps 경로를 탄다
+        patcher = mock.patch.object(wait_guard, "PROC_DIR", os.path.join(TESTS_DIR, "no-such-proc"),
+                                    create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_pgrep_output(self):
+        with self.run_emitting({"pgrep": b"101\n" + self.BROKEN + b"\n"}):
+            self.assertEqual(wait_guard.running_waits(), ["101", "\ufffd"])
+
+    def test_ps_output(self):
+        ps_line = b"orca --note " + self.BROKEN + " check --wait ORCA_PANE_KEY={}\n".format(MY_PANE).encode()
+        with self.run_emitting({"pgrep": b"101\n", "ps": ps_line}):
+            self.assertEqual(wait_guard.running_waits(MY_PANE), ["101"])
+
+
 class GuardEntryTest(unittest.TestCase):
     def test_guard_runs_wait_check(self):
         payload = json.dumps(event(WAIT + " &"))

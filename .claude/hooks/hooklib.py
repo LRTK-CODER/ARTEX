@@ -34,7 +34,7 @@ def run_git(args: List[str]) -> Optional[str]:
     env = {k: v for k, v in os.environ.items()
            if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")}
     try:
-        p = subprocess.run(["git"] + args, capture_output=True, text=True, timeout=10, env=env)
+        p = subprocess.run(["git"] + args, capture_output=True, encoding="utf-8", errors="replace", timeout=10, env=env)
     except (OSError, subprocess.SubprocessError):
         return None
     return p.stdout.strip() if p.returncode == 0 else None

@@ -160,7 +160,7 @@ def running_waits(pane_key: Optional[str] = None) -> Optional[List[str]]:
     """
     try:
         p = subprocess.run(["pgrep", "-u", str(os.getuid()), "-f", RUNNING_WAIT_PATTERN],
-                           capture_output=True, text=True, timeout=PGREP_TIMEOUT_SECONDS)
+                           capture_output=True, encoding="utf-8", errors="replace", timeout=PGREP_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError):
         return None
     if p.returncode == 1:  # 맞는 프로세스 없음
@@ -188,7 +188,7 @@ def process_pane_key(pid: str) -> Optional[str]:
     try:
         # BSD·macOS ps의 -E는 명령 인자 뒤에 시작 때의 환경 변수를 공백으로 이어 붙인다.
         p = subprocess.run(["ps", "-E", "-ww", "-o", "command=", "-p", pid],
-                           capture_output=True, text=True, timeout=PGREP_TIMEOUT_SECONDS)
+                           capture_output=True, encoding="utf-8", errors="replace", timeout=PGREP_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError):
         return None
     if p.returncode != 0:
