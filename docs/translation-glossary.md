@@ -623,7 +623,6 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 
 | 파일 | 이유 |
 |---|---|
-| `intercept/prompt.go`, `intercept/prompt_test.go`, `intercept/review_context_test.go`, `server/intercept_live_test.go`, `server/intercept_review_test.go`, `skills/api-recon/**`, `skills/scopesentry/SKILL.md` | PR #117(#103 승인 심사 프롬프트·스킬 지침)에서 옮긴다 |
 | `server/orchestration.go` | #128에서 옮긴다 |
 | `CHANGELOG.md` | 원 저자 이력. #99 범위 밖 |
 | `sidequestion/VALIDATION.md`, `sidequestion/validation-*.json` | 과거 실행 기록. #99 범위 밖 |
@@ -652,6 +651,7 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 | `db/company_scope.go`, `web/src/lib/company-scope.ts` | ICP 등록 번호(`备案`) 탐지 |
 | `web/src/app/(main)/function/tasks/detail/_tabs/overview-tab.tsx`, `web/src/components/scope-text-editor.tsx` | ICP 등록 번호 입력 예시 |
 | `traffic/traffic.go` | `traffic_search`의 본문 검색 예시값(`内网测试`). 중국어 부분 문자열 검색을 보여 준다 |
+| `skills/api-recon/reference.md`, `skills/api-recon/scripts/preload.js` | 중국어 웹 앱의 로그인 실패 문구(`未登录`·`授权` 등) 탐지 정규식 |
 
 ### 테스트 입력
 
@@ -661,6 +661,7 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 | `agent/prompt_now_test.go`, `agent/prompt_test.go`, `server/mgmt_test.go` | 사용자가 쓴 중국어 프롬프트 템플릿 렌더링 |
 | `agent/review_context_test.go`, `agent/terminalreason_test.go`, `agent/tools_overview_test.go`, `intercept/trace_test.go`, `sidequestion/context_test.go` | 멀티바이트 문자 자르기·토큰 추정·민감 정보 제외 입력 |
 | `server/finding_retests_test.go`, `server/finding_traffic_test.go`, `server/findings_groups_test.go` | 모델 응답·보고서 본문의 중국어 입력 |
+| `intercept/review_context_test.go`, `server/intercept_live_test.go`, `server/intercept_review_test.go` | 승인 심사에 넘기는 사용자 메시지·도구 결과·주입 문구 시험 입력. 중국어 사용자 대화에서도 판정이 맞는지 본다 |
 | `server/skill_upload_test.go` | 비ASCII 스킬 이름·파일 경로 검사 |
 | `traffic/reclaim_test.go`, `traffic/traffic_store_test.go`, `traffic/upgrade_test.go` | 중국어 본문 전문 검색 입력 |
 
@@ -678,4 +679,5 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 - 2026-10-10: 문서·스크립트·배포 파일 번역(#114)에서 정한 용어를 "문서·스크립트·배포 파일" 표로 더한다.
 - 2026-10-10: server 패키지 o~z 번역(#106)에서 정한 용어를 "server 패키지 o~z" 표로 더한다.
 - 2026-10-10: 나머지 Go 패키지 번역(#110)에서 정한 용어를 "나머지 Go 패키지" 표로 더한다.
+- 2026-10-11: PR #117 병합 뒤 남은 중국어를 확인한다(#134). "PR #117에서 옮긴다" 행을 지우고 남은 파일을 "테스트 입력"과 "프로토콜·탐지 키워드"에 더한다.
 - 2026-10-10: 번역 마무리(#131). 같은 중국어가 여러 행에 있던 8개(影响与危害, 误报, 风险接受, 熔断, 指数退避, 限流, 引用, 绑定)를 한 행으로 합친다. 마침표, 조사 띄어쓰기, 도구 결과 언어, 없는 문서 참조 규칙을 더하고 "번역하지 않는 것"을 모은다.
