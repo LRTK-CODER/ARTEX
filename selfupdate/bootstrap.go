@@ -16,7 +16,7 @@ import (
 
 // smokeEnv 는 스모크 테스트로 띄운 하위 프로세스가 Bootstrap을 바로 건너뛰게 한다.
 //
-// 엄밀히는 없어도 문제가 생기지 않는다. 하위 프로세스의 os.Executable()은 artex.new 라서
+// 엄밀히는 없어도 문제가 생기지 않는다. 하위 프로세스의 os.Executable()은 artex.new라서
 // 거기서 유도한 경로가 모두 .new 접두사를 달고 실제 업데이트 파일에 닿지 않는다. 하지만 이런 우연에 기대는 것은 너무 취약하다.
 // 명시적으로 끊으면 한눈에 보이고, 하위 프로세스의 쓸데없는 디스크 탐색도 한 번 줄인다.
 const smokeEnv = "ARTEX_SELFUPDATE_SMOKE"

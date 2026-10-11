@@ -37,7 +37,7 @@ func TestIsThinkingOnlyTurn(t *testing.T) {
 			Content: []llm.ContentBlock{{Type: llm.BlockThinking, Thinking: "x"}, llm.TextBlock("  \n ")},
 		}}, true},
 		{"완전히 빈 assistant 회차", []llm.Message{{Role: llm.RoleAssistant}}, true},
-		// 도구 결과는 user 역할이므로, 가장 가까운 메시지로 잘못 판정하지 말고 그 앞의 assistant 까지 거슬러 봐야 한다.
+		// 도구 결과는 user 역할이므로, 가장 가까운 메시지로 잘못 판정하지 말고 그 앞의 assistant까지 거슬러 봐야 한다.
 		{"마지막이 도구 결과", []llm.Message{toolUse, {
 			Role:    llm.RoleUser,
 			Content: []llm.ContentBlock{{Type: llm.BlockToolResult, ToolUseID: "t1"}},

@@ -155,7 +155,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		// 잘림 상한은 SDK 기본값(tool.Capture의 30000자)을 쓴다.
 		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
 		// 단계 한도에 걸리면 → SDK가 마무리를 돈다: 요약 한 줄을 낸다. 프롬프트와 마무리 회합 수는 이 agent key 기준으로
-		// 백오피스에서 편집할 수 있다(사용자 지정 agent는 각자 한 벌. 비우거나 0 이면 범용 기본값 10회).
+		// 백오피스에서 편집할 수 있다(사용자 지정 agent는 각자 한 벌. 비우거나 0이면 범용 기본값 10회).
 		Settlement:   wrapupSettlement(agentKey, nil),
 		NonStreaming: c.nonStreaming(), // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다
 		MaxTokens:    c.maxTokens(),    // 0 = 상한을 보내지 않고 서버 기본값에 맡긴다

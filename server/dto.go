@@ -50,7 +50,7 @@ type TaskDTO struct {
 	Tokens             TokenTotalDTO      `json:"tokens"` // whole-task token consumption
 	GoalsTotal         int                `json:"goals_total"`
 	GoalsMet           int                `json:"goals_met"`
-	InFlight           int                `json:"in_flight"`                // 실행 중인 워커 수(state=running 인 탐색 의도)
+	InFlight           int                `json:"in_flight"`                // 실행 중인 워커 수(state=running인 탐색 의도)
 	Findings           FindingSeverityDTO `json:"findings"`                 // 이 작업에 등록된 취약점 수(findings 표, 심각도별)
 	LLMProfileID       *int64             `json:"llm_profile_id,omitempty"` // LLM profile used for this task; nil = default
 	LLMProfileIDs      []int64            `json:"llm_profile_ids"`
@@ -543,7 +543,7 @@ type AgentDTO struct {
 	RunSecs          int    `json:"run_seconds"`
 	WebSearch        bool   `json:"web_search"`
 	InteractiveShell bool   `json:"interactive_shell"`
-	LLMProfileID     *int64 `json:"llm_profile_id"` // 연결한 LLM 프로필. null 이면 작업·전역 설정을 따른다
+	LLMProfileID     *int64 `json:"llm_profile_id"` // 연결한 LLM 프로필. null이면 작업·전역 설정을 따른다
 	// P3 트리거 후처리 정책(사용자 지정 에이전트에만 의미가 있다).
 	TriggerRunMode     string `json:"trigger_run_mode"`
 	TriggerMergeMode   string `json:"trigger_merge_mode"`
@@ -599,7 +599,7 @@ type LLMProfileDTO struct {
 	ReasoningEffort string  `json:"reasoning_effort"`
 	IsDefault       bool    `json:"is_default"`
 	// 장애 조치 파라미터. priority가 클수록 먼저 고른다(활성 프로필은 늘 체인 맨 앞이다).
-	// pool_exclude=true 면 장애 조치 대상에서 빠지지만, 에이전트·작업에 직접 연결할 수는 있다.
+	// pool_exclude=true면 장애 조치 대상에서 빠지지만, 에이전트·작업에 직접 연결할 수는 있다.
 	Priority    int  `json:"priority"`
 	PoolExclude bool `json:"pool_exclude"`
 	// 송수신 방식: true=스트리밍(SSE) | false=비스트리밍. omitempty가 없다. false가 응답에
@@ -610,7 +610,7 @@ type LLMProfileDTO struct {
 	MaxTokens      int    `json:"max_tokens"`
 	MaxTokensField string `json:"max_tokens_field"`
 	// 사용자 지정 세션 헤더 이름. 비어 있지 않으면 요청마다 이 HTTP 헤더를 붙이고, 값은 현재 세션·
-	// 탐색 의도의 session id 다. ''=보내지 않음. session-id 헤더로 프롬프트 캐시나 고정 라우팅을 하는
+	// 탐색 의도의 session id다. ''=보내지 않음. session-id 헤더로 프롬프트 캐시나 고정 라우팅을 하는
 	// 게이트웨이에 쓴다.
 	SessionHeaderKey string `json:"session_header_key"`
 	// 이 프로필의 재시도 덮어쓰기(연결 / 빈 응답 / 같은 제공자 안전 구간). 항목마다 attempts:
@@ -628,13 +628,13 @@ type LLMProfileOAuthDTO struct {
 	Connected bool      `json:"connected"`
 	ExpiresAt time.Time `json:"expires_at,omitzero"`
 	// NeedsLogin 은 마지막 토큰 갱신이 다시 로그인해야 한다는 이유로 거절됐다는 뜻이다.
-	// 서버 메모리에만 있어 재시작하면 다음 갱신 실패 때까지 false 다.
+	// 서버 메모리에만 있어 재시작하면 다음 갱신 실패 때까지 false다.
 	NeedsLogin bool `json:"needs_login"`
 	// Plan 은 구독 플랜(예: "plus")이다. 연결되지 않았거나 모르면 빠진다.
 	Plan string `json:"plan,omitempty"`
 }
 
-// llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth가 nil 이면(oauth.key를 쓰지 못함) 저장된
+// llmProfileDTO 는 프로필을 화면용으로 바꾼다. oauth가 nil이면(oauth.key를 쓰지 못함) 저장된
 // 자격 증명을 풀 수 없으므로 연결되지 않은 것으로 보인다.
 func llmProfileDTO(p *db.LLMProfile, oauth *oauthTokenRegistry) LLMProfileDTO {
 	var state *LLMProfileOAuthDTO

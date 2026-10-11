@@ -23,7 +23,7 @@ import (
 )
 
 // 이 파일은 사용자 지정 도구 실행기다.
-// system=false 인 tools 행을 kind로 나눈다. command(명령을 렌더링해 Bash 바탕의 run을 재사용),
+// system=false인 tools 행을 kind로 나눈다. command(명령을 렌더링해 Bash 바탕의 run을 재사용),
 // script(Python만. 임시 파일에 쓰고 stdin=파라미터 JSON + env TOOL_*, 설정한 인터프리터 사용),
 // http(직접 요청, 프록시 설정 가능). 이 도구들은 트래픽·오케스트레이션 도구처럼 seed가 필요 없다
 // (원래 tools 표에 있다). hostTools로 넣고 연결된 에이전트로 거른다.
@@ -336,7 +336,7 @@ func (s *Server) runCommandTool(ctx context.Context, execRaw json.RawMessage, pa
 		return actool.Errorf("command is empty"), nil
 	}
 	cmd := renderTemplate(spec.Command, params, shellQuote)
-	// Bash 도 쓰는 바탕 run을 재사용한다(Bash CoreTool.Call 경유). 보안 기준선·시간 초과·프록시 env·
+	// Bash도 쓰는 바탕 run을 재사용한다(Bash CoreTool.Call 경유). 보안 기준선·시간 초과·프록시 env·
 	// 출력 넘침 처리를 그대로 물려받는다. 이 도구는 Bash와 같은 층에서 바탕을 함께 쓸 뿐, 모델이
 	// Bash 도구를 부르게 하지 않는다.
 	bashIn, _ := json.Marshal(map[string]any{"command": cmd})

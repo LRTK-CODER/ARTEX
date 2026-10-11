@@ -14,7 +14,7 @@ import (
 )
 
 // assetInterceptCandidates 는 삽입할 자산 입력 항목 하나에서 도메인/IP/URL 후보 문자열을 뽑아 자산 차단 매칭에 쓴다.
-// URL의 host를 분리해 분류하므로, "URL 만 있는" 서비스/엔드포인트 자산도 도메인/IP 규칙에 걸릴 수 있다.
+// URL의 host를 분리해 분류하므로, "URL만 있는" 서비스/엔드포인트 자산도 도메인/IP 규칙에 걸릴 수 있다.
 func assetInterceptCandidates(item assetInputItem) (domains, ips, urls []string) {
 	add := func(dst *[]string, s string) {
 		if s = strings.TrimSpace(s); s != "" {
@@ -211,7 +211,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 				return actool.Errorf("invalid input: " + err.Error()), nil
 			}
 			// task_id는 프로그램이 권위 있게 정한다(worker: SetTaskID). 모델이 전달하는 값은 받지 않는다 — 모델이 빠뜨리거나
-			// 잘못 전달해 자산이 작업에 안 묶이거나 엉뚱한 작업에 묶이는 것을 막는다. 작업 컨텍스트가 없는 호출자(auto/pentest/chat)는 t.taskID=0 이다.
+			// 잘못 전달해 자산이 작업에 안 묶이거나 엉뚱한 작업에 묶이는 것을 막는다. 작업 컨텍스트가 없는 호출자(auto/pentest/chat)는 t.taskID=0이다.
 			taskID := t.taskID
 
 			type result struct {
@@ -353,7 +353,7 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 					_ = t.as.SetTaskAssetSource(taskID, id, "agent", summary, sourceNodeID)
 				}
 				// 테스트 범위에 자동 편입(source='auto'): worker가 최상위에서 명시적으로 삽입한 이 항목에 대해서만, 그
-				// 유형에 맞는 보수적 범위를 더한다. 부수 효과로 파생된 자산은 여기를 거치지 않으므로 범위가 맹목적으로 넓어지지 않는다. taskID=0 이면 무동작.
+				// 유형에 맞는 보수적 범위를 더한다. 부수 효과로 파생된 자산은 여기를 거치지 않으므로 범위가 맹목적으로 넓어지지 않는다. taskID=0이면 무동작.
 				// 커버리지 스위치와 무관하다: task_scope는 작업의 범위 경계(list/조회의 필터 기준)이고,
 				// 커버리지 스위치는 그것을 분모로 지표를 계산할지만 정할 뿐 범위 자체를 쌓을지는 정하지 않는다.
 				{
@@ -649,7 +649,7 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 		// asset management (handlers guard nil store internally)。
 		// add_company_scope는 worker에 주지 않는다: 기업 자산 범위 정의는 규획/메인/Auto의 직무이고, worker는 탐색만 실행한다.
 		t.insertAssets(), t.listAssets(),
-		// work 간 되돌아보기: worker 도 다른 work의 관찰을 재사용해 중복 작업을 피할 수 있다.
+		// work 간 되돌아보기: worker도 다른 work의 관찰을 재사용해 중복 작업을 피할 수 있다.
 		// search_all_worker_traces: intent_id를 먼저 알 필요 없이 키워드로 전역에서 걸린 단계를 건진다.
 		// get_worker_trace: 어떤 work를 특정한 뒤 단계를 나열/현장 검색/완전한 내용 취득.
 		t.searchAllWorkerTraces(), t.getWorkerTrace(),

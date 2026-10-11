@@ -49,7 +49,7 @@ type Config struct {
 	// ThinkingType 은 사고 '스위치' 필드(thinking.type)를 따로 제어한다.
 	//   "" = 보내지 않음(기본값, 이 필드를 지원하지 않는 모델과 호환); "disabled" = 명시적으로 끔;
 	//   "enabled" = 켬. ReasoningEffort와 완전히 분리된다. thinking 필드가 없고
-	//   사고 강도 파라미터만으로 사고를 켜는 API 도 있어, 둘을 따로 설정할 수 있게 둔다.
+	//   사고 강도 파라미터만으로 사고를 켜는 API도 있어, 둘을 따로 설정할 수 있게 둔다.
 	ThinkingType string
 	// ReasoningEffort 는 사고 '강도' 필드를 따로 제어한다.
 	//   "" = 보내지 않음(기본값); "low"/"medium"/"high"/"xhigh"/"max" = 해당 강도.
@@ -70,7 +70,7 @@ type Config struct {
 	// 반면 호환 게이트웨이 대부분은 전자만 받으므로, 자동 추론하지 않고 사용자가 엔드포인트에 맞게 고르게 한다.
 	MaxTokensField string
 	// SessionHeaderKey 가 비어 있지 않으면, LLM 요청마다 사용자 지정 HTTP 헤더를 붙인다. 헤더 이름은 이 값이고,
-	// 헤더 값은 현재 세션의 session id 다(chat 세션=conv-<id>, worker=exp<x>-worker-i<intent> 등, WorkerSessionID 참고).
+	// 헤더 값은 현재 세션의 session id다(chat 세션=conv-<id>, worker=exp<x>-worker-i<intent> 등, WorkerSessionID 참고).
 	// session-id 헤더로 프롬프트 캐싱이나 고정 라우팅을 하는 일부 게이트웨이에 쓴다.
 	// 빈 값 = 보내지 않음. 값은 transcript.WithSessionID가 요청 context에 실어 두고 RoundTripper가 읽어 채우므로,
 	// 같은 공유 provider 라도 세션마다 다른 헤더 값을 보낼 수 있다.
@@ -79,7 +79,7 @@ type Config struct {
 	// server 쪽에서 해석한다). 세 층의 뜻은 RetryConfig에 있다. 값을 비우면 내장 기본값을 쓴다.
 	Retry RetryConfig
 	// 구독 인증은 APIKey 대신 OAuthTokens로 제공자별 고정 백엔드를 부른다.
-	// 빈 값은 db.AuthAPIKey 다.
+	// 빈 값은 db.AuthAPIKey다.
 	AuthType db.AuthType
 	// OAuthTokens 는 ChatGPT·Claude 구독 인증일 때 필요하다.
 	OAuthTokens OAuthTokenSource
@@ -90,7 +90,7 @@ type Config struct {
 // 0 = 그 층 본래의 지수 백오프를 쓴다; >0 = 이 고정 간격으로 바꾼다.
 type RetryConfig struct {
 	// ConnectAttempts/ConnectInterval: SDK 연결 수립 재시도(연결 리셋/시간 초과/429/5xx, 스트림 시작 전)로,
-	// llm.Config.MaxRetries / RetryInterval로 바로 매핑한다. 기본값은 3회, 0.5s 부터 지수 증가(최대 8s).
+	// llm.Config.MaxRetries / RetryInterval로 바로 매핑한다. 기본값은 3회, 0.5s부터 지수 증가(최대 8s).
 	ConnectAttempts int
 	ConnectInterval time.Duration
 	// EmptyAttempts/EmptyInterval: SDK 빈 응답 재시도(완료했지만 content block이 없음, openai 형식만)로,
@@ -100,7 +100,7 @@ type RetryConfig struct {
 	EmptyInterval time.Duration
 	// StreamAttempts/StreamInterval: 같은 provider 안전 구간 재시도다. 이 프로젝트가 SDK 위에 덧댄 한 층으로,
 	// '아직 호출자에게 어떤 출력도 전달하지 않은' 때만 스트림 끊김/과부하/스트림 안 429를 다시 보낸다.
-	// SDK는 이를 보지 못하고 server/task_llm.go가 소비한다. 기본값은 2회, 0.5s 부터 지수 증가(최대 4s).
+	// SDK는 이를 보지 못하고 server/task_llm.go가 소비한다. 기본값은 2회, 0.5s부터 지수 증가(최대 4s).
 	StreamAttempts int
 	StreamInterval time.Duration
 }
@@ -260,7 +260,7 @@ func (c Config) Provider() string {
 // limiter lives on the single provider instance — so planner + all workers +
 // main agent (which share this provider) are bounded by one shared rate limit.
 //
-// db.AuthChatGPTOAuth는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true 만
+// db.AuthChatGPTOAuth는 openai-responses 형식과 스트리밍만 받는다. Codex 백엔드가 stream:true만
 // 받으므로 비스트리밍 경로(Provider.Complete)는 SSE 응답을 JSON으로 읽다가 실패하기 때문이다.
 func (c Config) NewProvider() (llm.Provider, error) {
 	apiKey, baseURL := c.APIKey, c.BaseURL
@@ -307,7 +307,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 		HTTPClient: client,
 	}
 	// 사고 스위치와 강도 두 필드를 각각 그대로 전달한다(빈 값 = 그 필드를 보내지 않음). 둘은 분리돼 있어
-	// thinking.type 만, effort 만, 둘 다, 또는 둘 다 안 보낼 수 있다.
+	// thinking.type만, effort만, 둘 다, 또는 둘 다 안 보낼 수 있다.
 	lc.ThinkingType = c.ThinkingType
 	lc.ReasoningEffort = c.ReasoningEffort
 	// 출력 최대 토큰의 필드 이름 선택(빈 값 = max_tokens 사용). 최대 토큰의 '값'은 여기 있지 않다. 값은 매 회
@@ -534,7 +534,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	defer cancel()
 	// 원본 wire 메시지를 잡는다. 연결 테스트에서 가장 봐야 하는 것은 게이트웨이가 실제로 무엇을 돌려줬는가(상태 코드+응답 본문)인데,
 	// norma가 응답을 StreamEvent로 디코딩하고 나면 이것이 사라진다. quotaAwareTransport가
-	// context 에서 이 Capture를 찾아 매 HTTP 시도의 상태 코드와 body를 채운다.
+	// context에서 이 Capture를 찾아 매 HTTP 시도의 상태 코드와 body를 채운다.
 	ctx, capt := llmrec.NewCapture(ctx)
 	defer logTestConnection(c, capt)
 	// 연결 테스트는 단발 경로라 agentcore의 세션 루프를 거치지 않으므로 아무도 context에 session id를 달지 않는다.

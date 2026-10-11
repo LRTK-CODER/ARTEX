@@ -2026,7 +2026,7 @@ func modelsHTTPClient(proxy string) *http.Client {
 }
 
 // listChatGPTModels 는 저장된 chatgpt_oauth 프로필의 토큰으로 Codex 계정별 모델 목록을 돌려준다.
-// 주소는 codexURL 만 쓰고 요청·프로필의 base_url은 무시한다(applyChatGPTOAuthRules와 같은 이유).
+// 주소는 codexURL만 쓰고 요청·프로필의 base_url은 무시한다(applyChatGPTOAuthRules와 같은 이유).
 // 실패하면 빈 목록과 고정 문구를 돌려주고, 원인은 토큰 없이 로그에만 남긴다.
 func (s *Server) listChatGPTModels(w http.ResponseWriter, r *http.Request, stored *db.LLMProfile, proxy string) {
 	fail := func(msg string) {

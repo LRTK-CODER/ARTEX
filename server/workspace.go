@@ -56,7 +56,7 @@ func (s *Server) wsAbs(rel string) string {
 	return filepath.Clean(filepath.Join(base, clean))
 }
 
-// wsResolve 는 사용자가 준 상대 경로를 판정한다. 작업 공간 밖이면 ok=false 다.
+// wsResolve 는 사용자가 준 상대 경로를 판정한다. 작업 공간 밖이면 ok=false다.
 // 심볼릭 링크는 풀어서 실제 경로가 작업 공간(역시 링크를 푼 루트) 안일 때만 허용한다.
 // 이 판정은 오류 응답을 가르는 용도다. 판정과 열기 사이의 경쟁은 열기를 os.Root로 해서 막는다.
 func (s *Server) wsResolve(rel string) (wsPath, bool) {
@@ -128,7 +128,7 @@ type wsEntry struct {
 }
 
 // wsOpen 은 경로를 판정하고 작업 공간 루트를 연다. 실패하면 응답을 쓰고 ok=false를 돌려준다.
-// ok=true 이면 호출자가 root를 닫는다.
+// ok=true이면 호출자가 root를 닫는다.
 func (s *Server) wsOpen(w http.ResponseWriter, rel string) (*os.Root, wsPath, bool) {
 	p, ok := s.wsResolve(rel)
 	if !ok {

@@ -17,11 +17,11 @@ import (
 	"time"
 )
 
-// Codex 로그인 흐름의 고정값. 서버가 client_id 마다 redirect 허용 목록을 고정하므로 바꿀 수 없다.
+// Codex 로그인 흐름의 고정값. 서버가 client_id마다 redirect 허용 목록을 고정하므로 바꿀 수 없다.
 const (
 	// DefaultIssuer 는 OpenAI 인증 서버 주소다.
 	DefaultIssuer = "https://auth.openai.com"
-	// ClientID 는 Codex CLI의 공개 OAuth client_id 다.
+	// ClientID 는 Codex CLI의 공개 OAuth client_id다.
 	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 	// RedirectURI 는 브라우저 로그인 콜백 주소다. 서버 허용 목록에 고정돼 있다.
 	RedirectURI = "http://localhost:1455/auth/callback"
@@ -30,24 +30,24 @@ const (
 	Originator = "codex_cli_rs"
 
 	authorizeScope = "openid profile email offline_access"
-	// refreshScope 는 Codex CLI가 refresh 요청에 싣는 scope 다.
+	// refreshScope 는 Codex CLI가 refresh 요청에 싣는 scope다.
 	refreshScope = "openid profile email"
 
 	defaultHTTPTimeout = 30 * time.Second
-	// maxResponseBytes 는 인증 서버 응답을 읽을 상한이다. 토큰 응답은 수 KB 다.
+	// maxResponseBytes 는 인증 서버 응답을 읽을 상한이다. 토큰 응답은 수 KB다.
 	maxResponseBytes = 1 << 20
 )
 
 // Client 는 OpenAI 인증 서버와 이야기한다. 제로값은 기본 issuer와 30초 타임아웃 HTTP 클라이언트를 쓴다.
 type Client struct {
-	// HTTPClient 가 nil 이면 30초 타임아웃에 리다이렉트를 따르지 않는 클라이언트를 쓴다.
+	// HTTPClient 가 nil이면 30초 타임아웃에 리다이렉트를 따르지 않는 클라이언트를 쓴다.
 	// 직접 넘길 때도 리다이렉트를 따르지 않게 한다(CheckRedirect가 http.ErrUseLastResponse).
 	// 따르면 refresh 토큰·code_verifier가 든 본문이 리다이렉트 대상에 다시 간다.
 	HTTPClient *http.Client
 	// Issuer 가 비면 DefaultIssuer를 쓴다. 끝의 "/"는 붙이지 않는다.
 	Issuer string
 
-	// now 와 sleep은 디바이스 코드 폴링의 시계다. nil 이면 실제 시계를 쓴다.
+	// now 와 sleep은 디바이스 코드 폴링의 시계다. nil이면 실제 시계를 쓴다.
 	now   func() time.Time
 	sleep func(ctx context.Context, d time.Duration) error
 }
@@ -70,7 +70,7 @@ func (t Tokens) String() string {
 	return fmt.Sprintf("llmauth.Tokens{AccountID: %q, ExpiresAt: %s}", t.AccountID, t.ExpiresAt.Format(time.RFC3339))
 }
 
-// GoString 은 %#v 에서도 토큰 원문을 숨긴다.
+// GoString 은 %#v에서도 토큰 원문을 숨긴다.
 func (t Tokens) GoString() string { return t.String() }
 
 // ErrResponseTooLarge 는 인증 서버 응답이 1MB 상한을 넘었다는 뜻이다.
@@ -158,7 +158,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, verifier, redirectURI s
 
 // Refresh 는 refresh 토큰으로 새 토큰을 받는다. refresh 토큰은 갱신마다 회전하므로
 // 돌려받은 Tokens를 곧바로 저장해야 한다. 응답에 새 refresh 토큰이나 id token이 없으면
-// 각각 넘긴 refresh 토큰을 유지하고 access token 에서 계정을 꺼낸다.
+// 각각 넘긴 refresh 토큰을 유지하고 access token에서 계정을 꺼낸다.
 func (c *Client) Refresh(ctx context.Context, refreshToken string) (Tokens, error) {
 	payload, err := json.Marshal(map[string]string{
 		"client_id":     ClientID,
@@ -220,7 +220,7 @@ func (r tokenResponse) tokens() (Tokens, error) {
 		if id.AccountID != "" {
 			accountID = id.AccountID
 		}
-		// Codex CLI는 플랜도 id token 에서 읽는다(token_data.rs IdTokenInfo).
+		// Codex CLI는 플랜도 id token에서 읽는다(token_data.rs IdTokenInfo).
 		if id.PlanType != "" {
 			planType = id.PlanType
 		}

@@ -344,7 +344,7 @@ func TestCompanyScopeAttribution(t *testing.T) {
 		t.Fatalf("UpsertCompany: %v", err)
 	}
 	// 회사와 198.51.100.0/24 scope가 남으면 다음 실행의 같은 IP가 이전 회사로 귀속된다.
-	// 위 cleanup 보다 나중에 등록해 연결을 닫기 전에 지운다.
+	// 위 cleanup보다 나중에 등록해 연결을 닫기 전에 지운다.
 	t.Cleanup(func() {
 		if err := cs.DeleteCompany(cid); err != nil {
 			t.Errorf("cleanup DeleteCompany: %v", err)

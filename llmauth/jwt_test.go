@@ -77,7 +77,7 @@ func TestParseClaims(t *testing.T) {
 	}
 }
 
-// TestTokensPlanType 은 토큰 교환 결과의 플랜이 id token을 앞세우고, 없으면 access token 에서 오는지 본다.
+// TestTokensPlanType 은 토큰 교환 결과의 플랜이 id token을 앞세우고, 없으면 access token에서 오는지 본다.
 func TestTokensPlanType(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	tests := []struct {
@@ -87,7 +87,7 @@ func TestTokensPlanType(t *testing.T) {
 		wantPlan   string
 	}{
 		{name: "id token의 플랜", idPlan: "plus", wantPlan: "plus"},
-		{name: "access token 만 플랜", accessPlan: "pro", wantPlan: "pro"},
+		{name: "access token만 플랜", accessPlan: "pro", wantPlan: "pro"},
 		{name: "둘 다 있으면 id token", idPlan: "plus", accessPlan: "pro", wantPlan: "plus"},
 		{name: "플랜 클레임 없음", wantPlan: ""},
 	}

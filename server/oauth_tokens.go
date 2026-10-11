@@ -67,7 +67,7 @@ func (s oauthStore) Refresh(ctx context.Context, staleAccessToken string, refres
 	return tokensFromCredentials(cred), nil
 }
 
-// wrapNoTokens 는 자격 증명이 없다는 db 오류를 llmauth.ErrNoTokens 로도 알아보게 감싼다.
+// wrapNoTokens 는 자격 증명이 없다는 db 오류를 llmauth.ErrNoTokens로도 알아보게 감싼다.
 // llmauth와 agent는 ErrNoTokens로 "로그인이 필요하다"를 가른다.
 func wrapNoTokens(err error) error {
 	if errors.Is(err, db.ErrOAuthCredentialsNotFound) {

@@ -247,7 +247,7 @@ func TestIntentPauseResumeAndCancelCleanup(t *testing.T) {
 	assertCount(`SELECT COUNT(*) FROM assets WHERE id=$1`, 1, assetID)
 }
 
-// TestNodesPageQueryMatchesID 는 활동 피드 검색이 payload/origin 뿐 아니라 노드 id 로도
+// TestNodesPageQueryMatchesID 는 활동 피드 검색이 payload/origin뿐 아니라 노드 id로도
 // (숫자만, 그리고 UI가 보여 주는 '#id' 형태 모두) 거르는지 본다.
 func TestNodesPageQueryMatchesID(t *testing.T) {
 	d, err := Open(testDSN(t))

@@ -12,8 +12,8 @@ import (
 var errCommit = errors.New("memory store: commit failed")
 
 // memoryStore 는 Store의 메모리 구현이다. DB 구현과 같은 계약을 mutex로 지킨다:
-// 잠근 뒤 다시 읽어 stale이 아니면 그대로 돌려주고, refresh 나 커밋이 실패하면 저장하지 않는다.
-// DB 드라이버처럼 취소된 ctx 로는 커밋하지 않는다.
+// 잠근 뒤 다시 읽어 stale이 아니면 그대로 돌려주고, refresh나 커밋이 실패하면 저장하지 않는다.
+// DB 드라이버처럼 취소된 ctx로는 커밋하지 않는다.
 type memoryStore struct {
 	mu          sync.Mutex
 	tokens      Tokens

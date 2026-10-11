@@ -377,7 +377,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	tools, def, cleanup := AugmentTools(ctx, "planner", base)
 	defer cleanup()
 	// 핵심 태세(방금 끝난 의도 + 미리 가져온 전체 그래프)는 이제 [이번 라운드 user 입력]에 넣는다(아래 input 참고).
-	// system 에는 정적 계획 본문만 남긴다. 밖으로 빼면 system이 라운드마다 안정적이라 캐시에 유리하다.
+	// system에는 정적 계획 본문만 남긴다. 밖으로 빼면 system이 라운드마다 안정적이라 캐시에 유리하다.
 	// 대가는 단일 라운드가 길어지면 태세가 compaction에 눌릴 수 있다는 것(planner 단일 라운드는 보통 짧아 위험이 낮다).
 	// situational은 아래 input에 이어 붙는다.
 	situational := renderTriggers(ts, triggers) + renderGraphOverview(tsx.graphOverviewData())
@@ -429,7 +429,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		WorkingDir:            taskDir,                              // 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID>
 		ToolOutputDir:         cmdOutDir(taskDir),
 		MaxTurns:              p.maxTurns, // 0 = unlimited (configurable in agent management)
-		MaxDuration:           maxDur,     // 0=제한 없음; deadline이 있으면=deadline 까지 남은 시간
+		MaxDuration:           maxDur,     // 0=제한 없음; deadline이 있으면=deadline까지 남은 시간
 		Compaction:            compactionConfig(p.compactionWindow()),
 		// 깨우기 사이에 공유되는 규획 할 일: 직렬 체인이 여러 라운드에 걸쳐 유지되게 한다(session은 새것, store는 아니다).
 		Todos: p.todoFor(ts.ID()),
@@ -448,14 +448,14 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	noaSession := fmt.Sprintf("exp%d-planner", ts.ID())
 	enableNoa(&opts, p.noaEnabledFn, p.workDir, noaSession, noaWarn(noaSession))
 	// 태세(방금 끝난 의도 + 전체 그래프)는 이제 이번 라운드 user 입력에 이어 붙는다(아래 input).
-	// user 에는 지시 + 깨우기 사이 할 일도 들어간다(할 일은 모델 자신의 규획 메모라 재생 가능하니 user에 둬도 된다).
+	// user에는 지시 + 깨우기 사이 할 일도 들어간다(할 일은 모델 자신의 규획 메모라 재생 가능하니 user에 둬도 된다).
 	// 첫 문장은 [이번 라운드에 구체적 변동이 있었는지]로 둘로 나뉜다: 변동 있음 → 아래 [실제 변동] 블록을 가리킨다.
 	// 변동 없음(심장박동 정기 점검 / hint / 복원 등) → "그래프가 바뀌었다"고 거짓말하지 말고, 돌고 있는 의도를 겸사겸사 복검하라고 알린다.
 	lead := "A concrete change just occurred (see **The actual change(s) that fired this round** below); plan the next step accordingly:"
 	if len(triggers) == 0 {
 		lead = "This round is a wake-up from a **scheduled check (heartbeat) / no concrete-change signal** -- the graph may have no new change. While here, review the running intents: use steer_work to course-correct ones with no progress for a long time or going off track, and kill_work to cut losses on ones whose direction is entirely wrong; then judge the goals and decide whether to add directions:"
-		// 심장박동/무변동 깨우기에서 전체 그래프에 open 이나 running 의도가 하나도 없으면 → 탐색이 멈춘 것이다
-		// (돌고 있는 worker 도, 대기 중인 방향도 없다). planner에 분명히 알리고 이번 라운드에 새 방향을 반드시 내게 해,
+		// 심장박동/무변동 깨우기에서 전체 그래프에 open이나 running 의도가 하나도 없으면 → 탐색이 멈춘 것이다
+		// (돌고 있는 worker도, 대기 중인 방향도 없다). planner에 분명히 알리고 이번 라운드에 새 방향을 반드시 내게 해,
 		// 돌고 있는 의도만 복검하고 빈 라운드로 끝나지 않게 한다.
 		if active, err := ts.HasActiveIntent(); err == nil && !active {
 			lead = "This round is a wake-up from a **scheduled check (heartbeat)**, and there is currently **no open or running intent at all** -- no worker is running and no direction is queued, so exploration has stalled. You **must** produce one or more new intents this round that advance the goal and are **mutually distinct** from the existing intents in the graph (you may not produce 0 intents); first judge from the situation below whether the goal is achieved, and if not, add directions immediately:"
@@ -464,7 +464,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	input := lead + situational + "\n\nBased on the situation above, judge the goals. When a goal is [genuinely achieved] (the target result is obtained / the target vulnerability is confirmed), use prove_goal to mark each one. **Hard floor: as long as the goal is unachieved and there is currently no open or running intent (frontier_open=0 and running_intents empty), this round you must produce at least one intent that advances the goal -- here there is no running work to wait on and no queued direction, so producing 0 intents = the task stalls. Only when an open/running intent is already advancing, or the goal is achieved, may you produce no new intent this round.**" +
 		renderPlannerTodos(opts.Todos.List())
 	// MaxDuration은 이제 벽시계가 다하면 돌고 있는 도구를 끊고 그 자리에서(살아 있는 ctx 위) 마무리로 들어간다.
-	// 단일 라운드가 멈춰도 마무리를 건너뛰지 않으므로 외부 하드 ctx 보완이 필요 없다. ctx는 pause / kill / shutdown 만 나른다.
+	// 단일 라운드가 멈춰도 마무리를 건너뛰지 않으므로 외부 하드 ctx 보완이 필요 없다. ctx는 pause / kill / shutdown만 나른다.
 	_, _, err = captureRun(ctx, opts, input,
 		func(r db.Activity) {
 			if emit != nil {

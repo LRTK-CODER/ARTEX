@@ -195,7 +195,7 @@ func TestOAuthCredentialsStoredEncrypted(t *testing.T) {
 }
 
 // waitForLockWaiter 는 다른 세션이 행 잠금을 기다리기 시작할 때까지 기다린다.
-// 첫 갱신을 그 뒤에 풀어야 두 번째 갱신이 FOR UPDATE 에서 실제로 막힌 경우를 시험한다.
+// 첫 갱신을 그 뒤에 풀어야 두 번째 갱신이 FOR UPDATE에서 실제로 막힌 경우를 시험한다.
 func waitForLockWaiter(t *testing.T, d *DB) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -484,7 +484,7 @@ func TestDeleteOAuthCredentials(t *testing.T) {
 	}
 }
 
-// TestSaveProfileOAuthDropsAPIKey 는 저장 뒤 인증 방식이 chatgpt_oauth 면 어느 저장 경로든 API 키와
+// TestSaveProfileOAuthDropsAPIKey 는 저장 뒤 인증 방식이 chatgpt_oauth면 어느 저장 경로든 API 키와
 // 힌트가 남지 않고, API 키 프로필의 키는 그대로인지 본다.
 func TestSaveProfileOAuthDropsAPIKey(t *testing.T) {
 	d := openTestDB(t)

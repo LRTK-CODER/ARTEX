@@ -532,11 +532,11 @@ func (e *Engine) drainSteer(intentID int64) (string, bool) {
 type steerHooks struct {
 	inner harness.HookRunner
 	drain func() (string, bool)
-	// nudges 는 이 탐색 의도에 넣은 공회전 이어 가기 횟수이고 최대는 limit 이다. 포인터인 이유:
+	// nudges 는 이 탐색 의도에 넣은 공회전 이어 가기 횟수이고 최대는 limit이다. 포인터인 이유:
 	// harness는 steerHooks의 값 복사본을 들고 있으므로 횟수는 한 곳을 함께 써야 한다.
 	nudges *atomic.Int64
 	// limit 은 공회전 이어 가기의 최대 횟수로, Engine.emptyTurnNudgeLimit()가 '빈 응답 재시도
-	// 횟수'에서 구한다. <=0 이면 개입하지 않는다(사용자가 이 단계를 명시적으로 껐다).
+	// 횟수'에서 구한다. <=0이면 개입하지 않는다(사용자가 이 단계를 명시적으로 껐다).
 	limit int
 	// label 은 "worker-1 · #42" 같은 형태이고 로그에만 쓴다.
 	label string
@@ -555,7 +555,7 @@ const defaultEmptyTurnNudges = 2
 
 // emptyTurnNudge 는 공회전 회차에 넣는 이어 가기 지시다.
 //
-// harness는 이런 회차를 자연스러운 종료로 본다(stop_reason=end_turn 이고 tool_use 없음). 그래서 다섯
+// harness는 이런 회차를 자연스러운 종료로 본다(stop_reason=end_turn이고 tool_use 없음). 그래서 다섯
 // 단계의 LLM 재시도 중 어느 것도 걸리지 않는다. 오류가 아니라 모델이 "생각은 끝냈지만 손을 대지 않은"
 // 것이기 때문이다. SDK의 빈 응답 재시도도 닿지 않는다. 그 단계는 "이벤트를 yield 했는가"로 빈 응답을
 // 가리는데, 사고 증분도 이벤트라서(norma/llm/openai.go의 SEThinkingDelta) thinking-only는 빈 응답이
@@ -767,7 +767,7 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 		name := fmt.Sprintf("work#%d", i+1)
 		runTaskRoutine(rt, func(loopCtx context.Context) { e.workerLoop(loopCtx, t, name) })
 	}
-	e.startDeadlineCoordinator(ctx, t) // 작업 단위 시간 초과 타이머(timeout>0 일 때만, 중복 방지)
+	e.startDeadlineCoordinator(ctx, t) // 작업 단위 시간 초과 타이머(timeout>0일 때만, 중복 방지)
 	// 활성 탐색 의도(open+running)가 하나도 없을 때만 첫 계획 회차를 시작한다. 시드 탐색 의도가 있는
 	// 작업은 시드가 open 이거나, 위에서 막 띄운 워커가 먼저 할당받아 running이 됐다. 둘 다 "할 일이
 	// 있음"이므로 첫 플래너 회차를 건너뛰고, 워커가 시드 탐색 의도를 바로 할당받아 실행한다. 끝나면
@@ -803,7 +803,7 @@ func resetPlannerTimer(timer *time.Timer, d time.Duration) {
 func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 	interval := plannerHeartbeatInterval(t)
 	// 하트비트 타이머를 루프 입구에서 건다 = 작업 시작부터 잰다. 첫 플래너 회차를 건너뛴 시드 작업이라
-	// 여기서 계속 막혀 있어도(Run 에서 frontier가 비어 있지 않으면 첫 회차를 시작하지 않는다)
+	// 여기서 계속 막혀 있어도(Run에서 frontier가 비어 있지 않으면 첫 회차를 시작하지 않는다)
 	// '작업 시작 + interval'에 하트비트가 첫 계획 회차를 시작한다. 그 뒤로는 깨어날 때마다(변경 신호·
 	// 하트비트) 다시 건다 = 마지막 계획 시작부터 잰 시간.
 	heartbeat := time.NewTimer(interval)
@@ -843,14 +843,14 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 			return
 		}
 		// 작업 단위 시간 초과로 마무리하는 중: 일반 깨우기는 버린다. 워커의 마무리 기록이나 Resume의
-		// Notify 도 일반 계획 회차를 시작하지 않는다. 최종 회차는 조정자(settleTask)가 직접 돌리고 여기를 지나지 않는다.
+		// Notify도 일반 계획 회차를 시작하지 않는다. 최종 회차는 조정자(settleTask)가 직접 돌리고 여기를 지나지 않는다.
 		if e.isSettling(t.ID) {
 			return
 		}
 		// goalless(사람이 직접 넣음) 분기: 작업에 open 목표가 없으면 플래너를 돌리지 않는다. 돌리면 met를
 		// 다시 판정해 cancelExec로 사용자가 메인 에이전트를 거쳐 직접 넣은 탐색 의도를 죽인다. 끝낼지는
 		// frontier가 정한다. open/running 탐색 의도가 남았으면 running으로 두고 조용히 기다리고, 모두
-		// 끝났으면 done으로 기록한다. 이 구간은 순수 Go 이고 LLM 호출도 계획 회차 표시도 하지 않는다.
+		// 끝났으면 done으로 기록한다. 이 구간은 순수 Go이고 LLM 호출도 계획 회차 표시도 하지 않는다.
 		if open, err := t.Store.HasOpenGoal(); err == nil && !open {
 			t.drainTriggers() // 쌓인 done/finding 트리거를 버려 긴 goalless 세션에서 끝없이 늘지 않게 한다
 			if active, err := t.Store.HasActiveIntent(); err == nil && !active {
@@ -1106,7 +1106,7 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 		}
 		return true
 	}
-	// 작업 시간 초과 마무리의 강제 cancel(pause 도 kill 도 아님)이 이 run을 취소함 → exhausted(마무리됨)로
+	// 작업 시간 초과 마무리의 강제 cancel(pause도 kill도 아님)이 이 run을 취소함 → exhausted(마무리됨)로
 	// 분류하고 blocked로 잘못 표시하지 않는다. 이때 워커는 보통 settlement 단계에서 결과를 이미 기록했다.
 	if ectx.Err() != nil && e.isSettling(t.ID) {
 		if err := transitionIntentState(t.Store, intent.ID, "running", "exhausted"); err != nil {

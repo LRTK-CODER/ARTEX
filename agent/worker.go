@@ -34,7 +34,7 @@ import (
 // independent of the traffic-recording MITM proxy — set it when the search endpoint
 // is only reachable via a VPN/SOCKS proxy. Empty = direct.
 //
-// deepseek 백엔드는 나머지 셋과 성질이 다르다: DeepSeek 에는 바로 호출할 수 있는 검색 API가
+// deepseek 백엔드는 나머지 셋과 성질이 다르다: DeepSeek에는 바로 호출할 수 있는 검색 API가
 // 없고, 검색은 그 Anthropic 호환 messages API 안에만 있다(web_search_20250305 server tool).
 // 그래서 검색 한 번이 모델 호출 한 번을 쓰고, 검색 요청은 DeepSeek 서버가 보낸다 — 로컬 Proxy를
 // 거치지 않고 트래픽에도 남지 않는다.
@@ -324,7 +324,7 @@ func renderIntentTask(intent *db.Node) string {
 func renderWorkerGraphOverview(data map[string]any) string {
 	// coverage는 규획자가 "어떤 유형이 덜 테스트됐나 / 범위를 넓힐까"를 판단하는 신호로,
 	// "받은 의도만 하고 미커버 지점을 쫓지 말라"는 worker의 직무 경계와 어긋난다 → worker 뷰에서 뺀다.
-	// data는 이번 worker 전용의 새 map 이라 키를 지워도 planner에 영향이 없다.
+	// data는 이번 worker 전용의 새 map이라 키를 지워도 planner에 영향이 없다.
 	delete(data, "coverage")
 	b, err := json.Marshal(data)
 	if err != nil {
@@ -373,7 +373,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// then augment with the agent's visible skills/MCP. During the SDK settlement
 	// phase, Bash is hidden via Settlement.DisabledTools (no local gating needed).
 	base := append(tsx.WorkerTools(), w.extraTools...)
-	// worker 에는 일부러 MultiEdit/Glob/Grep을 주지 않는다: 파일 정밀 수정은 Edit로, 검색은
+	// worker에는 일부러 MultiEdit/Glob/Grep을 주지 않는다: 파일 정밀 수정은 Edit로, 검색은
 	// Bash(grep/find)로 한다. 도구 면을 좁혀 가치 낮은 호출을 줄인다. 나머지 SDK 기본 도구
 	// (Read/Write/Edit/LS/Bash/Sleep)는 그대로 둔다.
 	base = append(base, defaultToolsExcept("MultiEdit", "Glob", "Grep")...)
@@ -382,8 +382,8 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	defer cleanup()
 
 	// 의도는 worker의 [유일한 직무이자 run 전체를 관통하는 불변식]이다 → 시작 지시, 의도가 지정한
-	// 목표 자산 원본 데이터와 함께 system prompt에 넣는다: system은 run 마다 다시 조립되어 절대
-	// compaction에 눌리지 않으므로, 긴 run 에서도 의도가 늘 있고, 이어서 돌 때도 transcript 역사가
+	// 목표 자산 원본 데이터와 함께 system prompt에 넣는다: system은 run마다 다시 조립되어 절대
+	// compaction에 눌리지 않으므로, 긴 run에서도 의도가 늘 있고, 이어서 돌 때도 transcript 역사가
 	// 그 첫 메시지를 보존했는지에 기대지 않는다. 대가는 system에 의도별 가변 데이터가 섞여 의도 간
 	// 캐시 재사용을 잃는 것이다. 의도적인 맞바꿈이다(의도를 잃는 쪽이 토큰을 아끼는 것보다 훨씬 심각하다).
 	// planner가 "태세 블록을 user turn에 둔 것"과 갈라지는 것도 의도적이다: planner는 의도를 만드는
@@ -409,7 +409,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 				}
 				// 이 의도가 분명히 겨냥하는 자산들 → 작업 테스트 범위에 자동 편입한다(insertAssets와 같은
 				// 보수적 세분화 수준). upsertTaskScope의 ON CONFLICT DO NOTHING + uq_task_scope 유니크 인덱스가
-				// 중복 추가를 막는다. 재실행/재시도도 똑같이 멱등 no-op 이다.
+				// 중복 추가를 막는다. 재실행/재시도도 똑같이 멱등 no-op이다.
 				// 자산 커버리지 기능이 꺼져 있으면 테스트 범위(분모)를 더 쌓지 않는다.
 				if coverageEnabled {
 					for _, a := range assets {
@@ -456,11 +456,11 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		WorkingDir: runDir,
 		MaxTurns:   w.maxTurns, // 0 = unlimited (configurable in agent management)
 		// 벽시계 예산. 회합 경계에서 판정하며 중간에 끊지 않는다. 0 = 제한 없음. 작업 단위 deadline이 있으면
-		// min(자체 예산, deadline 까지 남은 시간)으로 좁혀, 작업이 시간에 다다랐을 때 이 run이 자연히 마무리로 들어가게 한다(taskclock.go 참고).
+		// min(자체 예산, deadline까지 남은 시간)으로 좁혀, 작업이 시간에 다다랐을 때 이 run이 자연히 마무리로 들어가게 한다(taskclock.go 참고).
 		MaxDuration: maxDur,
 		// 예산(회합 또는 시간)에 걸리면 → SDK가 마무리 라운드를 한 번 돈다(Bash를 숨김). 이미 식별한 것을 써 넣어 어중간한 끝을 막는다.
 		// clamped(작업 deadline에 좁혀짐)일 때는 PromptByReason을 쓴다: 시간 초과=작업 시간에 다다름→작업 시간 초과 문구,
-		// 단계=좁혀진 창 안에서 단계가 먼저 소진→per-run 문구로 되돌린다. 비 clamped 면 순수 per-run을 유지한다.
+		// 단계=좁혀진 창 안에서 단계가 먼저 소진→per-run 문구로 되돌린다. 비 clamped면 순수 per-run을 유지한다.
 		Settlement: settle,
 		// large tool output spills to cmd-output/ with a head + pointer (SDK tool.Capture);
 		// full output preserved on disk. 잘림 상한은 SDK 기본값(30000자)을 쓴다.

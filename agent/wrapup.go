@@ -108,7 +108,7 @@ func wrapupSettlement(agentKey string, disabledTools []string) *harness.Settleme
 // 규획하라", 작업 시간 초과는 "시간에 다다랐으니 규획을 멈추고 마지막 판정을 하라"). worker/planner 에만 설정한다.
 
 // WrapupTaskTimeoutOverride / …TurnsOverride: 작업 시간 초과 마무리 문구와 회합 수의 DB 덮어쓰기
-// (agents.task_timeout_wrapup_prompt / _max_turns에 연결, worker/planner 만).
+// (agents.task_timeout_wrapup_prompt / _max_turns에 연결, worker/planner만).
 var (
 	WrapupTaskTimeoutOverride      func(agentKey string) (string, bool)
 	WrapupTaskTimeoutTurnsOverride func(agentKey string) (int, bool)
