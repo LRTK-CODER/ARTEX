@@ -686,18 +686,18 @@ func (s *Server) reseedWorkerPrompt() {
 	log.Printf("[prompts] worker 프롬프트에 새 기본값 버전을 추가했다(컨텍스트 조회 단락을 list_assets/list_findings로 좁히고 list_facts/node_detail/asset_neighbors 제거, 일회성)")
 }
 
-// reporterToolCallMessage 必须无条件要求先读一次 get_finding_traffic 再写报告。
-// 该工具是只读的、「不依赖捕获开关」,自动绑定关不关都能读到人工绑定的证据。若这里
-// 写成「启用自动绑定才读」,默认关闭配置下 reporter 就不会传 evidence_version,
-// SetFindingReportVersionByNodeID 便按 legacy 语义写 -1,漏洞详情与 Markdown 导出
-// 从此常驻「证据已变更，报告待更新」,而 UI 上没有任何入口能把它清掉。
-const reporterToolCallMessage = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
-	"先用 get_finding_traffic(finding_id) 读取当前证据清单及其 version（空清单是正常情况，照常写报告）；" +
-	"若运行指引启用自动绑定，在读取前先核实并关联本次漏洞的流量。节点详情使用 finding_node_id。" +
-	"最后调用 update_finding_report(finding_id=finding_node_id, report, evidence_version=实际读取版本) 保存，" +
-	"evidence_version 必须传，否则报告会被永久标记为待更新。不要混用两种编号。"
+// reporterToolCallMessage 는 보고서를 쓰기 전에 반드시 무조건 get_finding_traffic을 한 번 먼저 읽게 해야 한다.
+// 이 도구는 읽기 전용이고 '캡처 스위치에 의존하지 않아', 자동 연결을 켜든 끄든 수동으로 연결한 증거를 읽을 수 있다. 여기를
+// '자동 연결을 켜야만 읽는다'로 쓰면, 기본값 꺼짐 설정에서는 reporter가 evidence_version을 보내지 않아
+// SetFindingReportVersionByNodeID가 legacy 의미대로 -1을 기록하고, 취약점 상세와 Markdown 내보내기에
+// '증거가 변경됨, 보고서 업데이트 필요'가 계속 남으며, UI에는 이를 지울 수 있는 입구가 전혀 없다.
+const reporterToolCallMessage = "방금 위에서 취약점 하나가 report_finding으로 등록됐습니다. 반환된 JSON의 finding_id(독립 취약점 기록 ID)와 finding_node_id(탐색 노드 ID)를 읽으세요. " +
+	"먼저 get_finding_traffic(finding_id)으로 현재 증거 목록과 그 version을 읽으세요(목록이 비어 있어도 정상이니 평소대로 보고서를 쓰세요). " +
+	"운영 지침에서 자동 연결을 켰다면, 읽기 전에 이번 취약점의 트래픽을 먼저 확인해 연결하세요. 노드 상세는 finding_node_id를 쓰세요. " +
+	"마지막으로 update_finding_report(finding_id=finding_node_id, report, evidence_version=실제로 읽은 버전)를 호출해 저장하세요. " +
+	"evidence_version은 반드시 보내세요. 그러지 않으면 보고서가 영구적으로 '업데이트 필요'로 표시됩니다. 두 가지 번호를 섞어 쓰지 마세요."
 
-// 旧版触发消息(0.3.8 及更早)。只有仍与它逐字相同的记录才会被迁移覆盖，用户改过的保持原样。
+// 이전 버전 트리거 메시지(0.3.8 및 그 이전). 지금도 이것과 글자 그대로 같은 기록만 마이그레이션이 덮어쓰고, 사용자가 고친 것은 그대로 둔다.
 const reporterToolCallMessageV1 = "上面刚有一个漏洞被 report_finding 登记。请从触发上下文里取出 finding_id" +
 	"（工具返回 \"finding recorded: <id>\" 里的数字）与任务 id，按你的职责撰写该漏洞的详细报告，" +
 	"最后调用 update_finding_report(finding_id, report) 保存。"
