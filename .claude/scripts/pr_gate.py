@@ -122,7 +122,7 @@ class TreeReport(NamedTuple):
 def git(repo: str, *args: str) -> str:
     """git 명령을 실행하고 표준 출력을 돌려준다. 실패하면 GateError."""
     try:
-        done = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, text=True,
+        done = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, encoding="utf-8", errors="replace",
                               timeout=GIT_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as e:
         raise GateError("git {} 시간 초과({}초)".format(" ".join(args), GIT_TIMEOUT_SECONDS)) from e
@@ -276,7 +276,7 @@ def run_command(cmd: List[str], *, cwd: str, timeout_seconds: int) -> Tuple[bool
     """명령을 실행해 (성공 여부, 표준 출력과 오류를 합친 출력)을 돌려준다."""
     try:
         done = subprocess.run(cmd, cwd=cwd, env=check_env(), stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, text=True, timeout=timeout_seconds)
+                              stderr=subprocess.STDOUT, encoding="utf-8", errors="replace", timeout=timeout_seconds)
     except subprocess.TimeoutExpired as e:
         partial = e.output if isinstance(e.output, str) else ""
         return False, "{}\n시간 초과({}초)".format(partial, timeout_seconds)

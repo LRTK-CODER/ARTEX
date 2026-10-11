@@ -187,6 +187,27 @@ class GateTest(unittest.TestCase):
             self.assertEqual(f.read(), CALC_TEST)  # main 것이다
 
 
+class InvalidUtf8OutputTest(unittest.TestCase):
+    """검사 출력에 잘못된 UTF-8이 섞여도 재채점이 끝까지 돌아야 한다(#122)."""
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="pr-gate-test-"))
+        self.repo = GateRepo(self.base)
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def test_gate_finishes_with_replacement_char(self):
+        # 바이트 단위로 자른 한글처럼 "한"(ed 95 9c)의 앞 두 바이트만 내고 실패한다
+        broken = ("import sys; sys.stdout.buffer.write('결과: '.encode() + "
+                  "'한글'.encode()[:2] + b'\\n'); sys.exit(1)")
+        profile = pr_gate.Profile(setup=[], checks=[("broken", [sys.executable, "-c", broken])])
+        self.repo.open_pr(20, {"note.txt": "x\n"})
+        code, text = pr_gate.gate(self.repo.repo, 20, profile=profile, workdir_base=self.base)
+        self.assertEqual(code, 1, text)
+        self.assertIn("결과: �", text)
+
+
 class ClassifyTest(unittest.TestCase):
     def test_categories(self):
         name_status = "\n".join([

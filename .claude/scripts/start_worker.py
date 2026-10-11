@@ -295,7 +295,7 @@ def format_step(step: List[str]) -> str:
 
 
 def orca_json(cmd: List[str]) -> Dict:
-    out = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    out = subprocess.run(cmd, check=True, capture_output=True, encoding="utf-8", errors="replace").stdout
     return json.loads(out)["result"]
 
 
@@ -310,7 +310,7 @@ def find_worktree(name: str) -> str:
 def git_worktrees() -> List[Tuple[str, Optional[str]]]:
     """이 저장소의 worktree (경로, 브랜치) 목록. 첫 항목이 main 체크아웃이다."""
     out = subprocess.run(["git", "-C", REPO_ROOT, "worktree", "list", "--porcelain"],
-                         check=True, capture_output=True, text=True).stdout
+                         check=True, capture_output=True, encoding="utf-8", errors="replace").stdout
     result: List[Tuple[str, Optional[str]]] = []
     for block in out.strip().split("\n\n"):
         fields = dict(line.split(" ", 1) for line in block.splitlines() if " " in line)
@@ -394,7 +394,7 @@ def check_role_definition(worktree: str, role: str, created: bool = True) -> Non
                      " 워커는 시작하지 않았다.".format(role))
         raise MissingRoleDefinition("\n".join(lines))
     branch = subprocess.run(["git", "-C", worktree, "symbolic-ref", "--short", "-q", "HEAD"],
-                            capture_output=True, text=True).stdout.strip() or "<worktree 브랜치>"
+                            capture_output=True, encoding="utf-8", errors="replace").stdout.strip() or "<worktree 브랜치>"
     lines[0] = "새 " + lines[0]
     raise MissingRoleDefinition("\n".join(lines + [
         "worktree는 main에서 만들어지므로 .claude/agents/{}.md가 main에 병합돼 있어야 한다."
