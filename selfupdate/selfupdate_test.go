@@ -455,7 +455,7 @@ func TestSettleIsNoopWithoutMarker(t *testing.T) {
 	requireUnix(t)
 	p := testPaths(t)
 	fakeBin(t, p.Current, "cur", 0)
-	settle(p) // 일반 시작 경로. panic 하지도, 어떤 파일을 건드리지도 않아야 한다
+	settle(p) // 일반 시작 경로. panic하지도, 어떤 파일을 건드리지도 않아야 한다
 	if _, err := os.Stat(p.Current); err != nil {
 		t.Error("마커가 없으면 settle이 어떤 파일에도 영향을 주면 안 됨")
 	}

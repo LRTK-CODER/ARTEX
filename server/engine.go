@@ -557,7 +557,7 @@ const defaultEmptyTurnNudges = 2
 //
 // harness는 이런 회차를 자연스러운 종료로 본다(stop_reason=end_turn이고 tool_use 없음). 그래서 다섯
 // 단계의 LLM 재시도 중 어느 것도 걸리지 않는다. 오류가 아니라 모델이 "생각은 끝냈지만 손을 대지 않은"
-// 것이기 때문이다. SDK의 빈 응답 재시도도 닿지 않는다. 그 단계는 "이벤트를 yield 했는가"로 빈 응답을
+// 것이기 때문이다. SDK의 빈 응답 재시도도 닿지 않는다. 그 단계는 "이벤트를 yield했는가"로 빈 응답을
 // 가리는데, 사고 증분도 이벤트라서(norma/llm/openai.go의 SEThinkingDelta) thinking-only는 빈 응답이
 // 아니다. 게다가 그 단계는 프롬프트 전체를 그대로 다시 보내므로, 컨텍스트 모양 때문에 생긴 공회전이면
 // 모델이 같은 생각을 한 번 더 할 뿐이다. 그래서 여기서는 지시를 하나 덧붙여 이미 만든 사고를 이어
@@ -854,7 +854,7 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		if open, err := t.Store.HasOpenGoal(); err == nil && !open {
 			t.drainTriggers() // 쌓인 done/finding 트리거를 버려 긴 goalless 세션에서 끝없이 늘지 않게 한다
 			if active, err := t.Store.HasActiveIntent(); err == nil && !active {
-				// frontier가 비고 실행 중인 탐색 의도도 없음 → 마무리. Guarded 버전으로 CAS 해서 동시에 일어나는
+				// frontier가 비고 실행 중인 탐색 의도도 없음 → 마무리. Guarded 버전으로 CAS해서 동시에 일어나는
 				// pause/delete/시간 초과 마무리의 상태 전환을 덮어쓰지 않게 한다.
 				if won, err := e.m.SetTaskStatusGuarded(t.ID, "done"); err != nil {
 					log.Printf("[goalless] task %s 마무리 done 기록 실패: %v", t.ID, err)

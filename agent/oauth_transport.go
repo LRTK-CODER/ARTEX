@@ -37,7 +37,7 @@ const oauthAPIKeyPlaceholder = "chatgpt-oauth"
 const loginRequiredBody = `{"error":{"code":"chatgpt_login_required","message":"ChatGPT 구독 로그인이 필요하다"}}`
 
 // codexRejectedFields 는 Codex 백엔드가 400으로 거부하는 Responses 본문 필드다(#33 조사).
-// temperature는 승인 심사가 0으로 실어 보내다 "Unsupported parameter" 로 실패해 더했다(#133).
+// temperature는 승인 심사가 0으로 실어 보내다 "Unsupported parameter"로 실패해 더했다(#133).
 var codexRejectedFields = []string{"max_output_tokens", "max_tokens", "metadata", "temperature"}
 
 // oauthTransport 는 Norma가 만든 Responses 요청을 Codex 백엔드가 받는 모양으로 바꾸고
@@ -63,7 +63,7 @@ func (t oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	if errors.Is(err, errLoginRequired) {
 		// 오류로 올리면 Norma는 네트워크 오류로 보고 재시도하고, llmpool은 TokenError 문자열의
-		// "status 400" 을 읽어 장애 전환을 하지 않는다. 401 응답이면 Norma는 재시도 없이
+		// "status 400"을 읽어 장애 전환을 하지 않는다. 401 응답이면 Norma는 재시도 없이
 		// "status 401" 오류로 올리고 llmpool은 hard failure로 본다.
 		return loginRequiredResponse(req), nil
 	}
@@ -74,7 +74,7 @@ func (t oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 var errLoginRequired = errors.New("chatgpt oauth: login required")
 
 // send 는 토큰을 받아 req의 사본에 싣고 body를 본문으로 보낸다. 원본 req는 바꾸지 않는다.
-// 401이면 그 토큰을 Invalidate 하도록 실은 access token도 돌려준다.
+// 401이면 그 토큰을 Invalidate하도록 실은 access token도 돌려준다.
 func (t oauthTransport) send(req *http.Request, body []byte) (*http.Response, string, error) {
 	accessToken, accountID, err := t.tokens.Token(req.Context())
 	if err != nil {

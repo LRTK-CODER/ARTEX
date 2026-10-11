@@ -32,7 +32,7 @@ const (
 )
 
 // fakeTokens 는 차례로 정한 토큰을 돌려주는 손으로 만든 토큰 공급자다.
-// 실제 TokenSource처럼 지금 토큰을 Invalidate 했을 때만 다음 토큰으로 넘어간다.
+// 실제 TokenSource처럼 지금 토큰을 Invalidate했을 때만 다음 토큰으로 넘어간다.
 type fakeTokens struct {
 	mu            sync.Mutex
 	accessTokens  []string

@@ -165,7 +165,7 @@ func TestTokenSourcesShareStore(t *testing.T) {
 	second := NewTokenSource(f.client(), store, clock)
 	ctx := context.Background()
 
-	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401을 준 것처럼 둘 다 Invalidate 한다.
+	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401을 준 것처럼 둘 다 Invalidate한다.
 	for _, src := range []*TokenSource{first, second} {
 		access, _, err := src.Token(ctx)
 		if err != nil {
@@ -216,7 +216,7 @@ func TestTokenSourceInvalidate(t *testing.T) {
 }
 
 // TestTokenSourceRefreshesOnceForConcurrentRejections 는 여러 요청이 같은 옛 토큰으로 401을 받아
-// 저마다 Invalidate 해도 갱신은 한 번만 하는지 확인한다.
+// 저마다 Invalidate해도 갱신은 한 번만 하는지 확인한다.
 func TestTokenSourceRefreshesOnceForConcurrentRejections(t *testing.T) {
 	const callers = 8
 	now := time.Unix(1_800_000_000, 0)

@@ -188,7 +188,7 @@ func (e *Engine) settleTask(ctx context.Context, t *Task) {
 	log.Printf("[deadline] task %s 시간 초과 한도 도달, 마무리 단계 시작", t.ID)
 
 	// ④ 실행 중인 워커·플래너의 drain을 기다린다(실행 중인 run은 줄어든 MaxDuration 때문에 스스로 마무리에 들어간다).
-	// grace가 지나도 비지 않으면 → 이 작업의 exec ctx를 강제 cancel 한다(settling을 아는 분기가 올바르게 분류한다).
+	// grace가 지나도 비지 않으면 → 이 작업의 exec ctx를 강제 cancel한다(settling을 아는 분기가 올바르게 분류한다).
 	hardStop := time.Now().Add(settleDrainGrace)
 	for e.inflightCount(t.ID) > 0 {
 		if time.Now().After(hardStop) {

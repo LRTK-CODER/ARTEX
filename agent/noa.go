@@ -25,7 +25,7 @@ func noaWarn(session string) func(string) {
 // sessionID가 그 아래 아카이브 하위 디렉터리 이름이 된다(전역 유일하므로 같은 기준 디렉터리 안에서 충돌하지 않는다).
 //
 // noa는 실험 기능이다. 접속에 실패해도 실제 작업을 중단해서는 안 된다. 오류가 나면 onWarn으로 알리고 내장 압축으로 되돌린다.
-// 사용 설정에 성공하면 opts.Compaction을 지워, agentcore가 '컨텍스트 관리자 두 개가 동시에 설정됨' 으로 경고하는 것을 막는다.
+// 사용 설정에 성공하면 opts.Compaction을 지워, agentcore가 '컨텍스트 관리자 두 개가 동시에 설정됨'으로 경고하는 것을 막는다.
 func enableNoa(opts *agentcore.Options, enabled func() bool, archiveRoot, sessionID string, onWarn func(string)) {
 	if enabled == nil || !enabled() {
 		return

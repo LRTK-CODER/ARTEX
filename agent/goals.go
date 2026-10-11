@@ -85,7 +85,7 @@ type GoalSpec struct {
 // 넣어 분해기가 더는 맹목적으로 쪼개지 않게 한다 — 프롬프트는 두 텍스트에 없는 것을
 // 지어내는 것을 여전히 금지한다.
 //
-// emit은 nil이 아니면 Worker="planner" 로 모든 LLM 단계(thinking/tool_use/result)를 받아,
+// emit은 nil이 아니면 Worker="planner"로 모든 LLM 단계(thinking/tool_use/result)를 받아,
 // 0번째 라운드의 목표 분해 활동이 UI에 보이게 한다.
 //
 // as + taskID는 nil이 아니거나 양수이면 add_task_scope 도구를 연결해, 분해기가 목표에서
@@ -114,7 +114,7 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 	// session id를 달지 않는다(writer가 있을 때만 단다. agentcore.Prompt 참고). 그런데
 	// session-id 헤더로 프롬프트 캐시/고정 라우팅을 하는 게이트웨이(opencode zen은
 	// x-opencode-session이 없으면 바로 400 MissingSessionID)는 ctx의 이 값을 읽는다 —
-	// 채우지 않으면 "대화는 정상, 분해만 400" 이 된다. 안정적인 id를 명시적으로 단다: 같은
+	// 채우지 않으면 "대화는 정상, 분해만 400"이 된다. 안정적인 id를 명시적으로 단다: 같은
 	// 탐색의 분해 요청이 그것을 공유해(캐시 적중에 유리) planner/worker와 충돌하지 않고,
 	// llmrec.parseSession이 올바로 귀속할 수 있다.
 	if ts != nil {
