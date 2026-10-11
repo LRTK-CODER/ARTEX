@@ -565,125 +565,125 @@ func (s *Server) unbindGoalMetDefault() {
 	_ = s.m.pg.SetSetting(flag, "true")
 }
 
-// reseedGoalsPrompt 把 goals 目标拆解器的提示词刷成【当前代码默认】——因为默认正文新增了
-// 「先抽操作约束(set_constraints)再拆目标」这一步,而 SeedPromptIfEmpty 首插入only,旧库
-// 已有的 version 1 收不到这步。这里用版本管理【追加一个新版本】并切过去(ResetPromptToDefault),
-// 旧的版本仍保留在历史里,用户若自定义过可从版本记录找回。settings flag 守卫 → 只做一次;
-// 以后默认再变就 bump 这个 flag。全新库无需处理(SeedPromptIfEmpty 已 seed 最新默认)。
+// reseedGoalsPrompt 는 goals 목표 분해기의 프롬프트를 '현재 코드 기본값'으로 다시 쓴다. 기본 본문에
+// '먼저 작업 제약 조건(set_constraints)을 뽑고 나서 목표를 분해한다'는 단계가 새로 들어갔는데, SeedPromptIfEmpty는
+// 첫 삽입에만 적용돼 구버전 DB의 기존 version 1이 이 단계를 받지 못하기 때문이다. 여기서는 버전 관리로 '새 버전을 하나 추가'해
+// 그쪽으로 전환한다(ResetPromptToDefault). 옛 버전은 이력에 남아, 사용자가 수정했었다면 버전 기록에서 되찾을 수 있다.
+// settings flag로 막아 한 번만 한다. 이후 기본값이 또 바뀌면 이 flag를 올린다. 완전 새 DB는 처리할 필요가 없다(SeedPromptIfEmpty가 이미 최신 기본값을 seed했다).
 func (s *Server) reseedGoalsPrompt() {
 	const flag = "goals_prompt_constraint_step_v1"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 성공하든 실패하든 한 번만 시도한다
 	a, err := s.m.pg.GetAgentByKey("goals")
 	if err != nil || a == nil {
-		return // 全新库尚未建 agent 行时,seedPrompts 会直接 seed 最新默认,无需此迁移
+		return // 완전 새 DB라 아직 agent 행이 없으면 seedPrompts가 최신 기본값을 바로 seed하므로 이 마이그레이션이 필요 없다
 	}
 	tmpl := agent.BuiltinPromptSeeds()["goals"]
 	if tmpl == "" {
 		return
 	}
-	// 全新库 seedPrompts 已 seed 最新默认 → 当前版本已等于代码默认,不必再追加重复版本。
+	// 완전 새 DB는 seedPrompts가 이미 최신 기본값을 seed했다 → 현재 버전이 코드 기본값과 같으므로 중복 버전을 또 추가할 필요가 없다.
 	if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
 		return
 	}
 	if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
-		log.Printf("[prompts] goals 提示词重刷为新默认失败: %v", err)
+		log.Printf("[prompts] goals 프롬프트 새 기본값 다시 쓰기 실패: %v", err)
 		return
 	}
-	log.Printf("[prompts] goals 提示词已追加新默认版本(加入抽操作约束步,一次性)")
+	log.Printf("[prompts] goals 프롬프트에 새 기본값 버전을 추가했다(작업 제약 조건 추출 단계 추가, 일회성)")
 }
 
-// reseedMainAgentPrompt 把 mainagent 提示词刷成【当前代码默认】——默认正文新增了「目标全部
-// 达成后 add_intent 直投意图时,反问人是否登记为正式目标」这段引导,而 SeedPromptIfEmpty 首插入
-// only,旧库已有版本收不到。用版本管理【追加一个新版本】并切过去(ResetPromptToDefault),旧版本仍
-// 保留在历史里,用户若自定义过可从版本记录找回。settings flag 守卫 → 只做一次。全新库无需处理
-// (SeedPromptIfEmpty 已 seed 最新默认)。与 reseedGoalsPrompt 完全同构。
+// reseedMainAgentPrompt 는 mainagent 프롬프트를 '현재 코드 기본값'으로 다시 쓴다. 기본 본문에 '목표를 모두
+// 달성한 뒤 add_intent로 의도를 바로 넣을 때, 정식 목표로 등록할지 사람에게 되묻는다'는 안내가 새로 들어갔는데, SeedPromptIfEmpty는
+// 첫 삽입에만 적용돼 구버전 DB의 기존 버전이 받지 못한다. 버전 관리로 '새 버전을 하나 추가'해 그쪽으로 전환한다(ResetPromptToDefault). 옛 버전은
+// 이력에 남아, 사용자가 수정했었다면 버전 기록에서 되찾을 수 있다. settings flag로 막아 한 번만 한다. 완전 새 DB는 처리할 필요가 없다
+// (SeedPromptIfEmpty가 이미 최신 기본값을 seed했다). reseedGoalsPrompt와 완전히 같은 구조다.
 func (s *Server) reseedMainAgentPrompt() {
 	const flag = "mainagent_prompt_goalless_intent_v1"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 성공하든 실패하든 한 번만 시도한다
 	a, err := s.m.pg.GetAgentByKey("mainagent")
 	if err != nil || a == nil {
-		return // 全新库尚未建 agent 行时,seedPrompts 会直接 seed 最新默认,无需此迁移
+		return // 완전 새 DB라 아직 agent 행이 없으면 seedPrompts가 최신 기본값을 바로 seed하므로 이 마이그레이션이 필요 없다
 	}
 	tmpl := agent.BuiltinPromptSeeds()["mainagent"]
 	if tmpl == "" {
 		return
 	}
-	// 全新库 seedPrompts 已 seed 最新默认 → 当前版本已等于代码默认,不必再追加重复版本。
+	// 완전 새 DB는 seedPrompts가 이미 최신 기본값을 seed했다 → 현재 버전이 코드 기본값과 같으므로 중복 버전을 또 추가할 필요가 없다.
 	if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
 		return
 	}
 	if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
-		log.Printf("[prompts] mainagent 提示词重刷为新默认失败: %v", err)
+		log.Printf("[prompts] mainagent 프롬프트 새 기본값 다시 쓰기 실패: %v", err)
 		return
 	}
-	log.Printf("[prompts] mainagent 提示词已追加新默认版本(加入目标达成后反问建目标,一次性)")
+	log.Printf("[prompts] mainagent 프롬프트에 새 기본값 버전을 추가했다(목표 달성 뒤 목표 만들기 되묻기 추가, 일회성)")
 }
 
-// reseedPlannerPrompt 把 planner 提示词刷成【当前代码默认】——默认正文做了精简重构,并把「克制」降级为
-// 仅去重、新增「深度优先于覆盖度」「硬底线:目标未达成且无在跑意图必须产出」、给否定结论复核加上界。
-// 每次默认有实质变更就 bump 下面的 flag(当前 v2)让存量旧库再刷一次。SeedPromptIfEmpty 首插入only,旧库已有版本收不到,故用版本管理
-// 【追加一个新版本】并切过去(ResetPromptToDefault),旧版本仍保留在历史里,用户若自定义过可从版本记录
-// 找回。settings flag 守卫 → 只做一次。全新库无需处理(SeedPromptIfEmpty 已 seed 最新默认)。与
-// reseedGoalsPrompt 完全同构。
+// reseedPlannerPrompt 는 planner 프롬프트를 '현재 코드 기본값'으로 다시 쓴다. 기본 본문을 간결하게 재구성하고, '절제'를
+// 중복 제거만 하는 수준으로 낮췄으며, '깊이가 커버리지보다 우선', '하한선: 목표가 달성되지 않았고 실행 중인 의도가 없으면 반드시 결과물을 낸다'를 더하고, 부정 결론 재검토에 상한을 더했다.
+// 기본값이 실질적으로 바뀔 때마다 아래 flag(현재 v2)를 올려 기존 구버전 DB가 다시 한 번 반영하게 한다. SeedPromptIfEmpty는 첫 삽입에만 적용돼 구버전 DB의 기존 버전이 받지 못하므로, 버전 관리로
+// '새 버전을 하나 추가'해 그쪽으로 전환한다(ResetPromptToDefault). 옛 버전은 이력에 남아, 사용자가 수정했었다면 버전 기록에서
+// 되찾을 수 있다. settings flag로 막아 한 번만 한다. 완전 새 DB는 처리할 필요가 없다(SeedPromptIfEmpty가 이미 최신 기본값을 seed했다).
+// reseedGoalsPrompt와 완전히 같은 구조다.
 func (s *Server) reseedPlannerPrompt() {
 	const flag = "planner_prompt_compact_realistic_v2"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 성공하든 실패하든 한 번만 시도한다
 	a, err := s.m.pg.GetAgentByKey("planner")
 	if err != nil || a == nil {
-		return // 全新库尚未建 agent 行时,seedPrompts 会直接 seed 最新默认,无需此迁移
+		return // 완전 새 DB라 아직 agent 행이 없으면 seedPrompts가 최신 기본값을 바로 seed하므로 이 마이그레이션이 필요 없다
 	}
 	tmpl := agent.BuiltinPromptSeeds()["planner"]
 	if tmpl == "" {
 		return
 	}
-	// 全新库 seedPrompts 已 seed 最新默认 → 当前版本已等于代码默认,不必再追加重复版本。
+	// 완전 새 DB는 seedPrompts가 이미 최신 기본값을 seed했다 → 현재 버전이 코드 기본값과 같으므로 중복 버전을 또 추가할 필요가 없다.
 	if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
 		return
 	}
 	if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
-		log.Printf("[prompts] planner 提示词重刷为新默认失败: %v", err)
+		log.Printf("[prompts] planner 프롬프트 새 기본값 다시 쓰기 실패: %v", err)
 		return
 	}
-	log.Printf("[prompts] planner 提示词已追加新默认版本(精简重构+克制降级去重+深度优先+否定复核上界,一次性)")
+	log.Printf("[prompts] planner 프롬프트에 새 기본값 버전을 추가했다(간결 재구성+절제를 중복 제거로 완화+깊이 우선+부정 재검토 상한, 일회성)")
 }
 
-// reseedWorkerPrompt 把 worker 提示词刷成【当前代码默认】——默认正文 record_fact 段删掉了「否定类结论
-// 写观察+试探性读法」整句、并把 confidence(observed/inferred)与「是否穷尽本意图手段」解耦(这些易误导规划者),
-// 同时把 facts 数组分条收紧为「彼此完全独立、无法归并」的极少数例外。bump flag 至 v3 让存量旧库再刷一次。
-// SeedPromptIfEmpty 首插入only,旧库已有版本收不到,故用版本管理【追加一个新版本】并切过去,旧版本仍保留在历史里可找回。
-// settings flag 守卫 → 只做一次。全新库无需处理。与 reseedGoalsPrompt 完全同构。
+// reseedWorkerPrompt 는 worker 프롬프트를 '현재 코드 기본값'으로 다시 쓴다. 기본 본문의 record_fact 단락에서 '부정 계열 결론은
+// 관찰로 적고 탐색적으로 읽는다'는 문장 전체를 지우고, confidence(observed/inferred)를 '이 의도의 수단을 다 썼는지'와 분리했으며(이들은 플래너를 쉽게 오해시킨다),
+// 아울러 facts 배열을 여러 항목으로 나누는 것을 '서로 완전히 독립적이어서 합칠 수 없는' 극소수 예외로 좁혔다. flag를 v3으로 올려 기존 구버전 DB가 다시 한 번 반영하게 한다.
+// SeedPromptIfEmpty는 첫 삽입에만 적용돼 구버전 DB의 기존 버전이 받지 못하므로, 버전 관리로 '새 버전을 하나 추가'해 그쪽으로 전환한다. 옛 버전은 이력에 남아 되찾을 수 있다.
+// settings flag로 막아 한 번만 한다. 완전 새 DB는 처리할 필요가 없다. reseedGoalsPrompt와 완전히 같은 구조다.
 func (s *Server) reseedWorkerPrompt() {
 	const flag = "worker_prompt_compact_v4"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 성공하든 실패하든 한 번만 시도한다
 	a, err := s.m.pg.GetAgentByKey("worker")
 	if err != nil || a == nil {
-		return // 全新库尚未建 agent 行时,seedPrompts 会直接 seed 最新默认,无需此迁移
+		return // 완전 새 DB라 아직 agent 행이 없으면 seedPrompts가 최신 기본값을 바로 seed하므로 이 마이그레이션이 필요 없다
 	}
 	tmpl := agent.BuiltinPromptSeeds()["worker"]
 	if tmpl == "" {
 		return
 	}
-	// 全新库 seedPrompts 已 seed 最新默认 → 当前版本已等于代码默认,不必再追加重复版本。
+	// 완전 새 DB는 seedPrompts가 이미 최신 기본값을 seed했다 → 현재 버전이 코드 기본값과 같으므로 중복 버전을 또 추가할 필요가 없다.
 	if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
 		return
 	}
 	if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
-		log.Printf("[prompts] worker 提示词重刷为新默认失败: %v", err)
+		log.Printf("[prompts] worker 프롬프트 새 기본값 다시 쓰기 실패: %v", err)
 		return
 	}
-	log.Printf("[prompts] worker 提示词已追加新默认版本(查上下文段收敛为 list_assets/list_findings,去掉 list_facts/node_detail/asset_neighbors,一次性)")
+	log.Printf("[prompts] worker 프롬프트에 새 기본값 버전을 추가했다(컨텍스트 조회 단락을 list_assets/list_findings로 좁히고 list_facts/node_detail/asset_neighbors 제거, 일회성)")
 }
 
 // reporterToolCallMessage 必须无条件要求先读一次 get_finding_traffic 再写报告。
@@ -739,7 +739,7 @@ func (s *Server) seedReporterAgent() {
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 성공하든 실패하든 한 번만 시도한다
 
 	if exist, _ := s.m.pg.GetAgentByKey("reporter"); exist != nil {
 		return // key 已被占用(用户手建过)——不覆盖
