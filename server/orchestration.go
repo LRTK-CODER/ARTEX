@@ -24,7 +24,7 @@ func jsonResult(v any) (actool.Result, error) {
 	return actool.Text(string(b)), nil
 }
 
-// 이 파일은 '작업 간 오케스트레이션 도구 모음'을 구현한다(docs/跑分编排 §2 P2). 이 도구들은 host
+// 이 파일은 '작업 간 오케스트레이션 도구 모음'을 구현한다. 이 도구들은 host
 // 도구다. Manager(모든 작업의 Store), Engine(일시 중지), 작업 생성 흐름에 접근해야 하므로 server
 // 계층에 둔다. 읽기 도구는 '기존 작업별 도구'를 대상 작업의 store에서 돌게 돌려보낸다(임시 ToolSet을
 // 만들어 해당 도구를 Call한다). 그래서 완전히 같은 로직을 재사용한다. 제어 도구(spawn/pause)는
