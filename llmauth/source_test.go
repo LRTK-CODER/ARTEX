@@ -165,7 +165,7 @@ func TestTokenSourcesShareStore(t *testing.T) {
 	second := NewTokenSource(f.client(), store, clock)
 	ctx := context.Background()
 
-	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401을 준 것처럼 둘 다 Invalidate 한다.
+	// 둘 다 회전 전 토큰을 읽어 둔 뒤, 백엔드가 401을 준 것처럼 둘 다 Invalidate한다.
 	for _, src := range []*TokenSource{first, second} {
 		access, _, err := src.Token(ctx)
 		if err != nil {

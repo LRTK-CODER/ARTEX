@@ -1,5 +1,5 @@
 // Package db 는 ARTEX의 PostgreSQL 데이터 소스다(이전의 graph 단일 파일 SQLite를 대체한다).
-// 연결을 열고, schema를 적용하고, 내장 agent와 변수 목록을 seed 한다.
+// 연결을 열고, schema를 적용하고, 내장 agent와 변수 목록을 seed한다.
 package db
 
 import (
@@ -170,7 +170,7 @@ type promptVar struct{ name, desc, example, source string }
 // intp 는 v의 포인터를 돌려준다. builtinAgent의 선택 필드(runSeconds 등)에 값을 명시할 때 쓴다.
 func intp(v int) *int { return &v }
 
-// builtinAgents 는 docs §5(a)를 따른다. 내장 도구는 DB에 저장하지 않고, 여기서는 agent와 변수 목록만 seed 한다.
+// builtinAgents 는 docs §5(a)를 따른다. 내장 도구는 DB에 저장하지 않고, 여기서는 agent와 변수 목록만 seed한다.
 // planner/worker/mainagent/auto의 대화형 shell 기본값은 아래 interactive_shell_default_v1
 // 블록이 한꺼번에 true로 둔다(나중의 토글을 존중한다). 여기의 interactiveShell은 행을 만들 때부터 켜야 하는 새 agent 에만 쓴다.
 var builtinAgents = []builtinAgent{
