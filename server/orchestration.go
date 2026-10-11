@@ -426,7 +426,7 @@ func (s *Server) toolGetTaskNodeDetail() actool.CoreTool {
 // task-agnostic, so this host tool needs no task_id / exploration store.
 func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 	return wrTool("update_finding_report",
-		"Write/update the **detailed report** for a recorded vulnerability (full Markdown, overwriting the old content wholesale). Pass the finding_id that report_finding returned (the number in \"finding recorded: <id>\"). The report should cover: Overview, Impact, Steps to reproduce, Evidence/PoC, and Remediation.",
+		"Write/update the **detailed report** for a recorded vulnerability (full Markdown, overwriting the old content wholesale). Pass the finding_id that report_finding returned (the number in \"finding recorded: <id>\"). The report should cover these sections: `## 개요`, `## 영향`, `## 재현 절차`, `## 증거`/`## PoC`, `## 수정 권고`.",
 		objSchema(map[string]any{
 			"finding_id":       map[string]any{"type": "integer", "description": "target vulnerability id (the id report_finding returned)"},
 			"report":           strParam("full detailed report, in Markdown"),
