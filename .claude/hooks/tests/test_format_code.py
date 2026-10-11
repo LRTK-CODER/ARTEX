@@ -94,6 +94,23 @@ class FormatCodeTest(unittest.TestCase):
         self.assertEqual((p.returncode, p.stderr), (0, ""))
         self.assertEqual(self.read(path), TS_UNFORMATTED)
 
+    def test_reports_invalid_utf8_output(self):
+        # gofmt 오류 출력에 바이트 단위로 잘린 "한"(ed 95 9c의 앞 두 바이트)이 섞여도
+        # 디코딩에서 멈추지 않고 대체 문자로 보여 준다(#143)
+        bin_dir = os.path.join(self.repo, "fake-bin")
+        os.makedirs(bin_dir)
+        gofmt = os.path.join(bin_dir, "gofmt")
+        with open(gofmt, "w", encoding="utf-8") as f:
+            f.write("#!/bin/sh\nprintf 'broken.go: \\355\\225\\n' >&2\nexit 1\n")
+        os.chmod(gofmt, 0o755)
+        path = self.write("broken.go", GO_UNPARSEABLE)
+        event = {"tool_name": "Write", "tool_input": {"file_path": path}, "cwd": self.repo}
+        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ.get("PATH", ""))
+        p = subprocess.run([sys.executable, HOOK], input=json.dumps(event), env=env,
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("broken.go: \ufffd", p.stderr)
+
     def test_bad_input_does_not_block(self):
         for text in ("not json", "[]", json.dumps({"tool_input": {}})):
             with self.subTest(text=text):

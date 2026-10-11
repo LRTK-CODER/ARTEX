@@ -30,7 +30,7 @@ WEB_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".jsonc", ".c
 def work_tree_root(path):
     """path가 들어 있는 git 작업 트리의 루트. git 밖이면 None."""
     p = subprocess.run(["git", "-C", os.path.dirname(path), "rev-parse", "--show-toplevel"],
-                       capture_output=True, text=True)
+                       capture_output=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         return None
     return os.path.realpath(p.stdout.strip())
@@ -56,7 +56,7 @@ def in_claude_dir(path, root):
 
 
 def run(cmd, cwd=None):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", timeout=TIMEOUT_SECONDS)
 
 
 def format_go(path):
