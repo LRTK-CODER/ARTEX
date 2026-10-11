@@ -37,7 +37,8 @@ const oauthAPIKeyPlaceholder = "chatgpt-oauth"
 const loginRequiredBody = `{"error":{"code":"chatgpt_login_required","message":"ChatGPT 구독 로그인이 필요하다"}}`
 
 // codexRejectedFields 는 Codex 백엔드가 400으로 거부하는 Responses 본문 필드다(#33 조사).
-var codexRejectedFields = []string{"max_output_tokens", "max_tokens", "metadata"}
+// temperature 는 승인 심사가 0 으로 실어 보내다 "Unsupported parameter" 로 실패해 더했다(#133).
+var codexRejectedFields = []string{"max_output_tokens", "max_tokens", "metadata", "temperature"}
 
 // oauthTransport 는 Norma가 만든 Responses 요청을 Codex 백엔드가 받는 모양으로 바꾸고
 // OAuth 토큰을 싣는다. 401 이면 토큰을 버리고 한 번만 갱신해 다시 보낸다.
