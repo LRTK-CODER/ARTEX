@@ -545,7 +545,7 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 	ctx = transcript.WithSessionID(ctx, "conntest-"+transcript.NewSessionID())
 	start := time.Now()
 	// MaxTokens는 넉넉히 준다. 추론 모델(예: deepseek-v4-pro)은 답을 내기 전에 사고를 한참 쏟아 낸다
-	// ("ping" 한마디에도 실측 ~2900 토큰). 32 만 주면 모델이 '사고 단계'에 머물다 출력 최대 토큰에 걸려
+	// ("ping" 한마디에도 실측 ~2900 토큰). 32 토큰만 주면 모델이 '사고 단계'에 머물다 출력 최대 토큰에 걸려
 	// (finish=length) 잘리고, 연결 테스트는 통과(err=nil)로 치면서도 화면에는
 	// '중단됨/length/resume' 로 엉망으로 보인다. 예산을 넉넉히 줘서 OK를 깨끗이 끝까지 내게 한다(finish=stop).
 	// EscalateMaxTokens는 false로 둔다. 잘림 때문에 최대 토큰을 올려 재시도하지 않아 resume 루프의 헛돎을 막는다.
