@@ -41,12 +41,12 @@ Write comment in Korean, strictly as three segments "실제 동작: …; 성공 
 
 // DefaultJudgePrompt 는 LLM 폴백 심사의 내장 시스템 프롬프트다.
 // 어떤 가로채기 규칙에도 걸리지 않은 도구 호출에만 돈다. 이 한 번의 호출을
-// 허가된 침투 테스트 기준으로 ALLOW / ASK / DENY 로 분류한다. 대상의 실제
+// 허가된 침투 테스트 기준으로 ALLOW / ASK / DENY로 분류한다. 대상의 실제
 // 자산에 직접적이고 되돌리기 어려운 피해만 막고, 보통의 공격·정찰·읽기
 // 기법은 허용하며, 정말로 판단할 수 없을 때만 사람에게 묻는다.
 //
-// 사용자는 llm_judge_prompt 로 정책을 사용자 지정할 수 있고, 비어 있으면 이
-// 상수를 쓴다. EffectiveJudgePrompt 는 항상 입력 신뢰 경계를 뒤에 붙인다.
+// 사용자는 llm_judge_prompt로 정책을 사용자 지정할 수 있고, 비어 있으면 이
+// 상수를 쓴다. EffectiveJudgePrompt는 항상 입력 신뢰 경계를 뒤에 붙인다.
 const DefaultJudgePrompt = `# Role
 You are the operational-safety judge in an authorized penetration test. The system has already filtered commands with a set of rules; you perform a contextual review of this one tool call that the rules did not cover. Judge the direct effect of the current action under this review policy. You do not assess vulnerability severity and do not block on data sensitivity alone; your focus is to answer:
 
@@ -134,13 +134,13 @@ type Verdict struct {
 }
 
 // stripCodeFence 는 엄격 파싱 전에 코드 펜스(```json … ```)로 감싼 응답을 벗긴다.
-// 수선이 아니라 결정적 벗기기다. 벗긴 내용은 그대로 ParseVerdict 를 거치므로
-// 잘리거나 모호하거나 산문인 응답은 여전히 파싱되지 않는다. MaxTokens 에서
+// 수선이 아니라 결정적 벗기기다. 벗긴 내용은 그대로 ParseVerdict를 거치므로
+// 잘리거나 모호하거나 산문인 응답은 여전히 파싱되지 않는다. MaxTokens에서
 // 잘린 응답은 닫는 펜스가 없어 일부러 그대로 둔다. 완성하면 모델이 주지 않은
 // 판정을 지어내게 된다.
 //
-// fail action 의 기본값이 allow 라서 필요하다. 이것이 없으면 JSON 을 그저
-// 마크다운으로 감싼 모델이 DENY 를 조용한 allow 로 바꿔 버린다.
+// fail action의 기본값이 allow라서 필요하다. 이것이 없으면 JSON을 그저
+// 마크다운으로 감싼 모델이 DENY를 조용한 allow로 바꿔 버린다.
 func stripCodeFence(text string) string {
 	t := strings.TrimSpace(text)
 	if len(t) <= 6 || !strings.HasPrefix(t, "```") || !strings.HasSuffix(t, "```") {

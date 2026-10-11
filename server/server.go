@@ -44,11 +44,11 @@ type Server struct {
 	ctx    context.Context
 
 	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // keyDir/jwt.key 에서 읽거나 새로 만든 HS256 서명 키
+	jwtKey   []byte // keyDir/jwt.key에서 읽거나 새로 만든 HS256 서명 키
 	// oauth 는 구독 OAuth 프로필의 TokenSource를 프로필마다 하나씩 들고 있다.
-	// oauth.key를 불러오지 못했으면 nil 이고, 그때 OAuth 프로필은 쓸 수 없다.
+	// oauth.key를 불러오지 못했으면 nil이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry
-	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL 이다.
+	// codexBaseURL 은 chatgpt_oauth 프로필이 부르는 Codex 백엔드 주소다. 비면 agent.CodexBaseURL이다.
 	// 테스트만 httptest 주소로 바꾼다. 설정·환경 변수로 바꾸는 길은 두지 않는다(codexURL).
 	codexBaseURL string
 	// claudeBaseURL 은 내부 테스트에서만 바꾸며 설정·환경 변수를 따르지 않는다.
@@ -512,7 +512,7 @@ func (s *Server) applyLLM(cfg agent.Config) error {
 
 // loadProfileConfig builds an agent.Config from a specific profile id (with its key).
 // ok=false when the profile is missing or has no api key.
-// 구독 OAuth 프로필은 API 키 대신 저장된 OAuth 자격 증명이 없으면 ok=false 다.
+// 구독 OAuth 프로필은 API 키 대신 저장된 OAuth 자격 증명이 없으면 ok=false다.
 func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 	p, err := s.m.pg.ProfileByID(id)
 	if err != nil || p == nil {
@@ -521,11 +521,11 @@ func (s *Server) loadProfileConfig(id int64) (agent.Config, bool) {
 	return s.profileConfig(p)
 }
 
-// oauthCheckTimeout 은 프로필 설정을 만들 때 자격 증명이 있는지 DB 에서 확인하는 상한이다.
+// oauthCheckTimeout 은 프로필 설정을 만들 때 자격 증명이 있는지 DB에서 확인하는 상한이다.
 const oauthCheckTimeout = 5 * time.Second
 
 // profileConfig 는 저장된 프로필(키 포함)로 agent.Config를 만든다. 요청을 보낼 수 없는
-// 프로필(API 키 없음, OAuth 자격 증명 없음)이면 ok=false 다.
+// 프로필(API 키 없음, OAuth 자격 증명 없음)이면 ok=false다.
 func (s *Server) profileConfig(p *db.LLMProfile) (agent.Config, bool) {
 	cfg := agent.ConfigFrom(profileFormat(p.AuthType, p.Format), p.Model, p.BaseURL, p.APIKey, p.Proxy)
 	cfg.RatePerSecond, cfg.RatePerMinute = p.RatePerSecond, p.RatePerMinute
@@ -572,7 +572,7 @@ func profileFormat(authType db.AuthType, format string) string {
 
 // applyChatGPTOAuthRules 는 Codex 백엔드가 받는 형식으로 설정을 고정한다. Codex 백엔드는
 // Responses 형식의 stream:true 요청만 받으므로 프로필에 저장된 형식·수신 방식과 무관하게 맞춘다.
-// 주소는 codexBaseURL 만 쓴다. 저장되거나 요청에 온 base_url을 따르면 구독 토큰이 그 호스트
+// 주소는 codexBaseURL만 쓴다. 저장되거나 요청에 온 base_url을 따르면 구독 토큰이 그 호스트
 // (API 키용 중계 등)로 나간다. API 키는 쓰지 않으므로 비운다.
 func applyChatGPTOAuthRules(cfg *agent.Config, codexBaseURL string) {
 	cfg.AuthType = db.AuthChatGPTOAuth

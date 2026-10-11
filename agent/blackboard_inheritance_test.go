@@ -82,7 +82,7 @@ func TestAssociatedCompanyScopeReachesAgentTools(t *testing.T) {
 	if !ok {
 		t.Fatalf("coverage missing: %#v", overview["coverage"])
 	}
-	// graph_overview의 coverage.scope는 upstream 06a43f3 에서 빠졌다. 관련 기업의 scope는
+	// graph_overview의 coverage.scope는 upstream 06a43f3에서 빠졌다. 관련 기업의 scope는
 	// 이제 list_companies로 읽는다.
 	companyScope := listedCompanyScope(t, tools, companiesName(t, companies, companyID), companyID)
 	if len(companyScope) != len(inputs) {

@@ -127,7 +127,7 @@ func migrateKeyFile(legacyPath, path string) error {
 		log.Printf("[auth] 키 파일 %s를 %s로 옮겼으나 원래 파일을 지우지 못했다: %v", legacyPath, path, err)
 		return nil
 	}
-	log.Printf("[auth] 키 파일을 %s 에서 %s로 옮겼다", legacyPath, path)
+	log.Printf("[auth] 키 파일을 %s에서 %s로 옮겼다", legacyPath, path)
 	return nil
 }
 
@@ -168,7 +168,7 @@ func evalAbs(dir string) (string, error) {
 	return filepath.EvalSymlinks(abs)
 }
 
-// evalDeepestExisting 는 절대 경로 path 에서 실제로 있는 가장 깊은 조상을 찾아 심볼릭 링크를 푼다.
+// evalDeepestExisting 는 절대 경로 path에서 실제로 있는 가장 깊은 조상을 찾아 심볼릭 링크를 푼다.
 // 아직 없는 디렉터리가 결국 어느 디렉터리 아래에 만들어질지 알기 위해 쓴다.
 func evalDeepestExisting(path string) (string, error) {
 	for dir := path; ; dir = filepath.Dir(dir) {
@@ -182,7 +182,7 @@ func evalDeepestExisting(path string) (string, error) {
 	}
 }
 
-// isSameOrUnder 는 심볼릭 링크를 푼 절대 경로 dir 나 그 조상 중 하나가 root와 같은 파일인지 본다.
+// isSameOrUnder 는 심볼릭 링크를 푼 절대 경로 dir나 그 조상 중 하나가 root와 같은 파일인지 본다.
 // 경로 문자열 비교는 대소문자만 다른 경로나 bind mount를 같은 디렉터리로 알아보지 못해 파일 정체성으로 비교한다.
 func isSameOrUnder(dir string, root os.FileInfo) (bool, error) {
 	for {

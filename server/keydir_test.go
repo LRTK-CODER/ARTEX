@@ -191,7 +191,7 @@ func TestPrepareKeyDirKeepsExistingKey(t *testing.T) {
 	}
 }
 
-// TestPrepareKeyDirSameAsBaseDir 는 키 디렉터리가 baseDir 이면 키를 옮기거나 지우지 않는지 본다.
+// TestPrepareKeyDirSameAsBaseDir 는 키 디렉터리가 baseDir이면 키를 옮기거나 지우지 않는지 본다.
 func TestPrepareKeyDirSameAsBaseDir(t *testing.T) {
 	base, data, _ := keyDirLayout(t)
 	want := []byte("same-dir-key")

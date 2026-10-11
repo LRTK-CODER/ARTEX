@@ -18,14 +18,14 @@ type PKCE struct {
 	Challenge string
 }
 
-// String 은 verifier를 숨기고 challenge 만 보여 준다. verifier는 토큰 교환에 쓰는 비밀값이다.
+// String 은 verifier를 숨기고 challenge만 보여 준다. verifier는 토큰 교환에 쓰는 비밀값이다.
 func (p PKCE) String() string { return fmt.Sprintf("llmauth.PKCE{Challenge: %q}", p.Challenge) }
 
-// GoString 은 %#v 에서도 verifier를 숨긴다.
+// GoString 은 %#v에서도 verifier를 숨긴다.
 func (p PKCE) GoString() string { return p.String() }
 
-// NewPKCE 는 random 에서 32바이트를 읽어 PKCE 쌍을 만든다.
-// random이 nil 이면 crypto/rand를 쓴다. 난수를 다 읽지 못하면 오류를 올린다.
+// NewPKCE 는 random에서 32바이트를 읽어 PKCE 쌍을 만든다.
+// random이 nil이면 crypto/rand를 쓴다. 난수를 다 읽지 못하면 오류를 올린다.
 func NewPKCE(random io.Reader) (PKCE, error) {
 	if random == nil {
 		random = rand.Reader

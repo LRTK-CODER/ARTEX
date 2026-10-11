@@ -161,7 +161,7 @@ func TestTokenErrorHidesSecrets(t *testing.T) {
 	}{
 		{"error 문자열", http.StatusBadRequest, `{"error":"invalid_grant","error_description":"token ` + secret + ` bad","refresh_token":"` + secret + `"}`, ErrorCodeInvalidGrant},
 		{"error 객체", http.StatusUnauthorized, `{"error":{"code":"refresh_token_reused","message":"` + secret + `"}}`, ErrorCodeRefreshTokenReused},
-		{"error가 null 이고 최상위 code", http.StatusUnauthorized, `{"error":null,"code":"refresh_token_reused","detail":"` + secret + `"}`, ErrorCodeRefreshTokenReused},
+		{"error가 null이고 최상위 code", http.StatusUnauthorized, `{"error":null,"code":"refresh_token_reused","detail":"` + secret + `"}`, ErrorCodeRefreshTokenReused},
 		{"최상위 code", http.StatusUnauthorized, `{"code":"refresh_token_expired","detail":"` + secret + `"}`, ErrorCodeRefreshTokenExpired},
 		{"코드 자리에 비밀값", http.StatusBadRequest, `{"error":"` + secret + ` leaked here"}`, ""},
 		{"JSON이 아닌 본문", http.StatusBadGateway, `<html>` + secret + `</html>`, ""},

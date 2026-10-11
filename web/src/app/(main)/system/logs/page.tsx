@@ -244,7 +244,7 @@ export default function LogsPage() {
             </div>
           )}
           {filtered.length === 0 ? (
-            <p className="py-10 text-center text-muted-foreground">로그가 없습니다.</p>
+            <p className="py-10 text-center text-muted-foreground">로그가 없습니다</p>
           ) : (
             filtered.map((l) => {
               const body =

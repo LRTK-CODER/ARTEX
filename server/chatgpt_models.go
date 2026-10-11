@@ -14,7 +14,7 @@ import (
 	"github.com/Autumn-27/artex/llmauth"
 )
 
-// codexClientVersion 은 Codex 모델 목록 요청의 client_version 이다. 백엔드는 이 값으로 클라이언트가
+// codexClientVersion 은 Codex 모델 목록 요청의 client_version이다. 백엔드는 이 값으로 클라이언트가
 // 받을 수 있는 모델을 고른다. Codex CLI rust-v0.160.1(2026-10-05 릴리스)의 버전이다.
 // 출처: openai/codex codex-rs/models-manager/src/lib.rs client_version_to_whole,
 // codex-rs/codex-api/src/endpoint/models.rs append_client_version_query.

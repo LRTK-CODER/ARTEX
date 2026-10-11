@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Claims 는 토큰 JWT 에서 꺼낸 값이다.
+// Claims 는 토큰 JWT에서 꺼낸 값이다.
 type Claims struct {
 	// AccountID 는 chatgpt_account_id 클레임이다. 없으면 비어 있다.
 	AccountID string
@@ -23,7 +23,7 @@ type Claims struct {
 // planTypePattern 은 플랜 이름 모양이다. 화면에 그대로 보이는 값이라 이 모양이 아니면 버린다.
 var planTypePattern = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 
-// ParseClaims 는 JWT의 payload 에서 계정과 만료 시각을 꺼낸다.
+// ParseClaims 는 JWT의 payload에서 계정과 만료 시각을 꺼낸다.
 // 서명은 검증하지 않는다. 토큰은 인증 서버에서 TLS로 직접 받은 것이고, 쓰임새는 만료 판단과
 // 헤더 값뿐이라서다. JWT 모양이 아니거나 payload가 JSON이 아니면 오류를 올린다.
 // 오류에는 토큰 원문을 싣지 않는다.
@@ -61,7 +61,7 @@ func ParseClaims(token string) (Claims, error) {
 	return claims, nil
 }
 
-// parsePlanType 은 플랜 클레임을 소문자 플랜 이름으로 바꾼다. Codex CLI 도 대소문자를 가리지 않고
+// parsePlanType 은 플랜 클레임을 소문자 플랜 이름으로 바꾼다. Codex CLI도 대소문자를 가리지 않고
 // 읽는다(codex-rs/protocol/src/auth.rs PlanType::from_raw_value). 문자열이 아니거나 모양이
 // 맞지 않으면 빈 값이다. 플랜은 표시에만 쓰므로 "모름"으로 두고 로그인은 막지 않는다.
 func parsePlanType(raw json.RawMessage) string {

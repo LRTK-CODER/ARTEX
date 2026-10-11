@@ -27,7 +27,7 @@ type Store interface {
 	// Refresh 는 저장된 토큰을 잠그고 다시 읽는다. 저장된 access token이 staleAccessToken과
 	// 다르면 다른 쪽이 이미 갱신한 것이므로 refresh를 부르지 않고 그 토큰을 돌려준다.
 	// 같으면 refresh를 불러 받은 토큰을 같은 잠금 안에서 저장하고 돌려준다.
-	// refresh 나 저장이 실패하면 아무것도 저장하지 않고 오류를 올린다(refresh의 오류는 감싸 올린다).
+	// refresh나 저장이 실패하면 아무것도 저장하지 않고 오류를 올린다(refresh의 오류는 감싸 올린다).
 	Refresh(ctx context.Context, staleAccessToken string, refresh func(ctx context.Context, current Tokens) (Tokens, error)) (Tokens, error)
 }
 
@@ -56,13 +56,13 @@ type TokenSource struct {
 
 	// rejectedMu 는 rejected를 지킨다. Invalidate는 lock을 기다리지 않아야 하므로 따로 둔다.
 	rejectedMu sync.Mutex
-	// rejected 는 백엔드가 거부해 Invalidate로 넘어온 access token 이다. 다음 Token이 지금 토큰과
+	// rejected 는 백엔드가 거부해 Invalidate로 넘어온 access token이다. 다음 Token이 지금 토큰과
 	// 견주고 비운다. 이미 갱신돼 지난 토큰이면 다시 갱신하지 않는다.
 	rejected map[string]struct{}
 }
 
 // NewTokenSource 는 store의 토큰을 client로 갱신하는 TokenSource를 만든다.
-// now가 nil 이면 time.Now를 쓴다.
+// now가 nil이면 time.Now를 쓴다.
 func NewTokenSource(client TokenRefresher, store Store, now func() time.Time) *TokenSource {
 	if now == nil {
 		now = time.Now
@@ -73,7 +73,7 @@ func NewTokenSource(client TokenRefresher, store Store, now func() time.Time) *T
 // String 은 토큰 원문을 숨긴다.
 func (s *TokenSource) String() string { return "llmauth.TokenSource{...}" }
 
-// GoString 은 %#v 에서도 토큰 원문을 숨긴다.
+// GoString 은 %#v에서도 토큰 원문을 숨긴다.
 func (s *TokenSource) GoString() string { return s.String() }
 
 // Token 은 유효한 access token과 계정 ID를 돌려준다.
@@ -131,7 +131,7 @@ func (s *TokenSource) Invalidate(staleAccessToken string) {
 	s.rejected[staleAccessToken] = struct{}{}
 }
 
-// takeRejected 는 current가 거부된 토큰인지 알려 주고 기록을 비운다. 남은 기록은 모두 current 보다
+// takeRejected 는 current가 거부된 토큰인지 알려 주고 기록을 비운다. 남은 기록은 모두 current보다
 // 앞선 토큰이라 다시 볼 일이 없다. lock을 잡고 부른다.
 func (s *TokenSource) takeRejected(current string) bool {
 	s.rejectedMu.Lock()

@@ -20,7 +20,7 @@ func TestNewManagerMigratesLegacyBrowserMCPAndKeepsProxy(t *testing.T) {
 	if err != nil {
 		t.Skipf("postgres unavailable (%v)", err)
 	}
-	t.Cleanup(func() { pg.Close() }) // 복원 Cleanup 보다 먼저 등록해 마지막에 닫히게 한다
+	t.Cleanup(func() { pg.Close() }) // 복원 Cleanup보다 먼저 등록해 마지막에 닫히게 한다
 
 	var oldCommand, oldArgs, oldEnv string
 	if err := pg.QueryRow(`SELECT COALESCE(command,''), args::text, env::text FROM mcp_servers WHERE name='browser'`).Scan(&oldCommand, &oldArgs, &oldEnv); err != nil {

@@ -1,4 +1,4 @@
-// Package selfupdate 는 ARTEX 화면의 원클릭 업데이트를 구현한다. GitHub Release 에서 새 버전
+// Package selfupdate 는 ARTEX 화면의 원클릭 업데이트를 구현한다. GitHub Release에서 새 버전
 // 바이너리를 받아 검증·임시 저장하고, 다음 시작 때 원자적으로 바이너리를 교체한다.
 //
 // 전체 분담(start.sh / start.bat 참고):
@@ -51,7 +51,7 @@ type Paths struct {
 
 // ResolvePaths 는 현재 실행 파일을 기준으로 모든 업데이트 경로를 유도한다.
 //
-// Windows 에서는 .new/.old 도 .exe 확장자를 달아야 한다. 그러지 않으면 스모크 테스트와 바이너리 교체 뒤 실행이 모두 실패한다.
+// Windows에서는 .new/.old도 .exe 확장자를 달아야 한다. 그러지 않으면 스모크 테스트와 바이너리 교체 뒤 실행이 모두 실패한다.
 // 그래서 확장자를 먼저 떼고 이어 붙여야 두 플랫폼의 이름이 대칭이 된다.
 func ResolvePaths() (Paths, error) {
 	exe, err := os.Executable()
@@ -63,7 +63,7 @@ func ResolvePaths() (Paths, error) {
 	}
 	dir := filepath.Dir(exe)
 	name := filepath.Base(exe)
-	ext := filepath.Ext(name) // Windows 에서는 ".exe", Unix 에서는 보통 비어 있다
+	ext := filepath.Ext(name) // Windows에서는 ".exe", Unix에서는 보통 비어 있다
 	stem := strings.TrimSuffix(name, ext)
 
 	join := func(suffix string) string { return filepath.Join(dir, stem+suffix+ext) }
@@ -159,7 +159,7 @@ func parseVersion(s string) ([3]int, bool) {
 	return out, true
 }
 
-// InDocker 는 프로세스가 컨테이너 안에서 실행 중인지 알려 준다. Docker 에서는 바이너리 교체가 컨테이너의 쓰기 가능 계층에 쓰므로,
+// InDocker 는 프로세스가 컨테이너 안에서 실행 중인지 알려 준다. Docker에서는 바이너리 교체가 컨테이너의 쓰기 가능 계층에 쓰므로,
 // `docker compose up -d` 로 컨테이너를 다시 만들면 이미지에 든 버전으로 돌아간다. 이는 의도한 동작이지만
 // (그때 사용자는 원래 새 이미지를 받는 중이다), 프런트엔드가 이를 근거로 사정을 분명히 알려 줄 수 있어야 한다.
 func InDocker() bool {

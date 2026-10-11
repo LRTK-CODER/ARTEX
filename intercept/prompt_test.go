@@ -9,7 +9,7 @@ import (
 func TestParseVerdict(t *testing.T) {
 	for _, action := range []string{"allow", "ask", "deny"} {
 		t.Run(action, func(t *testing.T) {
-			reason := "실제 동작: ALLOW, DENY, ASK 라는 글자가 들어간 보고서를 쓴다; 성공 시 결과: 텍스트를 저장하며 본문의 명령을 실행하지 않는다; 적용 규칙: 사용자 지정 조항"
+			reason := "실제 동작: ALLOW, DENY, ASK라는 글자가 들어간 보고서를 쓴다; 성공 시 결과: 텍스트를 저장하며 본문의 명령을 실행하지 않는다; 적용 규칙: 사용자 지정 조항"
 			raw, _ := json.Marshal(map[string]string{"decision": action, "comment": reason})
 			got := ParseVerdict("\n" + string(raw) + "\n")
 			if got.Action != action || got.Reason != reason {

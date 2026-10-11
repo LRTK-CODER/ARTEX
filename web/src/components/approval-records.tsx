@@ -217,7 +217,7 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
             </p>
           </div>
         ) : (
-          <p className="text-muted-foreground text-xs">이번 심사에는 배경 메시지가 없습니다.</p>
+          <p className="text-muted-foreground text-xs">이번 심사에는 배경 메시지가 없습니다</p>
         )
       ) : (
         <>
@@ -242,7 +242,7 @@ function ModelReviewContext({ input }: { input: InterceptReviewInput }) {
       )}
       {input.working_directory ? <CodeBlock label="작업 디렉터리" text={input.working_directory} /> : null}
       {input.version >= 3 ? (
-        <p className="text-muted-foreground text-xs">이번 심사에는 이전 호출이나 실행 결과를 보내지 않았습니다.</p>
+        <p className="text-muted-foreground text-xs">이번 심사에는 이전 호출이나 실행 결과를 보내지 않았습니다</p>
       ) : (
         <div className="flex min-w-0 flex-col gap-3">
           <h4 className="font-medium text-muted-foreground text-xs">당시 모델에 제공한 이전 호출(이전 버전)</h4>
@@ -519,7 +519,7 @@ export function ApprovalDetail({
                 text={
                   audit.output ??
                   (audit.execution_status === "not_executed"
-                    ? "도구를 실행하지 않았습니다."
+                    ? "도구를 실행하지 않았습니다"
                     : "아직 실행 출력이 없습니다")
                 }
                 truncated={audit.output_truncated}
@@ -529,7 +529,7 @@ export function ApprovalDetail({
                   <AlertDescription>
                     {audit.correlation === "ambiguous"
                       ? "같은 파라미터로 동시에 호출한 기록이 있어 도구 호출을 하나로 특정할 수 없습니다. 이 기록에는 추정한 실행 결과를 보여 주지 않습니다."
-                      : "하나로 특정할 수 있는 도구 호출 ID가 기록되지 않았습니다."}
+                      : "하나로 특정할 수 있는 도구 호출 ID가 기록되지 않았습니다"}
                   </AlertDescription>
                 </Alert>
               ) : null}

@@ -268,7 +268,7 @@ function SkillsOverview({
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground">최근 호출</Label>
           {agg.recent.length === 0 ? (
-            <p className="text-muted-foreground text-xs">기록이 없습니다.</p>
+            <p className="text-muted-foreground text-xs">기록이 없습니다</p>
           ) : (
             <div className="space-y-1">
               {agg.recent.map((s) => (
@@ -297,7 +297,7 @@ function SkillsOverview({
             {agg.neverUsed.length > 0 && <span className="ml-1 font-normal">({agg.neverUsed.length})</span>}
           </Label>
           {agg.neverUsed.length === 0 ? (
-            <p className="text-muted-foreground text-xs">모든 스킬이 호출된 적 있습니다.</p>
+            <p className="text-muted-foreground text-xs">모든 스킬이 호출된 적 있습니다</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {agg.neverUsed.map((s) => (
@@ -1078,7 +1078,7 @@ export default function SkillsPage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">호출 기록이 아직 없습니다.</p>
+                    <p className="text-xs text-muted-foreground">호출 기록이 아직 없습니다</p>
                   )}
                 </div>
 

@@ -67,7 +67,7 @@ func assertNoTokens(t *testing.T, where, out string, tokens ...string) {
 	}
 }
 
-// fakeAccessJWT 는 llmauth가 읽는 클레임(exp, chatgpt_account_id)만 담은 서명 없는 JWT 다.
+// fakeAccessJWT 는 llmauth가 읽는 클레임(exp, chatgpt_account_id)만 담은 서명 없는 JWT다.
 func fakeAccessJWT(t *testing.T, exp time.Time, marker string) string {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
@@ -151,7 +151,7 @@ func (f *oauthFixture) connectWith(t *testing.T, accessToken string, expiresAt t
 type codexBackend struct {
 	mu       sync.Mutex
 	requests []*http.Request
-	status   int // 0 이면 200
+	status   int // 0이면 200
 }
 
 func (b *codexBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {

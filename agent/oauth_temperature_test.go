@@ -8,9 +8,9 @@ import (
 	"github.com/Autumn-27/norma/llm"
 )
 
-// TestJudgeTemperatureByAuthType 은 승인 심사처럼 Temperature=0 을 실은 요청이 프로필 인증 방식에 따라
-// 어떤 본문으로 나가는지 확인한다(#133). Codex 백엔드는 temperature 를 400 으로 거부하므로 구독 경로에서는
-// 빠져야 하고, API 키 경로는 그대로 0 을 보내 결정적인 심사를 유지해야 한다.
+// TestJudgeTemperatureByAuthType 은 승인 심사처럼 Temperature=0을 실은 요청이 프로필 인증 방식에 따라
+// 어떤 본문으로 나가는지 확인한다(#133). Codex 백엔드는 temperature를 400으로 거부하므로 구독 경로에서는
+// 빠져야 하고, API 키 경로는 그대로 0을 보내 결정적인 심사를 유지해야 한다.
 func TestJudgeTemperatureByAuthType(t *testing.T) {
 	cases := []struct {
 		name            string

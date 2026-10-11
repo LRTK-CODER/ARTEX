@@ -873,7 +873,7 @@ function AssetCard({
             ) : (
               <TableRow>
                 <TableCell colSpan={cols.length} className="py-12 text-center text-sm text-muted-foreground">
-                  {loaded ? "데이터가 없습니다." : "불러오는 중…"}
+                  {loaded ? "데이터가 없습니다" : "불러오는 중…"}
                 </TableCell>
               </TableRow>
             )}

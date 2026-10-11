@@ -480,7 +480,7 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 		if from := factFrom[n.ID]; from > 0 {
 			m["from_intent"] = from // 이 사실이 어느 의도에서 나왔는가
 		}
-		// confidence를 개요에 담는다: 규획자가 어떤 결론이 inferred 일 뿐인지 한눈에 보게 한다(특히 부정 결론을
+		// confidence를 개요에 담는다: 규획자가 어떤 결론이 inferred일 뿐인지 한눈에 보게 한다(특히 부정 결론을
 		// 확정으로 여기지 않도록). evidence는 길어서 node_detail(id)에 맡긴다.
 		var fp map[string]any
 		if json.Unmarshal(n.Payload, &fp) == nil {
@@ -499,7 +499,7 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	}
 	out["recent_done_intents"] = compactIntents(recentDone, parentsOf, yieldsOf)
 	// cold-digest §6.1: 차가운 영역을 접은 digest body를, 최신 멤버 시간 내림차순으로 앞 N 개를 취한다. 잘린 더 오래된 digest는
-	// 벌거벗은 id 만 준다(여전히 expand_digest로 펼칠 수 있다). 차가운 영역의 유일한 출구가 무한히 길어지는 것을 막는다.
+	// 벌거벗은 id만 준다(여전히 expand_digest로 펼칠 수 있다). 차가운 영역의 유일한 출구가 무한히 길어지는 것을 막는다.
 	const coldDigestsCap = 15
 	if cds, more := coldDigestsRecent(t.ts, coldDigestsCap); len(cds) > 0 {
 		out["cold_digests"] = cds // [{id, body, member_count}] — body를 바로 읽는다 (§6.1)
@@ -1123,10 +1123,10 @@ func (t *ToolSet) addIntent() actool.CoreTool {
 				createdAny = true
 			}
 
-			// 사람이 메인 agent를 통해 의도를 직접 투입 → 작업이 이미 done 이면(열린 목표가 없는 goalless 분기) 그것을
-			// running으로 되돌려야 worker가 이 의도를 받아 실행한다. resumeTask는 메인 agent의 Chat 만 연결한다
-			// (SetResumeTask). planner의 ToolSet은 nil 이므로 planner가 직접 add_intent를 부를 때 이 부분은
-			// no-op 이고 정상적인 의도 생성에 영향이 없다. 의도 노드는 위에서 이미 만들어졌고(open), 되살릴 때 잘못 비워지지 않는다.
+			// 사람이 메인 agent를 통해 의도를 직접 투입 → 작업이 이미 done이면(열린 목표가 없는 goalless 분기) 그것을
+			// running으로 되돌려야 worker가 이 의도를 받아 실행한다. resumeTask는 메인 agent의 Chat만 연결한다
+			// (SetResumeTask). planner의 ToolSet은 nil이므로 planner가 직접 add_intent를 부를 때 이 부분은
+			// no-op이고 정상적인 의도 생성에 영향이 없다. 의도 노드는 위에서 이미 만들어졌고(open), 되살릴 때 잘못 비워지지 않는다.
 			if createdAny && t.resumeTask != nil {
 				t.resumeTask()
 			}
@@ -1470,7 +1470,7 @@ func (t *ToolSet) addOneGoal(it goalItem) (int64, error) {
 }
 
 // setGoals 는 [이 작업]에 탐색 목표(goal 노드)를 추가한다. 목표 분해기의 제출 도구이자, 메인 agent가
-// 런타임에 목표를 보태는 도구다 — 같은 관리 도구이며, web 에서 설명/schema를 바꾸고 agent 별로 묶을 수 있다.
+// 런타임에 목표를 보태는 도구다 — 같은 관리 도구이며, web에서 설명/schema를 바꾸고 agent 별로 묶을 수 있다.
 func (t *ToolSet) setGoals() actool.CoreTool {
 	return writeTool("set_goals",
 		"Add exploration goals (goal) to [this task]. A goal = a final deliverable/verifiable result, not an attack step or recon action.\n"+
@@ -1511,7 +1511,7 @@ func (t *ToolSet) setGoals() actool.CoreTool {
 			if len(addedTexts) > 0 {
 				// planner를 깨운다(일괄 한 번). notifyGoal 우선: 한 번의 set_goals가 "사람이
 				// 목표 N 개를 추가함: …" 트리거를 하나 기록하고 하나씩 도배하지 않는다. 분해기/worker는 이 콜백이 없어 → 순수 notify로 되돌아간다(분해기
-				// round-0은 notify 도 연결하지 않아 무동작이다. 이때는 아직 planner가 시작되지 않았기 때문).
+				// round-0은 notify도 연결하지 않아 무동작이다. 이때는 아직 planner가 시작되지 않았기 때문).
 				switch {
 				case t.notifyGoal != nil:
 					t.notifyGoal(addedTexts)
@@ -1519,7 +1519,7 @@ func (t *ToolSet) setGoals() actool.CoreTool {
 					t.notify()
 				}
 				// 메인 agent가 런타임에 목표를 추가 → 완료/일시 중지된 작업을 running으로 되돌려 계속 돌린다(종료 상태 게이트가
-				// 보통의 notify를 삼키므로 명시적으로 되살려야 한다). mainagent 만 이 콜백을 연결한다. 분해기/worker는 nil.
+				// 보통의 notify를 삼키므로 명시적으로 되살려야 한다). mainagent만 이 콜백을 연결한다. 분해기/worker는 nil.
 				if t.resumeTask != nil {
 					t.resumeTask()
 				}
@@ -1562,7 +1562,7 @@ func (t *ToolSet) addOneConstraint(it constraintItem) (int64, error) {
 }
 
 // setConstraints 는 [이 작업]에 작업 제약 조건(allow=무엇을 허용 / deny=무엇을 금지)을 추가한다. 목표
-// 분해기가 round-0에 제약을 뽑아 제출하는 도구이자, 메인 agent가 런타임에 제약을 보태는 도구다 — 같은 관리 도구이며, web 에서
+// 분해기가 round-0에 제약을 뽑아 제출하는 도구이자, 메인 agent가 런타임에 제약을 보태는 도구다 — 같은 관리 도구이며, web에서
 // 설명/schema를 바꾸고 agent 별로 묶을 수 있다. 제약은 planner/worker의 시스템 프롬프트에 주입되어 탐색 경계를 제약한다.
 func (t *ToolSet) setConstraints() actool.CoreTool {
 	return writeTool("set_constraints",

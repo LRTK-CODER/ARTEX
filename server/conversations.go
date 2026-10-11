@@ -573,11 +573,11 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 }
 
 // triggerBehavior 는 에이전트의 P3 트리거 후처리 정책을 읽어 둔 값이다(agents 표의 trigger_*
-// 열). StartTriggeredRun 에서 트리거마다 한 번 읽어, 펌프가 queueMu를 잡은 채 DB에 닿지 않게 한다.
+// 열). StartTriggeredRun에서 트리거마다 한 번 읽어, 펌프가 queueMu를 잡은 채 DB에 닿지 않게 한다.
 type triggerBehavior struct {
 	runMode     string // serial | parallel
-	mergeMode   string // by_task | all | none (serial 에서 쓴다. parallel은 무시하고 트리거마다 대화를 따로 연다)
-	maxParallel int    // parallel 에서 쓰는 에이전트별 동시 실행 최대 개수. <=0 이면 제한 없음
+	mergeMode   string // by_task | all | none (serial에서 쓴다. parallel은 무시하고 트리거마다 대화를 따로 연다)
+	maxParallel int    // parallel에서 쓰는 에이전트별 동시 실행 최대 개수. <=0이면 제한 없음
 }
 
 // readTriggerBehavior 는 에이전트의 정책을 읽는다. 오류가 나거나 모르는 열거 값이면 안전한
@@ -604,7 +604,7 @@ func (s *Server) readTriggerBehavior(agentKey string) triggerBehavior {
 
 // StartTriggeredRun 은 agentKey의 P3 트리거 실행을 큐에 넣고 큐를 돌린다. 동시 실행과 병합은
 // 에이전트의 정책이 정한다. serial은 한 번에 하나씩 실행한다(작업별 / 전체 / 병합 안 함 중에서
-// 병합할 수 있다). parallel은 트리거마다 대화를 따로 열어 trigger_max_parallel 까지 동시에
+// 병합할 수 있다). parallel은 트리거마다 대화를 따로 열어 trigger_max_parallel까지 동시에
 // 실행한다. 서로 다른 에이전트는 늘 동시에 실행한다.
 func (s *Server) StartTriggeredRun(agentKey, title, message string, taskID int64, mergeable bool, taskDesc, taskGoal string) {
 	if s.m.pg == nil || s.chatAgentRef() == nil {

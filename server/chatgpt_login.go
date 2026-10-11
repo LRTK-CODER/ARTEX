@@ -22,7 +22,7 @@ import (
 // 흐름 상태(PKCE verifier, state, 디바이스 진행 상태)는 메모리에만 두고 DB에 쓰지 않는다.
 
 const (
-	// loginFlowTTL 은 흐름 하나가 유효한 시간이다. 디바이스 폴링 goroutine 도 이 시간이 지나면 끝난다.
+	// loginFlowTTL 은 흐름 하나가 유효한 시간이다. 디바이스 폴링 goroutine도 이 시간이 지나면 끝난다.
 	loginFlowTTL = 10 * time.Minute
 	// loginFlowRetention 은 끝난 디바이스 흐름의 결과를 폴링으로 읽을 수 있게 남겨 두는 시간이다.
 	loginFlowRetention = 5 * time.Minute
@@ -124,13 +124,13 @@ type loginFlow struct {
 type loginFlows struct {
 	mu    sync.Mutex
 	flows map[string]*loginFlow
-	// now 가 nil 이면 실제 시계를 쓴다. 테스트가 만료를 확인할 때 바꾼다.
+	// now 가 nil이면 실제 시계를 쓴다. 테스트가 만료를 확인할 때 바꾼다.
 	now func() time.Time
 	// profileLocks 는 프로필별로 자격 증명 저장과 연결 해제를 직렬화한다. 해제 뒤에 진행 중이던
 	// 디바이스 저장이 자격 증명을 되살리지 않게 한다. 프로필 수만큼만 생긴다.
 	profileLocks map[int64]*sync.Mutex
 	// beforeDeviceSave 는 디바이스 흐름이 토큰을 받고 저장 잠금을 잡기 직전에 불린다.
-	// nil 이면 아무것도 하지 않는다. 테스트가 해제와의 순서를 고정할 때 쓴다.
+	// nil이면 아무것도 하지 않는다. 테스트가 해제와의 순서를 고정할 때 쓴다.
 	beforeDeviceSave func()
 }
 
@@ -434,7 +434,7 @@ func (s *Server) waitChatGPTDeviceLogin(ctx context.Context, cancel context.Canc
 	tokens, err := client.WaitDeviceCode(ctx, dc)
 	var netErr net.Error
 	switch {
-	// 만료는 흐름 TTL 이나 llmauth의 대기 상한만 뜻한다. HTTP 요청 하나의 타임아웃도
+	// 만료는 흐름 TTL이나 llmauth의 대기 상한만 뜻한다. HTTP 요청 하나의 타임아웃도
 	// context.DeadlineExceeded로 보이므로 err가 아니라 흐름 ctx를 본다.
 	case errors.Is(err, llmauth.ErrDeviceCodeTimeout), errors.Is(ctx.Err(), context.DeadlineExceeded):
 		s.loginFlows.finishDevice(flow, deviceLoginExpired, loginErrFlowExpired)
@@ -497,7 +497,7 @@ func (s *Server) disconnectChatGPT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 저장 중인 디바이스 흐름이 있으면 그 저장이 끝난 뒤에 지운다. 잠금을 잡은 뒤 흐름을 버리므로
-	// 아직 저장하지 않은 흐름은 isRegistered 에서 걸러진다.
+	// 아직 저장하지 않은 흐름은 isRegistered에서 걸러진다.
 	lock := s.loginFlows.profileLock(req.ProfileID)
 	lock.Lock()
 	defer lock.Unlock()

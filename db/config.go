@@ -67,7 +67,7 @@ type LLMProfile struct {
 	Retry RetryOverride `json:"retry"`
 	// AuthType 은 요청을 어떻게 인증할지 정한다. 빈 값은 저장할 때 AuthAPIKey로 본다.
 	AuthType AuthType `json:"auth_type"`
-	// OAuth 는 구독 프로필의 연결 상태다. ListProfiles 만 채운다.
+	// OAuth 는 구독 프로필의 연결 상태다. ListProfiles만 채운다.
 	// 토큰은 싣지 않는다. 토큰은 OAuthCredentials 로만 읽는다.
 	OAuth *OAuthStatus `json:"oauth,omitempty"`
 }
@@ -198,7 +198,7 @@ ORDER BY is_default DESC, priority DESC, id ASC`)
 }
 
 // SaveProfile inserts (id==0) or updates a profile. Empty apiKey on update keeps existing.
-// 빈 AuthType은 새로 만들 때 AuthAPIKey 이고, 수정할 때는 기존 값을 지킨다.
+// 빈 AuthType은 새로 만들 때 AuthAPIKey이고, 수정할 때는 기존 값을 지킨다.
 // 저장 뒤의 인증 방식이 구독 OAuth면 API 키와 힌트를 같은 문장에서 NULL로 둔다. 쓰지 않을 비밀값을
 // 남기지 않으려는 것이고, 따로 지우면 저장과 지우기 사이에 실패해 키가 남을 수 있다.
 func (d *DB) SaveProfile(p *LLMProfile) (int64, error) {

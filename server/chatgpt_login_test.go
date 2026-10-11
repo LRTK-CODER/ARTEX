@@ -25,7 +25,7 @@ const (
 // fakeAuthServer 는 OpenAI 인증 서버처럼 토큰 교환과 디바이스 코드 엔드포인트를 흉내 낸다.
 type fakeAuthServer struct {
 	t *testing.T
-	// deviceStatus 는 디바이스 사용자 코드 시작 응답 상태다. 0 이면 200.
+	// deviceStatus 는 디바이스 사용자 코드 시작 응답 상태다. 0이면 200.
 	deviceStatus int
 	// isDevicePending 이면 디바이스 토큰 폴링에 403(아직 입력 전)을 계속 준다.
 	isDevicePending bool

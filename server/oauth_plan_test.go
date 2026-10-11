@@ -13,7 +13,7 @@ import (
 	"github.com/Autumn-27/artex/db"
 )
 
-// fakePlanJWT 는 계정·만료·플랜 클레임만 담은 서명 없는 JWT 다.
+// fakePlanJWT 는 계정·만료·플랜 클레임만 담은 서명 없는 JWT다.
 func fakePlanJWT(t *testing.T, exp time.Time, plan string) string {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
@@ -128,7 +128,7 @@ func TestSaveProfileOAuthSwitchSurvivesCanceledRequest(t *testing.T) {
 	}
 }
 
-// TestLegacySetLLMRejectsOAuthDefaultProfile 는 레거시 POST /api/llm이 chatgpt_oauth 인 "default"
+// TestLegacySetLLMRejectsOAuthDefaultProfile 는 레거시 POST /api/llm이 chatgpt_oauth인 "default"
 // 프로필을 API 키 설정으로 덮지 않고 400을 돌려주는지 본다.
 func TestLegacySetLLMRejectsOAuthDefaultProfile(t *testing.T) {
 	f := newOAuthFixture(t, nil)

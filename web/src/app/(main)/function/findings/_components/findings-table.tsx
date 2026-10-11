@@ -427,9 +427,9 @@ export function FindingsTable({
                             if (!rep || rep.status === "loading")
                               return <p className="text-xs text-muted-foreground">불러오는 중…</p>;
                             if (rep.status === "error")
-                              return <p className="text-xs text-muted-foreground">보고서를 불러오지 못했습니다.</p>;
+                              return <p className="text-xs text-muted-foreground">보고서를 불러오지 못했습니다</p>;
                             if (!rep.text.trim())
-                              return <p className="text-xs text-muted-foreground">상세 보고서가 없습니다.</p>;
+                              return <p className="text-xs text-muted-foreground">상세 보고서가 없습니다</p>;
                             return (
                               // break-words는 문단·목록에 상속된다. pre에는 whitespace-pre-wrap을 따로 붙여
                               // 코드 블록도 줄을 바꾸게 한다. 아니면 긴 코드 줄이나 긴 URL이

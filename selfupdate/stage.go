@@ -40,7 +40,7 @@ type Progress func(ph Phase, pct int, msg string)
 // Stage 는 지정한 Release의 현재 플랫폼용 배포 패키지를 내려받아 검증한 뒤 새 바이너리를 artex.new로 임시 저장한다.
 //
 // 바이너리만이 아니라 zip 전체를 받는 이유는 두 가지다. 기존 Release의 SHA256SUMS는 원래
-// zip 만 다루므로 zip을 받으면 CI를 고칠 필요가 없고 이미 배포한 이전 버전과도 호환된다. 또 zip 에는
+// zip만 다루므로 zip을 받으면 CI를 고칠 필요가 없고 이미 배포한 이전 버전과도 호환된다. 또 zip에는
 // skills/ 가 들어 있어 나중에 내장 스킬을 동기화할 여지가 남는다. 대가는 skills 몇백 KB를 더 받는 것뿐이다.
 //
 // 함수가 반환하면 임시 저장이 끝난 것이다. 호출자는 이어서 정상 종료하고 ExitRestart로 종료한다.
@@ -238,7 +238,7 @@ func get(ctx context.Context, c *http.Client, rawURL string) (io.ReadCloser, err
 
 // extractBinary 는 배포 패키지에서 artex 실행 파일을 꺼낸다.
 //
-// 패키지 안 구조는 artex-<버전>-<os>-<arch>/artex 이지만, 여기서는 전체 경로를 이어 붙이지 않고 **기본 이름**으로 찾는다.
+// 패키지 안 구조는 artex-<버전>-<os>-<arch>/artex이지만, 여기서는 전체 경로를 이어 붙이지 않고 **기본 이름**으로 찾는다.
 // 버전 번호가 패키지 이름에 한 번 나오므로 한 글자만 틀려도 업데이트 전체가 실패한다. 기본 이름으로 찾는 편이 변경에 강하다.
 func extractBinary(zipPath, dst string) error {
 	want := "artex"

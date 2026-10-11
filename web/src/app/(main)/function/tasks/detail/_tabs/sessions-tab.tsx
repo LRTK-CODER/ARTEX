@@ -1738,7 +1738,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                 );
               })}
               {mainLoaded && !workerSessions.length && (
-                <div className="px-2 py-1 text-xs text-muted-foreground">실행 중인 워커 세션이 없습니다.</div>
+                <div className="px-2 py-1 text-xs text-muted-foreground">실행 중인 워커 세션이 없습니다</div>
               )}
             </div>
           </ScrollArea>
@@ -1921,7 +1921,7 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                   <div className="pl-9 text-xs text-muted-foreground">
                     {isMain
                       ? "아직 대화가 없습니다. 아래에서 메인 에이전트에 메시지를 보내 탐색 방향을 이끌거나 진행에 개입하세요."
-                      : "활동 기록이 없습니다."}
+                      : "활동 기록이 없습니다"}
                   </div>
                 )}
               </div>

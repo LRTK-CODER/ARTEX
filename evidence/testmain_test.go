@@ -46,7 +46,7 @@ func runEvidenceSuite(m *testing.M) int {
 		panic(err)
 	}
 	defer conn.ExecContext(ctx, `SELECT pg_advisory_unlock(7337741002)`)
-	// db.Open의 스키마 적용은 테이블에 AccessExclusiveLock을 거는 DDL 이다. lock 없이 하면
+	// db.Open의 스키마 적용은 테이블에 AccessExclusiveLock을 거는 DDL이다. lock 없이 하면
 	// lock을 쥔 다른 패키지 테스트의 질의와 교착(deadlock)이 나므로 lock을 잡은 뒤에 한다.
 	pg, err := db.Open(dsn)
 	if err != nil {

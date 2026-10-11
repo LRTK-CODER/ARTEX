@@ -57,7 +57,7 @@ func TestTruncateBytesEllipsisBudget(t *testing.T) {
 }
 
 func TestTruncateRunesCountsCharactersNotBytes(t *testing.T) {
-	// TruncateBytes 와의 기준 차이는 유지해야 한다. Telegram은 문자 수로 길이를 제한하는데,
+	// TruncateBytes와의 기준 차이는 유지해야 한다. Telegram은 문자 수로 길이를 제한하는데,
 	// 바이트 기준을 쓰면 한글 메시지가 3분의 1만 남는다.
 	s := "가나다라마바사아자차"
 	got := TruncateRunes(s, 5)

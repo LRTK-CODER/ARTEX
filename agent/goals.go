@@ -72,7 +72,7 @@ type GoalSpec struct {
 	VulnClass string `json:"vulnclass,omitempty"`
 }
 
-// DecomposeGoals 는 LLM 에게 침투 테스트 작업 목표를 서로 독립적으로 검증 가능한
+// DecomposeGoals 는 LLM에게 침투 테스트 작업 목표를 서로 독립적으로 검증 가능한
 // 개별 목표(각각 하나의 goal 노드가 된다)로 쪼개 달라고 한다. 제공자가 설정되지 않았거나
 // 호출이 아무것도 내놓지 못하면 nil을 돌려준다 — 그러면 호출자가 규칙 기반 분해로
 // 되돌아가 goal 노드가 늘 존재하게 한다.

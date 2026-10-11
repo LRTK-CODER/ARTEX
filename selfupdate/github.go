@@ -16,7 +16,7 @@ import (
 // 원격 코드 실행 통로가 열린다.
 const Repo = "LRTK-CODER/ARTEX"
 
-// latestURL 은 GitHub의 "최신 정식 릴리스" API 다. prerelease와 draft는 자동으로 건너뛴다.
+// latestURL 은 GitHub의 "최신 정식 릴리스" API다. prerelease와 draft는 자동으로 건너뛴다.
 const latestURL = "https://api.github.com/repos/" + Repo + "/releases/latest"
 
 // allowedHosts 는 업데이트 과정이 접근할 수 있는 도메인을 제한한다. 아래 checkRedirect와 함께
@@ -30,7 +30,7 @@ var allowedHosts = map[string]bool{
 	"raw.githubusercontent.com":            true,
 }
 
-// Release 는 GitHub Release 에서 필요한 필드다.
+// Release 는 GitHub Release에서 필요한 필드다.
 type Release struct {
 	TagName     string    `json:"tag_name"`
 	Name        string    `json:"name"`
@@ -106,7 +106,7 @@ func FetchLatest(ctx context.Context, c *http.Client) (*Release, error) {
 
 	switch {
 	case resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusTooManyRequests:
-		// 인증하지 않은 GitHub API는 IP 마다 시간당 60회라서, 아웃바운드 IP를 함께 쓰면 쉽게 걸린다.
+		// 인증하지 않은 GitHub API는 IP마다 시간당 60회라서, 아웃바운드 IP를 함께 쓰면 쉽게 걸린다.
 		return nil, fmt.Errorf("GitHub API 속도 제한(시간당 60회)에 걸렸습니다. 잠시 뒤 다시 시도하세요.")
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, fmt.Errorf("저장소 %s에 아직 정식 릴리스가 없습니다", Repo)
@@ -130,7 +130,7 @@ func AssetName(tag, goos, goarch string) string {
 	return fmt.Sprintf("artex-%s-%s-%s.zip", strings.TrimPrefix(tag, "v"), goos, goarch)
 }
 
-// FindAsset 은 Release 에서 이름으로 자산을 찾는다.
+// FindAsset 은 Release에서 이름으로 자산을 찾는다.
 func (r *Release) FindAsset(name string) (Asset, bool) {
 	for _, a := range r.Assets {
 		if strings.EqualFold(a.Name, name) {

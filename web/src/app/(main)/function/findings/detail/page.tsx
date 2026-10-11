@@ -212,7 +212,7 @@ function FindingDetailInner() {
                   {finding.report ? (
                     <Markdown text={finding.report} />
                   ) : (
-                    <p className="text-sm text-muted-foreground">상세 보고서가 없습니다.</p>
+                    <p className="text-sm text-muted-foreground">상세 보고서가 없습니다</p>
                   )}
                 </CardContent>
               </Card>

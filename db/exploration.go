@@ -853,8 +853,8 @@ type NodeFilter struct {
 }
 
 // NodesPage 는 이 탐색의 노드 한 페이지(1부터 센다)와 조건에 맞는 전체 개수를 돌려준다.
-// 활동 피드는 그래프를 시간순으로 읽으므로 Nodes 처럼 그래프 전체를 가져오지 않고 SQL 에서 페이지를 나눈다.
-// 정렬은 id 순이다. id는 BIGSERIAL 이라 만든 순서와 같아서, 여러 노드의 created_at 초가 같아도 순서가 흔들리지 않는다.
+// 활동 피드는 그래프를 시간순으로 읽으므로 Nodes처럼 그래프 전체를 가져오지 않고 SQL에서 페이지를 나눈다.
+// 정렬은 id 순이다. id는 BIGSERIAL이라 만든 순서와 같아서, 여러 노드의 created_at 초가 같아도 순서가 흔들리지 않는다.
 func (s *ExplorationStore) NodesPage(f NodeFilter, page, size int) ([]*Node, int, error) {
 	if page < 1 {
 		page = 1

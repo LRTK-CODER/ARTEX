@@ -37,11 +37,11 @@ const oauthAPIKeyPlaceholder = "chatgpt-oauth"
 const loginRequiredBody = `{"error":{"code":"chatgpt_login_required","message":"ChatGPT 구독 로그인이 필요하다"}}`
 
 // codexRejectedFields 는 Codex 백엔드가 400으로 거부하는 Responses 본문 필드다(#33 조사).
-// temperature 는 승인 심사가 0 으로 실어 보내다 "Unsupported parameter" 로 실패해 더했다(#133).
+// temperature는 승인 심사가 0으로 실어 보내다 "Unsupported parameter" 로 실패해 더했다(#133).
 var codexRejectedFields = []string{"max_output_tokens", "max_tokens", "metadata", "temperature"}
 
 // oauthTransport 는 Norma가 만든 Responses 요청을 Codex 백엔드가 받는 모양으로 바꾸고
-// OAuth 토큰을 싣는다. 401 이면 토큰을 버리고 한 번만 갱신해 다시 보낸다.
+// OAuth 토큰을 싣는다. 401이면 토큰을 버리고 한 번만 갱신해 다시 보낸다.
 // Norma의 재시도(408·429·5xx·네트워크 오류)는 이 transport 바깥에서 돌므로 401 재시도와 겹치지 않는다.
 type oauthTransport struct {
 	base   http.RoundTripper
@@ -55,7 +55,7 @@ func (t oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	resp, usedToken, err := t.send(req, body)
 	if err == nil && resp.StatusCode == http.StatusUnauthorized {
-		// 401 본문으로는 만료와 형식 오류를 가를 수 없다. 한 번만 갱신해 보고, 다시 401 이면 그대로 돌려준다.
+		// 401 본문으로는 만료와 형식 오류를 가를 수 없다. 한 번만 갱신해 보고, 다시 401이면 그대로 돌려준다.
 		// 버리는 응답은 본문을 읽지 않고 닫는다. 연결 하나를 재사용하지 못할 뿐이다.
 		_ = resp.Body.Close()
 		t.tokens.Invalidate(usedToken)
@@ -74,7 +74,7 @@ func (t oauthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 var errLoginRequired = errors.New("chatgpt oauth: login required")
 
 // send 는 토큰을 받아 req의 사본에 싣고 body를 본문으로 보낸다. 원본 req는 바꾸지 않는다.
-// 401 이면 그 토큰을 Invalidate 하도록 실은 access token 도 돌려준다.
+// 401이면 그 토큰을 Invalidate 하도록 실은 access token도 돌려준다.
 func (t oauthTransport) send(req *http.Request, body []byte) (*http.Response, string, error) {
 	accessToken, accountID, err := t.tokens.Token(req.Context())
 	if err != nil {

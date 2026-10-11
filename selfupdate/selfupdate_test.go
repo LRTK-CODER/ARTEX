@@ -70,7 +70,7 @@ func readAll(t *testing.T, path string) string {
 func requireUnix(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("가짜 바이너리가 sh 스크립트라 Windows 에서 실행할 수 없다")
+		t.Skip("가짜 바이너리가 sh 스크립트라 Windows에서 실행할 수 없다")
 	}
 }
 
@@ -118,10 +118,10 @@ func TestResolvePathsNaming(t *testing.T) {
 			t.Errorf("%s이(가) 실행 파일 디렉터리 밖에 있음: %s, 기대값 %s 아래", name, path, p.Dir)
 		}
 	}
-	// Windows 에서는 .new/.old가 .exe를 유지해야 한다. 그러지 않으면 스모크 테스트와 바이너리 교체 뒤 실행이 모두 실패한다.
+	// Windows에서는 .new/.old가 .exe를 유지해야 한다. 그러지 않으면 스모크 테스트와 바이너리 교체 뒤 실행이 모두 실패한다.
 	if runtime.GOOS == "windows" {
 		if !strings.HasSuffix(p.New, ".exe") || !strings.HasSuffix(p.Old, ".exe") {
-			t.Errorf("Windows 에서 .new/.old는 .exe로 끝나야 함: new=%s old=%s", p.New, p.Old)
+			t.Errorf("Windows에서 .new/.old는 .exe로 끝나야 함: new=%s old=%s", p.New, p.Old)
 		}
 	}
 }
@@ -162,7 +162,7 @@ func TestApplyStagedHappyPath(t *testing.T) {
 		t.Fatalf("action = %v, 기대값 Restart", action)
 	}
 	if !st.Pending {
-		t.Error("바이너리 교체 뒤 상태는 Pending 이어야 함")
+		t.Error("바이너리 교체 뒤 상태는 Pending이어야 함")
 	}
 	if !strings.Contains(readAll(t, p.Current), "new") {
 		t.Error("artex가 새 버전으로 바뀌어 있어야 함")
@@ -236,7 +236,7 @@ func TestConfirmCountsAttemptsThenRollsBack(t *testing.T) {
 			t.Fatalf("%d번째 시도 action = %v, 기대값 Continue", i, action)
 		}
 		if !st.Pending {
-			t.Errorf("%d번째 시도 상태는 Pending 이어야 함", i)
+			t.Errorf("%d번째 시도 상태는 Pending이어야 함", i)
 		}
 		got, ok := readMarker(p.Marker)
 		if !ok || got.Attempts != i {
@@ -283,7 +283,7 @@ func TestManualRollbackIsReversible(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(readAll(t, p.Current), "v1") {
-		t.Error("롤백 뒤 현재 버전은 v1 이어야 함")
+		t.Error("롤백 뒤 현재 버전은 v1이어야 함")
 	}
 	if !strings.Contains(readAll(t, p.Old), "v2") {
 		t.Error("롤백 뒤 백업은 v2가 돼야 함. 그래야 다시 되돌릴 수 있다")
@@ -317,7 +317,7 @@ func TestParseSums(t *testing.T) {
 
 func TestExtractBinaryFindsNestedEntry(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows 에서는 패키지 안 기본 이름이 artex.exe 라서, 이 테스트 케이스는 Unix 이름으로 만든다")
+		t.Skip("Windows에서는 패키지 안 기본 이름이 artex.exe라서, 이 테스트 케이스는 Unix 이름으로 만든다")
 	}
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "release.zip")
@@ -461,7 +461,7 @@ func TestSettleIsNoopWithoutMarker(t *testing.T) {
 	}
 }
 
-// roundTripFunc 는 네트워크 없이 요청을 받아 보는 가짜 RoundTripper 다.
+// roundTripFunc 는 네트워크 없이 요청을 받아 보는 가짜 RoundTripper다.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

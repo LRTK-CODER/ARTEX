@@ -14,7 +14,7 @@ const BrowserMCPName = "browser"
 const browserMCPCommand = "npx"
 
 // browserMCPDefaultArgs 는 새 설치의 기본 인자다. @playwright/mcp의 기본 브라우저는
-// chrome 채널인데 컨테이너 이미지에는 Playwright chromium 만 있으므로 chromium을
+// chrome 채널인데 컨테이너 이미지에는 Playwright chromium만 있으므로 chromium을
 // 명시한다(#85).
 var browserMCPDefaultArgs = []string{"@playwright/mcp", "--headless", "--browser", "chromium"}
 
