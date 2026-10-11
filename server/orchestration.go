@@ -702,38 +702,38 @@ const reporterToolCallMessageV1 = "上面刚有一个漏洞被 report_finding �
 	"（工具返回 \"finding recorded: <id>\" 里的数字）与任务 id，按你的职责撰写该漏洞的详细报告，" +
 	"最后调用 update_finding_report(finding_id, report) 保存。"
 
-// upgradeReporterTriggerMessage 把老库里仍是默认文案的 reporter 触发消息刷成新版本。
-// seedReporterAgent 受 reporter_agent_seed_v1 守卫且只在新建 agent 时写触发器，所以
-// 升级上来的库拿不到新文案 —— 工具 schema 由 seedFindingTrafficTools 补齐了
-// evidence_version，但没有任何东西告诉 reporter 去用它。一次性，且只覆盖未被改动的文案。
+// upgradeReporterTriggerMessage 는 구버전 DB에서 아직 기본 문구인 reporter 트리거 메시지를 새 버전으로 다시 쓴다.
+// seedReporterAgent는 reporter_agent_seed_v1으로 막혀 있고 agent를 새로 만들 때만 트리거를 쓰므로,
+// 업데이트로 올라온 DB는 새 문구를 받지 못한다. 도구 schema는 seedFindingTrafficTools가
+// evidence_version을 채워 넣었지만, reporter에게 그것을 쓰라고 알려 주는 것이 아무것도 없다. 일회성이며, 고치지 않은 문구만 덮어쓴다.
 func (s *Server) upgradeReporterTriggerMessage() {
 	const flag = "reporter_trigger_evidence_version_v1"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 只尝试一次
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 한 번만 시도한다
 	triggers, err := s.m.pg.ListTriggersFor("reporter")
 	if err != nil {
-		log.Printf("[reporter] 读取触发器失败: %v", err)
+		log.Printf("[reporter] 트리거 읽기 실패: %v", err)
 		return
 	}
 	for _, t := range triggers {
 		if !t.OnToolCall || t.ToolCallMessage != reporterToolCallMessageV1 {
-			continue // 用户改过或不是 finding 触发器，不动。
+			continue // 사용자가 고쳤거나 finding 트리거가 아니면 건드리지 않는다.
 		}
 		t.ToolCallMessage = reporterToolCallMessage
 		if err := s.m.pg.UpdateTrigger(t); err != nil {
-			log.Printf("[reporter] 升级触发消息失败: %v", err)
+			log.Printf("[reporter] 트리거 메시지 업데이트 실패: %v", err)
 			return
 		}
-		log.Printf("[reporter] 触发消息已升级为读取并回传 evidence_version")
+		log.Printf("[reporter] 트리거 메시지를 evidence_version을 읽어 돌려보내도록 업데이트했다")
 	}
 }
 
-// seedReporterAgent 预置一个「报告撰写」自定义 agent(builtin=false，可在 UI 编辑/删除)：
-// 绑定 update_finding_report + 任务查询工具，并挂一个「report_finding 被调用即触发」的
-// 触发器 —— 每登记一个漏洞就唤起它写详细报告。一次性(settings flag 守卫)：用户删掉后不再重建。
-// 依赖：orchestration 工具已在本函数上方 SeedTool 入库，故绑定得上。
+// seedReporterAgent 는 '보고서 작성' 사용자 지정 agent(builtin=false, UI에서 편집·삭제 가능)를 미리 준비한다.
+// update_finding_report + 작업 조회 도구를 연결하고, 'report_finding이 호출되면 바로 실행되는'
+// 트리거를 하나 건다. 취약점이 하나 등록될 때마다 이 agent를 깨워 상세 보고서를 쓰게 한다. 일회성이다(settings flag로 막는다). 사용자가 삭제한 뒤에는 다시 만들지 않는다.
+// 의존: orchestration 도구는 이 함수 위쪽에서 SeedTool로 이미 저장돼 있어 연결할 수 있다.
 func (s *Server) seedReporterAgent() {
 	const flag = "reporter_agent_seed_v1"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
@@ -742,33 +742,33 @@ func (s *Server) seedReporterAgent() {
 	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 성공하든 실패하든 한 번만 시도한다
 
 	if exist, _ := s.m.pg.GetAgentByKey("reporter"); exist != nil {
-		return // key 已被占用(用户手建过)——不覆盖
+		return // key가 이미 쓰이고 있으면(사용자가 손수 만든 경우) 덮어쓰지 않는다
 	}
-	a, err := s.m.pg.CreateAgent("reporter", "报告撰写",
-		"漏洞详细报告撰写：发现漏洞时自动触发，查取证据与执行过程后写 Markdown 报告并回写。")
+	a, err := s.m.pg.CreateAgent("reporter", "보고서 작성",
+		"취약점 상세 보고서 작성: 취약점을 발견하면 자동으로 실행되어, 증거와 실행 과정을 조회한 뒤 Markdown 보고서를 작성해 기록한다.")
 	if err != nil {
-		log.Printf("[reporter] 创建 agent 失败: %v", err)
+		log.Printf("[reporter] agent 만들기 실패: %v", err)
 		return
 	}
 	if err := s.m.pg.SeedPromptIfEmpty(a.ID, agent.ReporterDefaultPrompt); err != nil {
-		log.Printf("[reporter] seed prompt 失败: %v", err)
+		log.Printf("[reporter] seed prompt 실패: %v", err)
 	}
-	// 触发运行策略：parallel + none —— 一漏洞一报告、多个 finding 并发各写各的。
-	// merge 必须为 none：否则(默认 all)一波 finding 会被合并成一次运行，并行就没意义。
-	// maxParallel=5：同时最多 5 个报告会话，避免瞬时太多 LLM 调用。
+	// 트리거 실행 정책: parallel + none. 취약점 하나에 보고서 하나, 여러 finding은 병렬로 각각 쓴다.
+	// merge는 반드시 none이어야 한다. 아니면(기본값 all) 한 차례의 finding이 한 번의 실행으로 합쳐져 병렬이 의미가 없어진다.
+	// maxParallel=5: 동시에 최대 5개 보고서 세션을 두어, 순간적으로 LLM 호출이 너무 많아지는 것을 막는다.
 	if err := s.m.pg.SetAgentTriggerBehavior("reporter", "parallel", "none", 5); err != nil {
-		log.Printf("[reporter] 设置触发运行策略失败: %v", err)
+		log.Printf("[reporter] 트리거 실행 정책 설정 실패: %v", err)
 	}
-	// 绑定它需要的工具：写报告 + 读证据/执行过程/态势。
+	// 이 agent에 필요한 도구를 연결한다: 보고서 쓰기 + 증거/실행 과정/현황 읽기.
 	if err := s.m.pg.AddAgentToToolBinding("reporter", []string{
 		"update_finding_report", "get_task_node_detail", "list_task_findings",
 		"get_task_worker_trace", "list_task_worker_traces", "search_task_worker_traces",
 		"get_task_graph",
 	}); err != nil {
-		log.Printf("[reporter] 绑定工具失败: %v", err)
+		log.Printf("[reporter] 도구 연결 실패: %v", err)
 	}
-	// 触发器：report_finding 被调用即触发（工具返回 "finding recorded: <id>" 带上 finding_id，
-	// 任务 id 也在触发消息里）。
+	// 트리거: report_finding이 호출되면 바로 실행된다(도구가 "finding recorded: <id>"를 반환하며 finding_id를 함께 싣고,
+	// 작업 id도 트리거 메시지에 들어 있다).
 	if _, err := s.m.pg.CreateTrigger(&db.AgentTrigger{
 		AgentKey:        "reporter",
 		Enabled:         true,
@@ -776,9 +776,9 @@ func (s *Server) seedReporterAgent() {
 		ToolNames:       []string{"report_finding"},
 		ToolCallMessage: reporterToolCallMessage,
 	}); err != nil {
-		log.Printf("[reporter] 创建触发器失败: %v", err)
+		log.Printf("[reporter] 트리거 만들기 실패: %v", err)
 	}
-	log.Printf("[reporter] 已预置「报告撰写」agent + finding 触发器")
+	log.Printf("[reporter] '보고서 작성' agent + finding 트리거를 미리 준비했다")
 }
 
 // seedAutoReportFindingBinding adds "auto" to report_finding's binding ONCE so
