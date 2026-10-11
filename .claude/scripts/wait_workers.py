@@ -73,7 +73,7 @@ def orca(args: List[str]) -> dict:
     """orca 명령을 실행하고 JSON의 result를 돌려준다. 실패하면 OrcaError."""
     cmd = ["orca"] + args
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True)
+        p = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace")
     except OSError as e:
         raise OrcaError("orca를 실행하지 못했다: {}".format(e))
     for line in strip_keepalive(p.stderr or ""):
