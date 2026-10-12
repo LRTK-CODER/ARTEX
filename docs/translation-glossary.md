@@ -605,7 +605,7 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 
 ### server 패키지 o~z(#106에서 더함)
 
-`server/` 중 파일 이름이 o~z로 시작하는 `*.go`를 옮기며 정한 말이다. 발견 사항 보고서 섹션명은 `server/orchestration.go`(#128에서 옮긴다)가 쓰는 이름을 먼저 정해 둔다. 보고서 섹션 제목은 모델이 그대로 쓰는 Markdown 헤더이므로 영어 프롬프트 안에서도 한국어 제목(`## 개요`, `## 영향`, `## 영향 범위`, `## 재현 절차`, `## 근본 원인 분석`, `## 수정 권고`)을 쓴다. reporter 프롬프트(`agent/promptcatalog.go`), `report/findings.go`, `update_finding_report` 도구 설명(PR #137)이 이 제목을 쓴다. 영어 열은 섹션을 문장 안에서 가리킬 때의 말이다.
+`server/` 중 파일 이름이 o~z로 시작하는 `*.go`를 옮기며 정한 말이다. 발견 사항 보고서 섹션명은 `server/orchestration.go`(#128에서 옮겼다)가 쓰는 이름을 먼저 정해 둔다. 보고서 섹션 제목은 모델이 그대로 쓰는 Markdown 헤더이므로 영어 프롬프트 안에서도 한국어 제목(`## 개요`, `## 영향`, `## 영향 범위`, `## 재현 절차`, `## 근본 원인 분석`, `## 수정 권고`)을 쓴다. reporter 프롬프트(`agent/promptcatalog.go`), `report/findings.go`, `update_finding_report` 도구 설명(PR #137)이 이 제목을 쓴다. 영어 열은 섹션을 문장 안에서 가리킬 때의 말이다.
 
 | 중국어 | 한국어 | 영어(프롬프트) | 비고 |
 |---|---|---|---|
@@ -642,7 +642,6 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 
 | 파일 | 이유 |
 |---|---|
-| `server/orchestration.go` | #128에서 옮긴다 |
 | `CHANGELOG.md` | 원 저자 이력. #99 범위 밖 |
 | `sidequestion/VALIDATION.md`, `sidequestion/validation-*.json` | 과거 실행 기록. #99 범위 밖 |
 | `docs/translation-glossary.md` | 이 문서의 원문(중국어) 열 |
@@ -655,6 +654,8 @@ web 공통 컴포넌트·라이브러리·나머지 화면(대시보드, 채팅,
 | `db/builtin_rule_text.go` | #108 이전에 seed한 내장 차단 규칙 이름·메모. 기존 행을 찾아 바꾸는 데 쓴다 |
 | `server/prompt_english_reseed.go` | 옛 중국어 기본 프롬프트 원문. 사용자가 고치지 않은 행만 영어로 바꾸려고 비교한다 |
 | `server/finding_workflow.go`, `server/finding_workflow_test.go` | 옛 `traffic_search` 도구 설명(v2·v3). 사용자가 고치지 않은 행만 새 설명으로 바꾸려고 비교한다 |
+| `server/orchestration.go` | 0.3.8 이전 reporter 트리거 메시지 `reporterToolCallMessageV1`. 사용자가 고치지 않은 트리거만 새 문구로 바꾸려고 비교한다 |
+| `server/tool_english_reseed_test.go` | 옛 중국어 도구 설명·schema 표본. 한자가 남은 행만 영어 기본값으로 바꾸는지 검증한다(#145) |
 | `db/intercept.go`, `db/schema.sql`, `db/task_archives_restore.go`, `db/intercept_detail_test.go`, `db/intercept_filter_test.go`, `web/src/components/approval-records.tsx`, `web/src/lib/mock/handler.ts`, `web/src/lib/types.ts` | #110 이전 승인 심사 행의 모델 판정 접두사 `[模型]` |
 | `web/src/components/transcript.tsx` | #110 이전 승인 심사 요청 요약 형식(`工具 X 请求审批`) |
 | `server/conversations.go`, `server/conv_title_test.go`, `web/src/app/(main)/chat/page.tsx` | 옛 대화 기본 제목 `新对话` |
