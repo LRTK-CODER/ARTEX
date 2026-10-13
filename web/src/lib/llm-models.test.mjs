@@ -1,11 +1,15 @@
 import {
   autoFetchRequest,
-  commitConnection,
+  blurFields,
+  currentFetchKey,
   isFreshModelFetch,
   isSubscriptionConnected,
+  manualFetchRequest,
   mergeModelOptions,
   modelFetchKey,
+  openFields,
   suggestedModels,
+  typeFields,
 } from "./llm-models.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -44,32 +48,56 @@ test("빈 문자열과 공백 항목은 버린다", () => {
 
 const savedConnection = { baseUrl: "https://api.openai.com/v1", proxy: "", apiKey: "" };
 const selection = { format: "openai", authType: "api_key", profileId: 7 };
-const autoKey = (sel, committed) => modelFetchKey(autoFetchRequest(sel, committed));
+const autoKey = (fields) => modelFetchKey(autoFetchRequest(selection, fields));
 
-test("Base URL을 치는 동안에는 자동 조회 키가 바뀌지 않는다", () => {
-  // 확정은 칸을 벗어날 때만 하므로, 치는 동안의 입력값은 확정된 값에 들어가지 않는다.
-  const typing = { ...savedConnection, baseUrl: "https://api.openai.co" };
-  const before = autoKey(selection, savedConnection);
-  assert.notEqual(modelFetchKey({ ...selection, ...typing }), before, "입력값 자체는 다른 요청이다");
-  assert.equal(autoKey(selection, savedConnection), before);
+test("Base URL·프록시·API 키를 치는 동안에는 자동 조회 요청이 바뀌지 않는다", () => {
+  const opened = openFields(savedConnection);
+  const typing = typeFields(
+    typeFields(typeFields(opened, { baseUrl: "https://api.openai.co" }), { proxy: "http://127.0.0.1:80" }),
+    { apiKey: "sk-ne" },
+  );
+  assert.deepEqual(autoFetchRequest(selection, typing), { ...selection, ...savedConnection });
+  assert.equal(autoKey(typing), autoKey(opened));
+  // 버튼 조회는 지금 칸의 값을 쓰므로 키가 달라야 한다. 같으면 위 단언이 입력값을 보지 않은 것이다.
+  assert.notEqual(modelFetchKey(manualFetchRequest(selection, typing)), autoKey(opened));
 });
 
-test("칸을 벗어나면 입력값이 확정돼 자동 조회 키가 바뀐다", () => {
-  const typed = { ...savedConnection, baseUrl: "https://gateway.example.com/v1" };
-  const committed = commitConnection(savedConnection, typed);
-  assert.deepEqual(committed, typed);
-  assert.notEqual(autoKey(selection, committed), autoKey(selection, savedConnection));
+test("칸을 벗어나면 입력값이 확정돼 자동 조회 요청이 바뀐다", () => {
+  const typed = typeFields(openFields(savedConnection), { baseUrl: "https://gateway.example.com/v1" });
+  const blurred = blurFields(typed);
+  assert.equal(autoFetchRequest(selection, blurred).baseUrl, "https://gateway.example.com/v1");
+  assert.notEqual(autoKey(blurred), autoKey(typed));
 });
 
-test("값을 바꾸지 않고 칸을 벗어나면 같은 객체를 돌려 다시 조회하지 않는다", () => {
-  const live = { ...savedConnection, baseUrl: `  ${savedConnection.baseUrl} ` };
-  assert.equal(commitConnection(savedConnection, live), savedConnection);
+test("값을 바꾸지 않고 칸을 벗어나면 같은 상태를 돌려 다시 조회하지 않는다", () => {
+  const opened = openFields(savedConnection);
+  const typed = typeFields(opened, { baseUrl: `  ${savedConnection.baseUrl} ` });
+  assert.equal(blurFields(typed), typed);
+  assert.equal(blurFields(typed).committed, opened.committed);
 });
 
 test("형식이나 인증 방식을 바꾸면 자동 조회 키가 바로 바뀐다", () => {
-  const before = autoKey(selection, savedConnection);
-  assert.notEqual(autoKey({ ...selection, format: "anthropic" }, savedConnection), before);
-  assert.notEqual(autoKey({ ...selection, authType: "chatgpt_oauth" }, savedConnection), before);
+  const fields = openFields(savedConnection);
+  const before = autoKey(fields);
+  assert.notEqual(modelFetchKey(autoFetchRequest({ ...selection, format: "anthropic" }, fields)), before);
+  assert.notEqual(modelFetchKey(autoFetchRequest({ ...selection, authType: "chatgpt_oauth" }, fields)), before);
+});
+
+test("자동 조회 응답은 기다리는 동안 다른 칸을 쳐도 버려지지 않는다", () => {
+  const opened = openFields(savedConnection);
+  const ticket = { seq: 1, key: modelFetchKey(autoFetchRequest(selection, opened)) };
+  const typing = typeFields(opened, { proxy: "socks5://127.0.0.1:1080" });
+  assert.equal(isFreshModelFetch(ticket, 1, currentFetchKey("auto", selection, typing)), true);
+  // 칸을 벗어나 확정하면 조건이 바뀐 것이므로 버린다.
+  assert.equal(isFreshModelFetch(ticket, 1, currentFetchKey("auto", selection, blurFields(typing))), false);
+});
+
+test("버튼 조회 응답은 기다리는 동안 칸 값이 바뀌면 버린다", () => {
+  const opened = openFields(savedConnection);
+  const ticket = { seq: 1, key: modelFetchKey(manualFetchRequest(selection, opened)) };
+  assert.equal(isFreshModelFetch(ticket, 1, currentFetchKey("manual", selection, opened)), true);
+  const typing = typeFields(opened, { proxy: "socks5://127.0.0.1:1080" });
+  assert.equal(isFreshModelFetch(ticket, 1, currentFetchKey("manual", selection, typing)), false);
 });
 
 test("구독 연결 상태는 최신 oauth 값으로 판단한다", () => {
