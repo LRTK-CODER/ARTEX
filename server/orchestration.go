@@ -505,6 +505,7 @@ func (s *Server) seedOrchestrationTools() {
 	s.upgradeReporterTriggerMessage() // 구버전 DB 보완 마이그레이션: reporter가 evidence_version을 돌려보내게 한다(일회성)
 	s.seedFindingTrafficTools()       // 선택 증거 파라미터와 읽기 전용 증거 도구를 더하고, 사용자 설정은 보존한다
 	s.seedFindingWorkflowTools()
+	s.reseedToolsToEnglish() // #145: 기존 설치에 남은 중국어 도구 설명·schema를 영어 기본값으로(한 번만, 한자가 남은 쪽만)
 	// 참고: pentest의 기본 도구 연결은 마이그레이션이 필요 없다. BuiltinToolSeeds가 완전 새 초기화 때
 	// list_assets/insert_assets/report_finding/list_findings/list_companies를 pentest와
 	// 함께 seed해 둔다(프로젝트에 아직 구버전 DB가 없어 마이그레이션하지 않는다).
