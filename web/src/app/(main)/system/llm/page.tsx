@@ -6,7 +6,6 @@ import {
   Loader2Icon,
   PlugZapIcon,
   PlusIcon,
-  RefreshCwIcon,
   RotateCcwIcon,
   SaveIcon,
   StarIcon,
@@ -20,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -28,10 +26,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { oauthConnection } from "@/lib/chatgpt-oauth";
+import { type LLMFormat, mergeModelOptions, suggestedModels } from "@/lib/llm-models";
 import type { LLMAuthType, LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { SubscriptionAccount } from "./_components/chatgpt-login";
+import { ModelCombobox } from "./_components/model-combobox";
 import { ProfileRetryFields, RetryPolicyPanel, ZERO_OVERRIDE } from "./_components/retry";
 
 // 사고 스위치(thinking.type)와 사고 강도(reasoning_effort)는 **서로 독립된** 필드라 따로 설정한다.
@@ -66,6 +66,19 @@ const EFFORT_LEVELS: { value: string; label: string }[] = [
   { value: "xhigh", label: "xhigh" },
   { value: "max", label: "max" },
 ];
+
+// 자동 조회를 키 입력이 멈춘 뒤에 보내기 위한 대기 시간.
+const MODEL_FETCH_DEBOUNCE_MS = 500;
+
+// 모델 칸 아래 안내. 지금 목록이 조회 결과인지 정적 추천인지, 조회가 왜 안 됐는지 알린다.
+function modelsHint(fetchedCount: number, error: string, hasCredential: boolean) {
+  if (fetchedCount > 0)
+    return `API에서 불러온 모델 ${fetchedCount}개와 추천 모델을 보여 줍니다. 목록에 없으면 직접 입력하세요.`;
+  if (error) return `모델 목록을 불러오지 못해 추천 모델만 보여 줍니다(${error}). 목록에 없으면 직접 입력하세요.`;
+  if (!hasCredential)
+    return "자격 증명(API 키나 구독 로그인)이 있으면 쓸 수 있는 모델을 불러옵니다. 지금은 추천 모델만 보여 줍니다.";
+  return "추천 모델을 보여 줍니다. 목록에 없으면 직접 입력하세요.";
+}
 
 function cooldownText(secs: number) {
   if (secs <= 0) return "";
@@ -332,7 +345,7 @@ function ProfileSheet({
   const isNew = !profile;
   const [authType, setAuthType] = React.useState<LLMAuthType>("api_key");
   const [name, setName] = React.useState("");
-  const [format, setFormat] = React.useState<"anthropic" | "openai" | "openai-responses">("anthropic");
+  const [format, setFormat] = React.useState<LLMFormat>("anthropic");
   const [model, setModel] = React.useState("");
   const [baseUrl, setBaseUrl] = React.useState("");
   const [proxy, setProxy] = React.useState("");
@@ -352,9 +365,10 @@ function ProfileSheet({
   const [retry, setRetry] = React.useState<LLMRetryOverride>(ZERO_OVERRIDE); // 이 프로필의 재시도 덮어쓰기. 모두 0이면 전역 값을 따름
   const [testing, setTesting] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [models, setModels] = React.useState<string[]>([]);
+  const [fetchedModels, setFetchedModels] = React.useState<string[]>([]);
   const [loadingModels, setLoadingModels] = React.useState(false);
-  const [modelsOpen, setModelsOpen] = React.useState(false);
+  const [modelsError, setModelsError] = React.useState(""); // 자동 조회 실패 사유. 비어 있으면 실패하지 않았다
+  const sheetContentRef = React.useRef<HTMLDivElement>(null);
 
   // 열 때마다 받은 profile로 폼을 다시 채운다(새로 만들기면 기본값으로 초기화). 패널을 닫았다 열면
   // 깨끗하게 새로 시작하고, 이전 프로필의 값이 남지 않는다.
@@ -380,8 +394,8 @@ function ProfileSheet({
     setRetry(profile?.retry ?? ZERO_OVERRIDE);
     setApiKey("");
     setKeyHint(profile?.api_key_hint ?? "");
-    setModels([]);
-    setModelsOpen(false);
+    setFetchedModels([]);
+    setModelsError("");
   }, [open, profile]);
 
   const profileId = profile ? Number(profile.id) : undefined;
@@ -394,15 +408,60 @@ function ProfileSheet({
   // 로그인·해제 뒤 카드 목록만 새로 읽는다. 참조가 바뀌면 디바이스 폴링이 다시 걸리므로 고정한다.
   const handleAccountChanged = React.useCallback(() => onSaved(profile?.id ?? "", false), [onSaved, profile]);
 
+  // 조회한 목록이 앞에 오고, 정적 추천 목록은 로그인 전·조회 실패 때의 폴백이다.
+  // 편집 중인 프로필에 저장된 모델은 어느 목록에도 없어도 남긴다.
+  const savedModel = profile?.model ?? "";
+  const modelOptions = React.useMemo(
+    () => mergeModelOptions(fetchedModels, suggestedModels(authType, effectiveFormat), savedModel),
+    [fetchedModels, authType, effectiveFormat, savedModel],
+  );
+
+  // 자동 조회는 자격 증명이 있을 때만 한다. 없으면 요청해도 실패하므로 정적 목록만 보여 준다.
+  // API 키: 입력한 키, 또는 저장된 API 키 프로필의 키(profile id로 서버가 꺼내 쓴다).
+  // 구독: 같은 방식으로 저장돼 로그인된 프로필. 저장 전이거나 방식을 바꾼 상태면 로그인 API가 열리지 않는다.
+  const hasSavedKey = Boolean(profile && keyHint && (profile.auth_type ?? "api_key") === "api_key");
+  const isSubscriptionConnected =
+    profile?.auth_type === authType && Boolean(profile?.oauth?.connected) && !profile?.oauth?.needs_login;
+  const hasCredential = isOAuth ? isSubscriptionConnected : apiKey.trim() !== "" || hasSavedKey;
+
+  React.useEffect(() => {
+    setFetchedModels([]);
+    setModelsError("");
+    if (!open || !hasCredential) return;
+    let isStale = false;
+    // 키·Base URL을 치는 동안 글자마다 요청하지 않도록 입력이 멈출 때까지 기다린다.
+    const timer = setTimeout(() => {
+      setLoadingModels(true);
+      api
+        .fetchLLMModels(effectiveFormat, baseUrl, apiKey, proxy, profileId, authType)
+        .then((r) => {
+          if (isStale) return;
+          if (r.ok && r.models && r.models.length > 0) setFetchedModels(r.models);
+          else setModelsError(r.error ?? "받은 모델이 없습니다");
+        })
+        .catch((e: unknown) => {
+          if (!isStale) setModelsError(e instanceof Error ? e.message : String(e));
+        })
+        .finally(() => {
+          if (!isStale) setLoadingModels(false);
+        });
+    }, MODEL_FETCH_DEBOUNCE_MS);
+    return () => {
+      isStale = true;
+      clearTimeout(timer);
+      setLoadingModels(false);
+    };
+  }, [open, hasCredential, effectiveFormat, baseUrl, apiKey, proxy, profileId, authType]);
+
+  // 다시 불러오기 버튼. 자격 증명이 없어도 시도할 수 있게 두고(키 없는 게이트웨이), 결과를 알림으로 보여 준다.
   async function loadModels() {
     if (loadingModels) return;
     setLoadingModels(true);
-    setModels([]);
     try {
       const r = await api.fetchLLMModels(effectiveFormat, baseUrl, apiKey, proxy, profileId, authType);
       if (r.ok && r.models && r.models.length > 0) {
-        setModels(r.models);
-        setModelsOpen(true);
+        setFetchedModels(r.models);
+        setModelsError("");
         toast.success(`모델 ${r.models.length}개를 불러왔습니다`);
       } else {
         toast.error(`모델을 불러오지 못했습니다: ${r.error ?? "받은 모델이 없습니다"}`);
@@ -499,6 +558,7 @@ function ProfileSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        ref={sheetContentRef}
         side="right"
         className="flex flex-col gap-0 p-0 data-[side=right]:min-w-[420px] data-[side=right]:sm:max-w-xl"
       >
@@ -549,7 +609,7 @@ function ProfileSheet({
           ) : (
             <div className="grid gap-2">
               <Label>형식</Label>
-              <Select value={format} onValueChange={(v) => setFormat(v as "anthropic" | "openai" | "openai-responses")}>
+              <Select value={format} onValueChange={(v) => setFormat(v as LLMFormat)}>
                 <SelectTrigger>
                   <SelectValue placeholder="형식 선택" />
                 </SelectTrigger>
@@ -564,49 +624,18 @@ function ProfileSheet({
 
           <div className="grid gap-2">
             <Label htmlFor="p-model">모델</Label>
-            <div className="flex gap-2">
-              <Input
-                id="p-model"
-                className="font-mono"
-                placeholder="claude-opus-4-8"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
-              {/* modal: 이 Popover의 내용은 <body>로 portal되어 Sheet의 스크롤 잠금 밖에 있다.
-                  modal이 없으면 목록은 그려지지만 스크롤되지 않는다. modal이면 Popover가 가장 위의 스크롤 잠금을 직접 갖는다. */}
-              <Popover open={modelsOpen} onOpenChange={setModelsOpen} modal>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0"
-                    disabled={loadingModels}
-                    onClick={loadModels}
-                    title="API에서 쓸 수 있는 모델 불러오기"
-                  >
-                    {loadingModels ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-                  </Button>
-                </PopoverTrigger>
-                {models.length > 0 && (
-                  <PopoverContent className="max-h-72 w-72 gap-0 overflow-y-auto overscroll-contain p-1" align="end">
-                    {models.map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        className="w-full shrink-0 rounded-md px-2 py-1.5 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground"
-                        onClick={() => {
-                          setModel(m);
-                          setModelsOpen(false);
-                        }}
-                      >
-                        {m}
-                      </button>
-                    ))}
-                  </PopoverContent>
-                )}
-              </Popover>
-            </div>
+            <ModelCombobox
+              id="p-model"
+              value={model}
+              onValueChange={setModel}
+              options={modelOptions}
+              isLoading={loadingModels}
+              onReload={loadModels}
+              portalContainer={sheetContentRef}
+            />
+            <p className="text-muted-foreground text-xs">
+              {modelsHint(fetchedModels.length, modelsError, hasCredential)}
+            </p>
           </div>
 
           {!isOAuth && (
