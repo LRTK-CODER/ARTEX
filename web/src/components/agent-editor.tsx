@@ -35,6 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { modelLabel } from "@/lib/llm-models";
 import { DISPLAY_LOCALE } from "@/lib/locale";
 import type {
   Agent,
@@ -350,7 +351,7 @@ export function AgentEditor({ agentKey, onSaved }: { agentKey: string; onSaved?:
                         <SelectItem value="__follow__">작업 / 전역 활성 프로필 따르기</SelectItem>
                         {llmProfiles.map((p) => (
                           <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}({p.model}){p.is_default ? " · 기본" : ""}
+                            {p.name}({modelLabel(p.model, p.default_model)}){p.is_default ? " · 기본" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>

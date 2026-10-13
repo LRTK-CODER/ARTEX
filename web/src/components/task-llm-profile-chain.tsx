@@ -18,6 +18,7 @@ import {
   ComboboxValue,
 } from "@/components/ui/combobox";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { modelLabel } from "@/lib/llm-models";
 import type { LLMProfile } from "@/lib/types";
 
 interface TaskLLMProfileChainProps {
@@ -64,7 +65,7 @@ export function TaskLLMProfileChain({
   const profileLabel = React.useCallback(
     (id: string) => {
       const profile = profilesByID.get(id);
-      return profile ? `${profile.name} ${profile.model}` : `프로필 #${id}`;
+      return profile ? `${profile.name} ${modelLabel(profile.model, profile.default_model)}` : `프로필 #${id}`;
     },
     [profilesByID],
   );
@@ -126,7 +127,11 @@ export function TaskLLMProfileChain({
                         {profile?.is_default ? "(활성)" : ""}
                       </span>
                     </span>
-                    {profile && <span className="truncate text-muted-foreground text-xs">{profile.model}</span>}
+                    {profile && (
+                      <span className="truncate text-muted-foreground text-xs">
+                        {modelLabel(profile.model, profile.default_model)}
+                      </span>
+                    )}
                   </div>
                 </ComboboxItem>
               );
@@ -153,7 +158,7 @@ export function TaskLLMProfileChain({
                   <p className="truncate font-medium text-sm">{profile?.name ?? `프로필 #${id}`}</p>
                   <div className="flex min-w-0 items-center gap-2">
                     <p className="truncate text-muted-foreground text-xs">
-                      {profile?.model ?? "프로필을 더 이상 쓸 수 없습니다"}
+                      {profile ? modelLabel(profile.model, profile.default_model) : "프로필을 더 이상 쓸 수 없습니다"}
                     </p>
                   </div>
                 </div>

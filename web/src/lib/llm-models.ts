@@ -1,27 +1,16 @@
 // LLM 프로필 폼의 모델 선택 목록을 만드는 순수 로직.
-// 정적 추천 목록은 조회가 안 될 때(로그인 전, 조회 실패)의 폴백이다. 실제 조회 결과가 언제나 앞선다.
-// 최신으로 유지하는 것이 목적이 아니므로, 백엔드 기본값(agent/provider.go)과 알려진 구독 모델만 둔다.
+// 목록은 실제 조회 결과와 편집 중인 프로필에 저장된 값만 쓴다. 정적 추천 목록은 두지 않는다.
+// 자격 증명이 없는 프로필은 어차피 호출할 수 없으므로, 그때는 목록 대신 로그인·키 안내를 보여 준다.
 import type { LLMAuthType, LLMProfileOAuth } from "./types";
 
 export type LLMFormat = "anthropic" | "openai" | "openai-responses";
 
-const CLAUDE_MODELS = ["claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-5", "claude-haiku-4-5"] as const;
-const CHATGPT_SUBSCRIPTION_MODELS = ["gpt-5", "gpt-5-codex", "gpt-5.5"] as const;
-const OPENAI_MODELS = ["gpt-5", "gpt-4o"] as const;
-
-// 인증 방식과 형식에 맞는 정적 추천 모델. 구독은 형식이 인증 방식으로 정해지므로 인증 방식만 본다.
-export function suggestedModels(authType: LLMAuthType, format: LLMFormat): readonly string[] {
-  if (authType === "claude_oauth") return CLAUDE_MODELS;
-  if (authType === "chatgpt_oauth") return CHATGPT_SUBSCRIPTION_MODELS;
-  return format === "anthropic" ? CLAUDE_MODELS : OPENAI_MODELS;
-}
-
-// 조회한 목록을 앞에, 그 뒤에 정적 목록 중 겹치지 않는 것을 둔다.
-// 저장된 모델이 어느 목록에도 없으면 맨 앞에 넣는다. 편집할 때 목록에 없는 값도 그대로 보이고 고를 수 있어야 한다.
-export function mergeModelOptions(fetched: readonly string[], suggested: readonly string[], current: string): string[] {
+// 조회한 목록에서 빈 값과 중복을 뺀다. 저장된 모델이 목록에 없으면 맨 앞에 넣는다.
+// 편집할 때 목록에 없는 값(로그인 전에 저장한 값, 조회되지 않는 값)도 그대로 보이고 고를 수 있어야 한다.
+export function mergeModelOptions(fetched: readonly string[], current: string): string[] {
   const options: string[] = [];
   const seen = new Set<string>();
-  for (const raw of [...fetched, ...suggested]) {
+  for (const raw of fetched) {
     const model = raw.trim();
     if (!model || seen.has(model)) continue;
     seen.add(model);
@@ -30,6 +19,46 @@ export function mergeModelOptions(fetched: readonly string[], suggested: readonl
   const saved = current.trim();
   if (saved && !seen.has(saved)) options.unshift(saved);
   return options;
+}
+
+export function isSubscriptionAuth(authType: LLMAuthType): boolean {
+  return authType === "chatgpt_oauth" || authType === "claude_oauth";
+}
+
+// 저장할 수 없는 이유. 빈 문자열이면 저장할 수 있다.
+// 구독 프로필은 저장한 뒤에야 로그인하고 모델을 조회할 수 있으므로 모델 없이 저장한다(빈 모델은 서버 기본값).
+// API 키 프로필은 저장 전에 키로 조회할 수 있으므로 모델을 고르게 한다.
+export function profileSaveError(name: string, model: string, authType: LLMAuthType): string {
+  if (isSubscriptionAuth(authType)) return name.trim() ? "" : "이름을 입력하세요";
+  if (!name.trim() || !model.trim()) return "이름과 모델을 입력하세요";
+  return "";
+}
+
+// 화면에 보일 모델 이름. 빈 모델은 서버가 실제로 쓰는 기본 모델(default_model)을 함께 보인다.
+export function modelLabel(model: string, defaultModel: string | undefined): string {
+  const chosen = model.trim();
+  if (chosen) return chosen;
+  const fallback = defaultModel?.trim();
+  return fallback ? `기본값(${fallback})` : "기본값";
+}
+
+export interface ModelsHintState {
+  fetchedCount: number;
+  error: string; // 조회 실패 사유. 비어 있으면 실패하지 않았다
+  hasCredential: boolean;
+  isSubscription: boolean;
+}
+
+// 모델 칸 아래 안내. 목록이 어디서 왔는지, 목록이 왜 비었는지, 무엇을 하면 목록이 나오는지 알린다.
+export function modelsHint({ fetchedCount, error, hasCredential, isSubscription }: ModelsHintState): string {
+  if (fetchedCount > 0) return `API에서 불러온 모델 ${fetchedCount}개를 보여 줍니다. 목록에 없으면 직접 입력하세요.`;
+  if (!hasCredential) {
+    if (isSubscription)
+      return "로그인하면 쓸 수 있는 모델 목록이 나옵니다. 먼저 모델 없이 저장하고 로그인하세요. 비워 두면 기본 모델을 씁니다.";
+    return "API 키를 입력하고 칸을 벗어나면 쓸 수 있는 모델 목록이 나옵니다. 직접 입력해도 됩니다.";
+  }
+  if (error) return `모델 목록을 불러오지 못했습니다(${error}). 다시 불러오거나 직접 입력하세요.`;
+  return "모델 목록을 불러오는 중입니다. 직접 입력해도 됩니다.";
 }
 
 // 모델 조회 요청에 들어가는 값. 주소·프록시·키는 사용자가 칸에 치는 값이다.

@@ -585,12 +585,14 @@ func agentDTOs(in []*db.Agent) []AgentDTO {
 // ---- LLMProfile (frontend "LLMProfile") — string id ----
 
 type LLMProfileDTO struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	Format          string  `json:"format"`
-	BaseURL         string  `json:"base_url,omitempty"`
-	Proxy           string  `json:"proxy,omitempty"`
-	Model           string  `json:"model"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Format  string `json:"format"`
+	BaseURL string `json:"base_url,omitempty"`
+	Proxy   string `json:"proxy,omitempty"`
+	Model   string `json:"model"`
+	// DefaultModel 은 Model이 비었을 때 실제 호출에 쓰는 형식별 기본 모델이다(agent.DefaultModel).
+	DefaultModel    string  `json:"default_model"`
 	APIKeyHint      string  `json:"api_key_hint,omitempty"`
 	RatePerSecond   float64 `json:"rate_per_second"`
 	RatePerMinute   float64 `json:"rate_per_minute"`
@@ -653,6 +655,7 @@ func llmProfileDTO(p *db.LLMProfile, oauth *oauthTokenRegistry) LLMProfileDTO {
 		BaseURL:          p.BaseURL,
 		Proxy:            p.Proxy,
 		Model:            p.Model,
+		DefaultModel:     profileDefaultModel(p),
 		APIKeyHint:       p.APIKeyHint,
 		RatePerSecond:    p.RatePerSecond,
 		RatePerMinute:    p.RatePerMinute,

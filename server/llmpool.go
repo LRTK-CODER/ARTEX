@@ -160,10 +160,12 @@ type LLMPoolMemberStatus struct {
 	ProfileID string `json:"profile_id"`
 	Name      string `json:"name"`
 	Model     string `json:"model"`
-	Format    string `json:"format"`
-	Priority  int    `json:"priority"`
-	Active    bool   `json:"active"`   // is the globally-activated profile
-	Excluded  bool   `json:"excluded"` // pool_exclude — not a failover target
+	// DefaultModel 은 Model이 비었을 때 실제 호출에 쓰는 기본 모델이다.
+	DefaultModel string `json:"default_model"`
+	Format       string `json:"format"`
+	Priority     int    `json:"priority"`
+	Active       bool   `json:"active"`   // is the globally-activated profile
+	Excluded     bool   `json:"excluded"` // pool_exclude — not a failover target
 	// Health: state is "ok" | "degraded" (failing but not tripped) | "tripped".
 	State        string `json:"state"`
 	Fails        int    `json:"fails"`
@@ -200,7 +202,7 @@ func (s *Server) llmPoolStatus() map[string]any {
 	for _, p := range all {
 		st := health[p.ID]
 		m := LLMPoolMemberStatus{
-			ProfileID: i64s(p.ID), Name: p.Name, Model: p.Model, Format: p.Format,
+			ProfileID: i64s(p.ID), Name: p.Name, Model: p.Model, DefaultModel: profileDefaultModel(p), Format: p.Format,
 			Priority: p.Priority, Active: p.IsDefault, Excluded: p.PoolExclude,
 			State: "ok", Fails: st.Fails, Trips: st.Trips,
 			LastError: st.LastError,

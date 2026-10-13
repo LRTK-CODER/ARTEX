@@ -175,21 +175,15 @@ func FromEnv() (Config, bool) {
 	case "openai":
 		c.Format = llm.FormatOpenAI
 		c.APIKey = oaiKey
-		if c.Model == "" {
-			c.Model = "gpt-4o"
-		}
 	case "openai-responses":
 		c.Format = llm.FormatOpenAIResponses
 		c.APIKey = oaiKey
-		if c.Model == "" {
-			c.Model = "gpt-5"
-		}
 	default:
 		c.Format = llm.FormatAnthropic
 		c.APIKey = anthKey
-		if c.Model == "" {
-			c.Model = "claude-opus-4-8"
-		}
+	}
+	if c.Model == "" {
+		c.Model = DefaultModel(c.Format)
 	}
 	if c.APIKey == "" {
 		return Config{}, false
@@ -214,25 +208,31 @@ func ConfigFrom(provider, model, baseURL, apiKey, proxy string) Config {
 		c.Format = llm.FormatOpenAI
 		// provider appends "/chat/completions"; tolerate a full endpoint URL.
 		c.BaseURL = strings.TrimRight(strings.TrimSuffix(c.BaseURL, "/chat/completions"), "/")
-		if c.Model == "" {
-			c.Model = "gpt-4o"
-		}
 	case "openai-responses":
 		c.Format = llm.FormatOpenAIResponses
 		// provider appends "/responses"; tolerate a full endpoint URL.
 		c.BaseURL = strings.TrimRight(strings.TrimSuffix(c.BaseURL, "/responses"), "/")
-		if c.Model == "" {
-			c.Model = "gpt-5"
-		}
 	default:
 		c.Format = llm.FormatAnthropic
 		// provider appends "/v1/messages".
 		c.BaseURL = strings.TrimRight(strings.TrimSuffix(c.BaseURL, "/v1/messages"), "/")
-		if c.Model == "" {
-			c.Model = "claude-opus-4-8"
-		}
+	}
+	if c.Model == "" {
+		c.Model = DefaultModel(c.Format)
 	}
 	return c
+}
+
+// DefaultModel 은 모델을 비워 둔 설정이 실제로 요청에 쓰는 형식별 기본 모델이다.
+// 모르는 형식은 ConfigFrom처럼 anthropic으로 본다. 화면은 이 값을 받아 빈 모델 대신 보여 준다.
+func DefaultModel(format llm.Format) string {
+	switch format {
+	case llm.FormatOpenAI:
+		return "gpt-4o"
+	case llm.FormatOpenAIResponses:
+		return "gpt-5"
+	}
+	return "claude-opus-4-8"
 }
 
 // isFalsy reports whether an env-var string explicitly requests "off". Empty or

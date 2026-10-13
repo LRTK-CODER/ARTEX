@@ -488,7 +488,7 @@ func (s *Server) pgGetAgent(w http.ResponseWriter, r *http.Request) {
 	llmProfiles := make([]map[string]any, 0, len(profs))
 	for _, p := range profs {
 		llmProfiles = append(llmProfiles, map[string]any{
-			"id": p.ID, "name": p.Name, "model": p.Model, "is_default": p.IsDefault,
+			"id": p.ID, "name": p.Name, "model": p.Model, "default_model": profileDefaultModel(p), "is_default": p.IsDefault,
 		})
 	}
 	writeJSON(w, 200, map[string]any{

@@ -56,6 +56,7 @@ import { useSideQuestions } from "@/hooks/use-side-questions";
 import { mergeActivities } from "@/lib/activity-merge";
 import { api } from "@/lib/api";
 import { shouldSubmitOnKey, useChatSendMode } from "@/lib/chat-send-mode";
+import { modelLabel } from "@/lib/llm-models";
 import { getLocalStorageValue, setLocalStorageValue } from "@/lib/local-storage.client";
 import { DISPLAY_LOCALE } from "@/lib/locale";
 import { isBtwCommand } from "@/lib/side-questions";
@@ -336,7 +337,7 @@ function LLMProfileRow({
             <span className="text-sm">기본{activeDefault ? `(${activeDefault.name})` : ""}</span>
             {activeDefault && (
               <span className="text-muted-foreground text-[11px]">
-                {activeDefault.format} · {activeDefault.model}
+                {activeDefault.format} · {modelLabel(activeDefault.model, activeDefault.default_model)}
               </span>
             )}
           </button>
@@ -355,7 +356,7 @@ function LLMProfileRow({
             >
               <span className="text-sm">{p.name}</span>
               <span className="text-muted-foreground text-[11px]">
-                {p.format} · {p.model}
+                {p.format} · {modelLabel(p.model, p.default_model)}
               </span>
             </button>
           ))}
