@@ -31,6 +31,7 @@ import {
   blurFields,
   currentFetchKey,
   isFreshModelFetch,
+  isSubscriptionAuth,
   isSubscriptionConnected,
   type LLMFormat,
   type ModelFetchConnection,
@@ -41,8 +42,10 @@ import {
   manualFetchRequest,
   mergeModelOptions,
   modelFetchKey,
+  modelLabel,
+  modelsHint,
   openFields,
-  suggestedModels,
+  profileSaveError,
   typeFields,
 } from "@/lib/llm-models";
 import type {
@@ -95,16 +98,6 @@ const EFFORT_LEVELS: { value: string; label: string }[] = [
 // 자동 조회를 보내기 전 대기 시간. 패널을 열 때 잇따르는 상태 변경을 한 번의 요청으로 모은다.
 const MODEL_FETCH_DEBOUNCE_MS = 500;
 const EMPTY_CONNECTION: ModelFetchConnection = { baseUrl: "", proxy: "", apiKey: "" };
-
-// 모델 칸 아래 안내. 지금 목록이 조회 결과인지 정적 추천인지, 조회가 왜 안 됐는지 알린다.
-function modelsHint(fetchedCount: number, error: string, hasCredential: boolean) {
-  if (fetchedCount > 0)
-    return `API에서 불러온 모델 ${fetchedCount}개와 추천 모델을 보여 줍니다. 목록에 없으면 직접 입력하세요.`;
-  if (error) return `모델 목록을 불러오지 못해 추천 모델만 보여 줍니다(${error}). 목록에 없으면 직접 입력하세요.`;
-  if (!hasCredential)
-    return "자격 증명(API 키나 구독 로그인)이 있으면 쓸 수 있는 모델을 불러옵니다. 지금은 추천 모델만 보여 줍니다.";
-  return "추천 모델을 보여 줍니다. 목록에 없으면 직접 입력하세요.";
-}
 
 function cooldownText(secs: number) {
   if (secs <= 0) return "";
@@ -320,7 +313,7 @@ function PoolSheet({
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 pl-7 text-muted-foreground text-xs">
-                        <code className="truncate font-mono">{m.model}</code>
+                        <code className="truncate font-mono">{modelLabel(m.model, m.default_model)}</code>
                         {!m.active && <span>우선순위 {m.priority}</span>}
                       </div>
                       {m.last_error && (
@@ -432,19 +425,17 @@ function ProfileSheet({
   // 제공자별 서버 규칙과 같은 형식을 보내며 ChatGPT만 스트리밍으로 고정한다.
   const isChatGPT = authType === "chatgpt_oauth";
   const isClaude = authType === "claude_oauth";
-  const isOAuth = isChatGPT || isClaude;
+  const isOAuth = isSubscriptionAuth(authType);
   const subscriptionFormat = isClaude ? "anthropic" : "openai-responses";
   const effectiveFormat = isOAuth ? subscriptionFormat : format;
   // 로그인·해제 뒤 카드 목록만 새로 읽는다. 참조가 바뀌면 디바이스 폴링이 다시 걸리므로 고정한다.
   const handleAccountChanged = React.useCallback(() => onSaved(profile?.id ?? "", false), [onSaved, profile]);
 
-  // 조회한 목록이 앞에 오고, 정적 추천 목록은 로그인 전·조회 실패 때의 폴백이다.
-  // 편집 중인 프로필에 저장된 모델은 어느 목록에도 없어도 남긴다.
+  // 목록은 조회 결과뿐이다. 편집 중인 프로필에 저장된 모델은 조회 결과에 없어도 남긴다.
   const savedModel = profile?.model ?? "";
-  const modelOptions = React.useMemo(
-    () => mergeModelOptions(fetchedModels, suggestedModels(authType, effectiveFormat), savedModel),
-    [fetchedModels, authType, effectiveFormat, savedModel],
-  );
+  const modelOptions = React.useMemo(() => mergeModelOptions(fetchedModels, savedModel), [fetchedModels, savedModel]);
+  // 저장된 기본 모델은 저장된 인증 방식 기준이다. 방식을 바꾸는 중이면 쓰지 않는다.
+  const savedDefaultModel = profile?.auth_type === authType ? profile.default_model : undefined;
 
   const blurConnectionField = () => setFetchFields(blurFields);
 
@@ -490,7 +481,7 @@ function ProfileSheet({
   // biome-ignore lint/correctness/useExhaustiveDependencies: 같은 키는 같은 요청이다. 키로만 다시 만들어야 입력 중에 자동 조회가 다시 돌지 않는다.
   const autoRequest = React.useMemo(() => autoFetchRequest(selection, fetchFields), [autoFetchKey]);
 
-  // 자동 조회는 자격 증명이 있을 때만 한다. 없으면 요청해도 실패하므로 정적 목록만 보여 준다.
+  // 자동 조회는 자격 증명이 있을 때만 한다. 없으면 요청해도 실패하므로 목록 대신 안내를 보여 준다.
   // API 키: 확정된 키, 또는 저장된 API 키 프로필의 키(profile id로 서버가 꺼내 쓴다).
   // 구독: 같은 방식으로 저장돼 로그인된 프로필. 저장 전이거나 방식을 바꾼 상태면 로그인 API가 열리지 않는다.
   const hasSavedKey = Boolean(profile && keyHint && (profile.auth_type ?? "api_key") === "api_key");
@@ -559,7 +550,7 @@ function ProfileSheet({
       );
       // 응답 내용도 함께 보여 준다. 모델이 실제로 답한 것을 봐야 대화에서 동작하는 것과 같다고 할 수 있다.
       if (r.ok)
-        toast.success(`연결 성공 · ${r.latency_ms ?? "?"}ms · ${r.model ?? model}`, {
+        toast.success(`연결 성공 · ${r.latency_ms ?? "?"}ms · ${modelLabel(model, r.model)}`, {
           description: r.reply ? `응답: ${r.reply}` : undefined,
         });
       else toast.error(`LLM에 연결하지 못했습니다: ${r.error ?? "알 수 없는 오류"}`);
@@ -571,8 +562,9 @@ function ProfileSheet({
   }
 
   async function save() {
-    if (!name.trim() || !model.trim()) {
-      toast.error("이름과 모델을 입력하세요");
+    const invalid = profileSaveError(name, model, authType);
+    if (invalid) {
+      toast.error(invalid);
       return;
     }
     if (saving) return;
@@ -698,9 +690,15 @@ function ProfileSheet({
               isLoading={loadingModels}
               onReload={loadModels}
               portalContainer={sheetContentRef}
+              placeholder={isOAuth ? `비워 두면 ${modelLabel("", savedDefaultModel)}` : undefined}
             />
             <p className="text-muted-foreground text-xs">
-              {modelsHint(fetchedModels.length, modelsError, hasCredential)}
+              {modelsHint({
+                fetchedCount: fetchedModels.length,
+                error: modelsError,
+                hasCredential,
+                isSubscription: isOAuth,
+              })}
             </p>
           </div>
 
@@ -1106,7 +1104,9 @@ export default function LLMPage() {
                             {h.label}
                           </Badge>
                         </div>
-                        <code className="mt-1 block truncate font-mono text-muted-foreground text-xs">{p.model}</code>
+                        <code className="mt-1 block truncate font-mono text-muted-foreground text-xs">
+                          {modelLabel(p.model, p.default_model)}
+                        </code>
                       </div>
                     </div>
 

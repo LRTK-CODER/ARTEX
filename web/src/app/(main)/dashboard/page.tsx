@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
+import { modelLabel } from "@/lib/llm-models";
 import type {
   Activity,
   Agent,
@@ -1165,7 +1166,9 @@ export default function DashboardPage() {
             {activeProfile && (
               <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
                 <div className="text-[10px] text-muted-foreground">활성 모델</div>
-                <span className="font-mono text-[10px]">{activeProfile.model}</span>
+                <span className="font-mono text-[10px]">
+                  {modelLabel(activeProfile.model, activeProfile.default_model)}
+                </span>
               </div>
             )}
           </div>

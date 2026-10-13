@@ -30,6 +30,7 @@ export function ModelCombobox({
   isLoading,
   onReload,
   portalContainer,
+  placeholder = "모델 검색·선택 또는 직접 입력",
 }: {
   id: string;
   value: string;
@@ -39,6 +40,7 @@ export function ModelCombobox({
   onReload: () => void;
   // Sheet(Radix Dialog) 밖 <body>로 portal되면 Sheet의 포인터·스크롤 잠금에 걸리므로 Sheet 안으로 portal한다.
   portalContainer: React.RefObject<HTMLElement | null>;
+  placeholder?: string;
 }) {
   const typed = value.trim();
   const items = React.useMemo(() => {
@@ -61,7 +63,7 @@ export function ModelCombobox({
         inputValue={value}
         onInputValueChange={(next) => onValueChange(next)}
       >
-        <ComboboxInput id={id} className="w-full font-mono" placeholder="모델 검색·선택 또는 직접 입력" />
+        <ComboboxInput id={id} className="w-full font-mono" placeholder={placeholder} />
         <ComboboxContent portalContainer={portalContainer}>
           <ComboboxEmpty>모델 이름을 입력하세요</ComboboxEmpty>
           <ComboboxList>

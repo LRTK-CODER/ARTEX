@@ -12,9 +12,11 @@ type taskLLMResolution struct {
 	Name      string `json:"name"`
 	Format    string `json:"format"`
 	Model     string `json:"model"`
-	Source    string `json:"source"`
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
+	// DefaultModel 은 Model이 비었을 때 실제 호출에 쓰는 기본 모델이다. 프로필 해석에서만 채운다.
+	DefaultModel string `json:"default_model,omitempty"`
+	Source       string `json:"source"`
+	Available    bool   `json:"available"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMResolution {
@@ -23,11 +25,12 @@ func (s *Server) resolutionFromProfile(p *db.LLMProfile, source string) taskLLMR
 	}
 	id := p.ID
 	result := taskLLMResolution{
-		ProfileID: &id,
-		Name:      p.Name,
-		Format:    profileFormat(p.AuthType, p.Format),
-		Model:     p.Model,
-		Source:    source,
+		ProfileID:    &id,
+		Name:         p.Name,
+		Format:       profileFormat(p.AuthType, p.Format),
+		Model:        p.Model,
+		DefaultModel: profileDefaultModel(p),
+		Source:       source,
 	}
 	// 실제 실행 경로(loadProfileConfig)와 같은 판단을 쓴다. chatgpt_oauth는 API 키 대신
 	// 저장된 자격 증명이 있어야 쓸 수 있다.

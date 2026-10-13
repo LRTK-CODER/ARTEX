@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { modelLabel } from "@/lib/llm-models";
 import type {
   InterceptAction,
   InterceptRule,
@@ -348,7 +349,7 @@ function JudgeCard() {
                       <SelectItem value={FOLLOW_ACTIVE}>활성 프로필 따르기</SelectItem>
                       {profiles.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
-                          {p.name}({p.model})
+                          {p.name}({modelLabel(p.model, p.default_model)})
                         </SelectItem>
                       ))}
                     </SelectContent>

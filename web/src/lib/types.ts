@@ -680,6 +680,7 @@ export interface TaskLLMResolution {
   name: string;
   format: string;
   model: string;
+  default_model?: string; // model이 비었을 때 서버가 실제 호출에 쓰는 기본 모델(프로필 해석일 때만)
   source: "task_chain" | "agent_binding" | "global_profile" | "environment" | "global";
   available: boolean;
   reason?: string;
@@ -1030,6 +1031,8 @@ export interface LLMProfile {
   base_url?: string;
   proxy?: string;
   model: string;
+  // model이 비었을 때 서버가 실제 호출에 쓰는 기본 모델.
+  default_model?: string;
   api_key_hint?: string;
   rate_per_second: number;
   rate_per_minute: number;
@@ -1126,6 +1129,7 @@ export interface LLMPoolMember {
   profile_id: string;
   name: string;
   model: string;
+  default_model?: string; // model이 비었을 때 서버가 실제 호출에 쓰는 기본 모델
   format: string;
   priority: number;
   active: boolean; // 현재 활성 프로필인지(항상 체인 맨 앞)
@@ -1189,7 +1193,7 @@ export interface AgentDetail {
   versions: PromptVersion[];
   visibility: { mcp: number[]; skill: string[] };
   // 연결할 수 있는 LLM 프로필 후보('기본 모델' 드롭다운용). 현재 연결은 agent.llm_profile_id에 있다
-  llm_profiles?: { id: number; name: string; model: string; is_default: boolean }[];
+  llm_profiles?: { id: number; name: string; model: string; default_model?: string; is_default: boolean }[];
   wrapup_prompt?: string; // 저장된 마무리 프롬프트(비면 내장 기본값을 쓴다)
   wrapup_default?: string; // 내장 기본 마무리 프롬프트(자리표시자 / 기본값 복원용)
   wrapup_max_turns?: number; // 저장된 마무리 턴 수(0이면 내장 기본값을 쓴다)

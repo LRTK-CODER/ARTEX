@@ -570,6 +570,12 @@ func profileFormat(authType db.AuthType, format string) string {
 	return format
 }
 
+// profileDefaultModel 은 모델을 비운 프로필이 실제 호출에 쓰는 기본 모델이다. profileConfig와 같은
+// 형식 판단(profileFormat)을 거치므로 구독 프로필은 저장된 형식이 아니라 제공자 형식의 기본값이다.
+func profileDefaultModel(p *db.LLMProfile) string {
+	return agent.DefaultModel(llm.Format(profileFormat(p.AuthType, strings.TrimSpace(p.Format))))
+}
+
 // applyChatGPTOAuthRules 는 Codex 백엔드가 받는 형식으로 설정을 고정한다. Codex 백엔드는
 // Responses 형식의 stream:true 요청만 받으므로 프로필에 저장된 형식·수신 방식과 무관하게 맞춘다.
 // 주소는 codexBaseURL만 쓴다. 저장되거나 요청에 온 base_url을 따르면 구독 토큰이 그 호스트

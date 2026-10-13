@@ -1,49 +1,100 @@
+import * as models from "./llm-models.ts";
 import {
   autoFetchRequest,
   blurFields,
   currentFetchKey,
   isFreshModelFetch,
+  isSubscriptionAuth,
   isSubscriptionConnected,
   manualFetchRequest,
   mergeModelOptions,
   modelFetchKey,
+  modelLabel,
+  modelsHint,
   openFields,
-  suggestedModels,
+  profileSaveError,
   typeFields,
 } from "./llm-models.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("구독 형식은 인증 방식에 맞는 추천 모델을 준다", () => {
-  // 형식 인자는 구독에서 무시된다. 구독의 형식은 인증 방식으로 정해지기 때문이다.
-  assert.ok(suggestedModels("claude_oauth", "openai").includes("claude-opus-4-8"));
-  assert.ok(suggestedModels("chatgpt_oauth", "anthropic").includes("gpt-5"));
+test("모델 목록은 조회 결과만으로 만들고 중복은 한 번만 남긴다", () => {
+  assert.deepEqual(mergeModelOptions(["b", "a", "b"], ""), ["b", "a"]);
 });
 
-test("API 키 방식은 형식에 맞는 추천 모델을 준다", () => {
-  assert.ok(suggestedModels("api_key", "anthropic").includes("claude-opus-4-8"));
-  assert.ok(suggestedModels("api_key", "openai").includes("gpt-4o"));
-  assert.ok(suggestedModels("api_key", "openai-responses").includes("gpt-5"));
+test("조회 결과가 없으면 목록이 비고, 정적 추천 모델을 채우지 않는다", () => {
+  assert.deepEqual(mergeModelOptions([], ""), []);
 });
 
-test("조회한 모델이 정적 목록보다 앞에 오고 중복은 한 번만 남는다", () => {
-  const options = mergeModelOptions(["b", "a"], ["a", "c"], "");
-  assert.deepEqual(options, ["b", "a", "c"]);
+test("조회 결과가 없어도 편집 중인 프로필에 저장된 모델은 남는다", () => {
+  assert.deepEqual(mergeModelOptions([], "  custom-model  "), ["custom-model"]);
 });
 
 test("목록에 없는 저장된 모델은 맨 앞에 보존된다", () => {
-  const options = mergeModelOptions(["a"], ["b"], "  custom-model  ");
-  assert.deepEqual(options, ["custom-model", "a", "b"]);
+  assert.deepEqual(mergeModelOptions(["a"], "custom-model"), ["custom-model", "a"]);
 });
 
 test("목록에 이미 있는 저장된 모델은 자리를 옮기지 않는다", () => {
-  const options = mergeModelOptions(["a", "b"], [], "b");
-  assert.deepEqual(options, ["a", "b"]);
+  assert.deepEqual(mergeModelOptions(["a", "b"], "b"), ["a", "b"]);
 });
 
 test("빈 문자열과 공백 항목은 버린다", () => {
-  const options = mergeModelOptions([" ", "a "], [""], "");
-  assert.deepEqual(options, ["a"]);
+  assert.deepEqual(mergeModelOptions([" ", "a ", ""], ""), ["a"]);
+});
+
+test("정적 추천 목록을 내보내지 않는다", () => {
+  assert.equal(models.suggestedModels, undefined);
+});
+
+test("구독 인증 방식 판단", () => {
+  assert.equal(isSubscriptionAuth("claude_oauth"), true);
+  assert.equal(isSubscriptionAuth("chatgpt_oauth"), true);
+  assert.equal(isSubscriptionAuth("api_key"), false);
+});
+
+test("구독 프로필은 모델 없이 저장할 수 있다", () => {
+  assert.equal(profileSaveError("내 Claude", "", "claude_oauth"), "");
+  assert.equal(profileSaveError("내 ChatGPT", "  ", "chatgpt_oauth"), "");
+});
+
+test("구독 프로필도 이름은 있어야 한다", () => {
+  assert.equal(profileSaveError(" ", "", "claude_oauth"), "이름을 입력하세요");
+});
+
+test("API 키 프로필은 지금처럼 모델이 있어야 저장된다", () => {
+  assert.equal(profileSaveError("운영", "", "api_key"), "이름과 모델을 입력하세요");
+  assert.equal(profileSaveError("운영", "  ", "api_key"), "이름과 모델을 입력하세요");
+  assert.equal(profileSaveError("운영", "gpt-test", "api_key"), "");
+});
+
+test("빈 모델은 서버 기본 모델을 기본값으로 표시한다", () => {
+  assert.equal(modelLabel("", "gpt-test-default"), "기본값(gpt-test-default)");
+  assert.equal(modelLabel("  ", "gpt-test-default"), "기본값(gpt-test-default)");
+  assert.equal(modelLabel("", undefined), "기본값");
+});
+
+test("지정한 모델은 그대로 표시한다", () => {
+  assert.equal(modelLabel(" gpt-test ", "gpt-test-default"), "gpt-test");
+});
+
+test("자격 증명이 없으면 구독은 로그인 안내, API 키는 키 안내를 보인다", () => {
+  const base = { fetchedCount: 0, error: "", hasCredential: false };
+  assert.match(modelsHint({ ...base, isSubscription: true }), /저장한 뒤 로그인하면 쓸 수 있는 모델 목록이 나옵니다/);
+  // 이미 저장된 프로필의 로그인이 끊긴 경우에도 맞는 문구여야 하므로 "먼저 모델 없이 저장"을 강요하지 않는다.
+  assert.doesNotMatch(modelsHint({ ...base, isSubscription: true }), /먼저 모델 없이 저장/);
+  assert.match(modelsHint({ ...base, isSubscription: false }), /API 키를 입력/);
+  assert.doesNotMatch(modelsHint({ ...base, isSubscription: true }), /추천/);
+});
+
+test("조회 결과가 있으면 개수를, 실패하면 사유를 보인다", () => {
+  assert.match(
+    modelsHint({ fetchedCount: 3, error: "", hasCredential: true, isSubscription: true }),
+    /불러온 모델 3개/,
+  );
+  assert.match(
+    modelsHint({ fetchedCount: 0, error: "HTTP 401", hasCredential: true, isSubscription: false }),
+    /HTTP 401/,
+  );
 });
 
 const savedConnection = { baseUrl: "https://api.openai.com/v1", proxy: "", apiKey: "" };
