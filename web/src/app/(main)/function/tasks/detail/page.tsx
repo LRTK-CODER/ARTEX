@@ -37,6 +37,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { modelLabel } from "@/lib/llm-models";
 import type { LLMProfile, Task } from "@/lib/types";
 
 import { AssetsTab } from "./_tabs/assets-tab";
@@ -96,7 +97,11 @@ function TaskLLMControl({ task, profiles, onUpdated }: { task: Task; profiles: L
     : (activeProfile?.name ?? (activeID ? `프로필 #${activeID}` : "기본 프로필 사용"));
   const activeIndex = chain.indexOf(activeID);
   const backupCount = activeIndex >= 0 ? Math.max(0, chain.length - activeIndex - 1) : 0;
-  const currentTitle = [currentLabel, activeProfile?.model, backupCount > 0 ? `예비 ${backupCount}개` : ""]
+  const currentTitle = [
+    currentLabel,
+    activeProfile ? modelLabel(activeProfile.model, activeProfile.default_model) : "",
+    backupCount > 0 ? `예비 ${backupCount}개` : "",
+  ]
     .filter(Boolean)
     .join(" · ");
   let editorDescription = "순서나 현재 프로필을 바꾸면 다음 LLM 호출부터 적용됩니다.";

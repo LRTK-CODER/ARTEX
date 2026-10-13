@@ -54,7 +54,7 @@ export function modelsHint({ fetchedCount, error, hasCredential, isSubscription 
   if (fetchedCount > 0) return `API에서 불러온 모델 ${fetchedCount}개를 보여 줍니다. 목록에 없으면 직접 입력하세요.`;
   if (!hasCredential) {
     if (isSubscription)
-      return "로그인하면 쓸 수 있는 모델 목록이 나옵니다. 먼저 모델 없이 저장하고 로그인하세요. 비워 두면 기본 모델을 씁니다.";
+      return "저장한 뒤 로그인하면 쓸 수 있는 모델 목록이 나옵니다. 모델은 비워 둔 채 저장해도 되고, 비워 두면 기본 모델을 씁니다.";
     return "API 키를 입력하고 칸을 벗어나면 쓸 수 있는 모델 목록이 나옵니다. 직접 입력해도 됩니다.";
   }
   if (error) return `모델 목록을 불러오지 못했습니다(${error}). 다시 불러오거나 직접 입력하세요.`;

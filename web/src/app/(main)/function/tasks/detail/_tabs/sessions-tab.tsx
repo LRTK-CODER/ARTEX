@@ -52,6 +52,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useSideQuestions } from "@/hooks/use-side-questions";
 import { api, sseUrl } from "@/lib/api";
 import { shouldSubmitOnKey, useChatSendMode } from "@/lib/chat-send-mode";
+import { modelLabel } from "@/lib/llm-models";
 import { MOCK } from "@/lib/mock/enabled";
 import { isBtwCommand } from "@/lib/side-questions";
 import { taskAssetSourceLabel, taskAssetTypeLabel } from "@/lib/task-assets";
@@ -1789,7 +1790,10 @@ export function SessionsTab({ taskId }: { taskId: string }) {
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-xs [overflow-wrap:anywhere]">
                     {activeResolution.available
-                      ? [resolutionLabel(activeResolution), activeResolution.model].filter(Boolean).join(" / ")
+                      ? [
+                          resolutionLabel(activeResolution),
+                          modelLabel(activeResolution.model, activeResolution.default_model),
+                        ].join(" / ")
                       : activeResolution.reason || "사용 가능한 LLM 설정이 없습니다"}
                   </TooltipContent>
                 </Tooltip>

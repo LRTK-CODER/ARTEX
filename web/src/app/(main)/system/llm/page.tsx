@@ -31,6 +31,7 @@ import {
   blurFields,
   currentFetchKey,
   isFreshModelFetch,
+  isSubscriptionAuth,
   isSubscriptionConnected,
   type LLMFormat,
   type ModelFetchConnection,
@@ -424,7 +425,7 @@ function ProfileSheet({
   // 제공자별 서버 규칙과 같은 형식을 보내며 ChatGPT만 스트리밍으로 고정한다.
   const isChatGPT = authType === "chatgpt_oauth";
   const isClaude = authType === "claude_oauth";
-  const isOAuth = isChatGPT || isClaude;
+  const isOAuth = isSubscriptionAuth(authType);
   const subscriptionFormat = isClaude ? "anthropic" : "openai-responses";
   const effectiveFormat = isOAuth ? subscriptionFormat : format;
   // 로그인·해제 뒤 카드 목록만 새로 읽는다. 참조가 바뀌면 디바이스 폴링이 다시 걸리므로 고정한다.

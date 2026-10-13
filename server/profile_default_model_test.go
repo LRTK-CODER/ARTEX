@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,5 +110,31 @@ func TestProfileConfigEmptyModelSubscription(t *testing.T) {
 				t.Fatalf("provider 생성 실패: %v", err)
 			}
 		})
+	}
+}
+
+// 작업 LLM 해석 응답도 모델을 비운 프로필이면 실제로 쓰는 기본 모델을 default_model로 싣는다.
+// 화면 툴팁이 빈 모델 대신 "기본값(<모델>)"을 보이는 근거다. 실제 PostgreSQL이 필요하다.
+func TestTaskResolutionCarriesDefaultModel(t *testing.T) {
+	f := newOAuthFixture(t, nil)
+	f.profile.Model = ""
+	if _, err := f.pg.SaveProfile(f.profile); err != nil {
+		t.Fatal(err)
+	}
+	f.connect(t, time.Now().Add(time.Hour))
+	p, err := f.pg.ProfileByID(f.profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := f.s.resolutionFromProfile(p, "agent_binding")
+	if !got.Available || got.Model != "" || got.DefaultModel != "gpt-5" {
+		t.Fatalf("available=%v model=%q default_model=%q, want true \"\" gpt-5", got.Available, got.Model, got.DefaultModel)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"default_model":"gpt-5"`) {
+		t.Fatalf("응답에 default_model이 없다: %s", raw)
 	}
 }

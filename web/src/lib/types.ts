@@ -680,6 +680,7 @@ export interface TaskLLMResolution {
   name: string;
   format: string;
   model: string;
+  default_model?: string; // model이 비었을 때 서버가 실제 호출에 쓰는 기본 모델(프로필 해석일 때만)
   source: "task_chain" | "agent_binding" | "global_profile" | "environment" | "global";
   available: boolean;
   reason?: string;

@@ -4,6 +4,7 @@ import {
   blurFields,
   currentFetchKey,
   isFreshModelFetch,
+  isSubscriptionAuth,
   isSubscriptionConnected,
   manualFetchRequest,
   mergeModelOptions,
@@ -45,6 +46,12 @@ test("정적 추천 목록을 내보내지 않는다", () => {
   assert.equal(models.suggestedModels, undefined);
 });
 
+test("구독 인증 방식 판단", () => {
+  assert.equal(isSubscriptionAuth("claude_oauth"), true);
+  assert.equal(isSubscriptionAuth("chatgpt_oauth"), true);
+  assert.equal(isSubscriptionAuth("api_key"), false);
+});
+
 test("구독 프로필은 모델 없이 저장할 수 있다", () => {
   assert.equal(profileSaveError("내 Claude", "", "claude_oauth"), "");
   assert.equal(profileSaveError("내 ChatGPT", "  ", "chatgpt_oauth"), "");
@@ -72,7 +79,9 @@ test("지정한 모델은 그대로 표시한다", () => {
 
 test("자격 증명이 없으면 구독은 로그인 안내, API 키는 키 안내를 보인다", () => {
   const base = { fetchedCount: 0, error: "", hasCredential: false };
-  assert.match(modelsHint({ ...base, isSubscription: true }), /로그인하면 쓸 수 있는 모델 목록이 나옵니다/);
+  assert.match(modelsHint({ ...base, isSubscription: true }), /저장한 뒤 로그인하면 쓸 수 있는 모델 목록이 나옵니다/);
+  // 이미 저장된 프로필의 로그인이 끊긴 경우에도 맞는 문구여야 하므로 "먼저 모델 없이 저장"을 강요하지 않는다.
+  assert.doesNotMatch(modelsHint({ ...base, isSubscription: true }), /먼저 모델 없이 저장/);
   assert.match(modelsHint({ ...base, isSubscription: false }), /API 키를 입력/);
   assert.doesNotMatch(modelsHint({ ...base, isSubscription: true }), /추천/);
 });
