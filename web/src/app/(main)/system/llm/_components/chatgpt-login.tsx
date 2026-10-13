@@ -254,10 +254,13 @@ function PasteLogin({
 export function SubscriptionAccount({
   profile,
   onChanged,
+  onOAuthChange,
   provider = "chatgpt",
 }: {
   profile: LLMProfile | null;
   onChanged: () => void;
+  // 로그인·해제 뒤 다시 읽은 연결 상태. 편집 패널이 이 값으로 모델 자동 조회를 다시 판단한다.
+  onOAuthChange?: (oauth: LLMProfileOAuth | undefined) => void;
   provider?: "chatgpt" | "claude";
 }) {
   const label = provider === "claude" ? "Claude" : "ChatGPT";
@@ -275,12 +278,14 @@ export function SubscriptionAccount({
   const refresh = React.useCallback(async () => {
     try {
       const profiles = await api.llmProfiles();
-      setOAuth(profiles.find((p) => p.id === profileKey)?.oauth);
+      const latest = profiles.find((p) => p.id === profileKey)?.oauth;
+      setOAuth(latest);
+      onOAuthChange?.(latest);
     } catch (e) {
       toast.error(`연결 상태를 다시 읽지 못했습니다: ${(e as Error).message}`);
     }
     onChanged();
-  }, [profileKey, onChanged]);
+  }, [profileKey, onChanged, onOAuthChange]);
 
   const handleConnected = React.useCallback(() => {
     setIsLoginOpen(false);

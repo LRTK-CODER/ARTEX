@@ -26,8 +26,26 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { oauthConnection } from "@/lib/chatgpt-oauth";
-import { type LLMFormat, mergeModelOptions, suggestedModels } from "@/lib/llm-models";
-import type { LLMAuthType, LLMPoolMember, LLMPoolStatus, LLMProfile, LLMRetryOverride } from "@/lib/types";
+import {
+  autoFetchRequest,
+  commitConnection,
+  isFreshModelFetch,
+  isSubscriptionConnected,
+  type LLMFormat,
+  type ModelFetchConnection,
+  type ModelFetchRequest,
+  mergeModelOptions,
+  modelFetchKey,
+  suggestedModels,
+} from "@/lib/llm-models";
+import type {
+  LLMAuthType,
+  LLMPoolMember,
+  LLMPoolStatus,
+  LLMProfile,
+  LLMProfileOAuth,
+  LLMRetryOverride,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { SubscriptionAccount } from "./_components/chatgpt-login";
@@ -67,8 +85,9 @@ const EFFORT_LEVELS: { value: string; label: string }[] = [
   { value: "max", label: "max" },
 ];
 
-// 자동 조회를 키 입력이 멈춘 뒤에 보내기 위한 대기 시간.
+// 자동 조회를 보내기 전 대기 시간. 패널을 열 때 잇따르는 상태 변경을 한 번의 요청으로 모은다.
 const MODEL_FETCH_DEBOUNCE_MS = 500;
+const EMPTY_CONNECTION: ModelFetchConnection = { baseUrl: "", proxy: "", apiKey: "" };
 
 // 모델 칸 아래 안내. 지금 목록이 조회 결과인지 정적 추천인지, 조회가 왜 안 됐는지 알린다.
 function modelsHint(fetchedCount: number, error: string, hasCredential: boolean) {
@@ -368,6 +387,12 @@ function ProfileSheet({
   const [fetchedModels, setFetchedModels] = React.useState<string[]>([]);
   const [loadingModels, setLoadingModels] = React.useState(false);
   const [modelsError, setModelsError] = React.useState(""); // 자동 조회 실패 사유. 비어 있으면 실패하지 않았다
+  // 자동 조회가 쓰는 주소·프록시·키. 칸을 벗어날 때만 바뀐다(commitConnection).
+  const [committed, setCommitted] = React.useState<ModelFetchConnection>(EMPTY_CONNECTION);
+  // 구독 연결 상태. 패널 안에서 로그인·해제하면 profile prop은 그대로라 여기서 따로 들고 있는다.
+  const [oauth, setOAuth] = React.useState<LLMProfileOAuth | undefined>(undefined);
+  const fetchSeqRef = React.useRef(0); // 마지막으로 보낸(또는 무효화한) 조회 번호
+  const liveFetchKeyRef = React.useRef(""); // 지금 화면의 형식·인증·주소로 만든 조회 키
   const sheetContentRef = React.useRef<HTMLDivElement>(null);
 
   // 열 때마다 받은 profile로 폼을 다시 채운다(새로 만들기면 기본값으로 초기화). 패널을 닫았다 열면
@@ -396,6 +421,8 @@ function ProfileSheet({
     setKeyHint(profile?.api_key_hint ?? "");
     setFetchedModels([]);
     setModelsError("");
+    setCommitted({ baseUrl: profile?.base_url ?? "", proxy: profile?.proxy ?? "", apiKey: "" });
+    setOAuth(profile?.oauth);
   }, [open, profile]);
 
   const profileId = profile ? Number(profile.id) : undefined;
@@ -416,49 +443,76 @@ function ProfileSheet({
     [fetchedModels, authType, effectiveFormat, savedModel],
   );
 
+  const commitTypedConnection = () => setCommitted((prev) => commitConnection(prev, { baseUrl, proxy, apiKey }));
+
+  const liveFetchKey = modelFetchKey({ format: effectiveFormat, authType, profileId, baseUrl, proxy, apiKey });
+  React.useEffect(() => {
+    liveFetchKeyRef.current = liveFetchKey;
+  }, [liveFetchKey]);
+
+  // 조회를 보내고, 늦게 온 응답이면 null을 돌려준다. 로딩 표시는 마지막 요청만 끈다.
+  const fetchModels = React.useCallback(async (request: ModelFetchRequest) => {
+    fetchSeqRef.current += 1;
+    const ticket = { seq: fetchSeqRef.current, key: modelFetchKey(request) };
+    setLoadingModels(true);
+    try {
+      const r = await api.fetchLLMModels(
+        request.format,
+        request.baseUrl,
+        request.apiKey,
+        request.proxy,
+        request.profileId,
+        request.authType,
+      );
+      return isFreshModelFetch(ticket, fetchSeqRef.current, liveFetchKeyRef.current) ? r : null;
+    } catch (e) {
+      if (!isFreshModelFetch(ticket, fetchSeqRef.current, liveFetchKeyRef.current)) return null;
+      throw e;
+    } finally {
+      if (ticket.seq === fetchSeqRef.current) setLoadingModels(false);
+    }
+  }, []);
+
   // 자동 조회는 자격 증명이 있을 때만 한다. 없으면 요청해도 실패하므로 정적 목록만 보여 준다.
-  // API 키: 입력한 키, 또는 저장된 API 키 프로필의 키(profile id로 서버가 꺼내 쓴다).
+  // API 키: 확정된 키, 또는 저장된 API 키 프로필의 키(profile id로 서버가 꺼내 쓴다).
   // 구독: 같은 방식으로 저장돼 로그인된 프로필. 저장 전이거나 방식을 바꾼 상태면 로그인 API가 열리지 않는다.
   const hasSavedKey = Boolean(profile && keyHint && (profile.auth_type ?? "api_key") === "api_key");
-  const isSubscriptionConnected =
-    profile?.auth_type === authType && Boolean(profile?.oauth?.connected) && !profile?.oauth?.needs_login;
-  const hasCredential = isOAuth ? isSubscriptionConnected : apiKey.trim() !== "" || hasSavedKey;
+  const hasCredential = isOAuth
+    ? isSubscriptionConnected(profile?.auth_type, authType, oauth)
+    : committed.apiKey.trim() !== "" || hasSavedKey;
+  const autoRequest = React.useMemo(
+    () => autoFetchRequest({ format: effectiveFormat, authType, profileId }, committed),
+    [effectiveFormat, authType, profileId, committed],
+  );
 
+  // 패널을 열 때, 형식·인증 방식·로그인 상태가 바뀔 때, 주소·프록시·키 칸을 벗어날 때 조회한다.
   React.useEffect(() => {
+    // 조건이 바뀌었으니 진행 중인 조회(버튼으로 누른 것 포함)는 무효다.
+    fetchSeqRef.current += 1;
+    setLoadingModels(false);
     setFetchedModels([]);
     setModelsError("");
     if (!open || !hasCredential) return;
-    let isStale = false;
-    // 키·Base URL을 치는 동안 글자마다 요청하지 않도록 입력이 멈출 때까지 기다린다.
+    // 패널을 열면 폼을 채우는 상태 변경이 잇따르므로 잠깐 모아서 한 번만 보낸다.
     const timer = setTimeout(() => {
-      setLoadingModels(true);
-      api
-        .fetchLLMModels(effectiveFormat, baseUrl, apiKey, proxy, profileId, authType)
+      fetchModels(autoRequest)
         .then((r) => {
-          if (isStale) return;
+          if (!r) return;
           if (r.ok && r.models && r.models.length > 0) setFetchedModels(r.models);
           else setModelsError(r.error ?? "받은 모델이 없습니다");
         })
-        .catch((e: unknown) => {
-          if (!isStale) setModelsError(e instanceof Error ? e.message : String(e));
-        })
-        .finally(() => {
-          if (!isStale) setLoadingModels(false);
-        });
+        .catch((e: unknown) => setModelsError(e instanceof Error ? e.message : String(e)));
     }, MODEL_FETCH_DEBOUNCE_MS);
-    return () => {
-      isStale = true;
-      clearTimeout(timer);
-      setLoadingModels(false);
-    };
-  }, [open, hasCredential, effectiveFormat, baseUrl, apiKey, proxy, profileId, authType]);
+    return () => clearTimeout(timer);
+  }, [open, hasCredential, autoRequest, fetchModels]);
 
   // 다시 불러오기 버튼. 자격 증명이 없어도 시도할 수 있게 두고(키 없는 게이트웨이), 결과를 알림으로 보여 준다.
+  // 사용자가 누른 것이므로 확정 전인 입력값을 그대로 쓴다.
   async function loadModels() {
     if (loadingModels) return;
-    setLoadingModels(true);
     try {
-      const r = await api.fetchLLMModels(effectiveFormat, baseUrl, apiKey, proxy, profileId, authType);
+      const r = await fetchModels({ format: effectiveFormat, authType, profileId, baseUrl, proxy, apiKey });
+      if (!r) return;
       if (r.ok && r.models && r.models.length > 0) {
         setFetchedModels(r.models);
         setModelsError("");
@@ -468,8 +522,6 @@ function ProfileSheet({
       }
     } catch (e) {
       toast.error(`모델 목록을 불러오지 못했습니다: ${(e as Error).message}`);
-    } finally {
-      setLoadingModels(false);
     }
   }
 
@@ -604,6 +656,7 @@ function ProfileSheet({
               key={`${profile?.id ?? "new"}-${authType}`}
               profile={profile}
               onChanged={handleAccountChanged}
+              onOAuthChange={setOAuth}
               provider={isClaude ? "claude" : "chatgpt"}
             />
           ) : (
@@ -647,6 +700,7 @@ function ProfileSheet({
                 placeholder="https://api.openai.com/v1"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
+                onBlur={commitTypedConnection}
               />
             </div>
           )}
@@ -659,6 +713,7 @@ function ProfileSheet({
               placeholder="socks5://user:pass@127.0.0.1:1080 · http://127.0.0.1:8080"
               value={proxy}
               onChange={(e) => setProxy(e.target.value)}
+              onBlur={commitTypedConnection}
             />
             <p className="text-muted-foreground text-xs">
               LLM으로 나가는 요청만 이 프록시를 거칩니다. http/https/socks5를 지원하고 계정·비밀번호를 붙일 수
@@ -693,6 +748,7 @@ function ProfileSheet({
                 placeholder={keyHint ? `설정됨(${keyHint}), 비워 두면 바꾸지 않음` : "sk-…"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
+                onBlur={commitTypedConnection}
               />
             </div>
           )}

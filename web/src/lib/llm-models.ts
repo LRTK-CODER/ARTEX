@@ -1,7 +1,7 @@
 // LLM 프로필 폼의 모델 선택 목록을 만드는 순수 로직.
 // 정적 추천 목록은 조회가 안 될 때(로그인 전, 조회 실패)의 폴백이다. 실제 조회 결과가 언제나 앞선다.
 // 최신으로 유지하는 것이 목적이 아니므로, 백엔드 기본값(agent/provider.go)과 알려진 구독 모델만 둔다.
-import type { LLMAuthType } from "./types";
+import type { LLMAuthType, LLMProfileOAuth } from "./types";
 
 export type LLMFormat = "anthropic" | "openai" | "openai-responses";
 
@@ -30,4 +30,69 @@ export function mergeModelOptions(fetched: readonly string[], suggested: readonl
   const saved = current.trim();
   if (saved && !seen.has(saved)) options.unshift(saved);
   return options;
+}
+
+// 모델 조회 요청에 들어가는 값. 주소·프록시·키는 사용자가 칸에 치는 값이다.
+export interface ModelFetchConnection {
+  baseUrl: string;
+  proxy: string;
+  apiKey: string;
+}
+
+export interface ModelFetchRequest extends ModelFetchConnection {
+  format: LLMFormat;
+  authType: LLMAuthType;
+  profileId?: number;
+}
+
+// 요청을 가르는 키. 응답이 지금 화면의 형식·인증·주소와 같은 요청에서 왔는지 비교하는 데 쓴다.
+export function modelFetchKey(request: ModelFetchRequest): string {
+  return JSON.stringify([
+    request.format,
+    request.authType,
+    request.profileId ?? null,
+    request.baseUrl.trim(),
+    request.proxy.trim(),
+    request.apiKey.trim(),
+  ]);
+}
+
+// 칸을 벗어날 때(blur) 지금 입력값을 자동 조회 대상으로 확정한다.
+// 치는 동안의 중간 값(예: https://api.openai.co)으로 저장된 키가 나가지 않게, 자동 조회는 확정된 값만 쓴다.
+// 값이 같으면 이전 객체를 그대로 돌려 자동 조회를 다시 일으키지 않는다.
+export function commitConnection(committed: ModelFetchConnection, live: ModelFetchConnection): ModelFetchConnection {
+  const isSame =
+    committed.baseUrl.trim() === live.baseUrl.trim() &&
+    committed.proxy.trim() === live.proxy.trim() &&
+    committed.apiKey.trim() === live.apiKey.trim();
+  return isSame ? committed : { baseUrl: live.baseUrl, proxy: live.proxy, apiKey: live.apiKey };
+}
+
+// 자동 조회에 보낼 요청. 형식·인증 방식은 고르는 즉시, 주소·프록시·키는 확정된 값(commitConnection)만 쓴다.
+// 그래서 칸에 치는 동안에는 요청 키가 바뀌지 않아 자동 조회가 나가지 않는다.
+export function autoFetchRequest(
+  selection: Pick<ModelFetchRequest, "format" | "authType" | "profileId">,
+  committed: ModelFetchConnection,
+): ModelFetchRequest {
+  return { ...committed, format: selection.format, authType: selection.authType, profileId: selection.profileId };
+}
+
+// 구독 프로필이 지금 인증 방식으로 저장돼 로그인된 상태인가. oauth는 패널 안 로그인·해제로 바뀐 최신 상태다.
+export function isSubscriptionConnected(
+  savedAuthType: LLMAuthType | undefined,
+  authType: LLMAuthType,
+  oauth: LLMProfileOAuth | undefined,
+): boolean {
+  return savedAuthType === authType && Boolean(oauth?.connected) && !oauth?.needs_login;
+}
+
+export interface ModelFetchTicket {
+  seq: number;
+  key: string;
+}
+
+// 응답을 목록에 반영해도 되는가. 뒤에 다른 요청이 나갔거나(번호가 다름), 요청 뒤 형식·인증·주소가
+// 바뀌었으면(키가 다름) 늦게 온 응답이라 버린다.
+export function isFreshModelFetch(ticket: ModelFetchTicket, latestSeq: number, currentKey: string): boolean {
+  return ticket.seq === latestSeq && ticket.key === currentKey;
 }
