@@ -11,10 +11,9 @@ const PostgresDSNEnv = "ARTEX_PG_DSN"
 // 시작할 때 읽고 프로세스 환경에서 지우는 비밀 환경 변수.
 // ARTEX_LLM_*는 이름 전체를 비밀로 보지는 않지만 ARTEX_LLM_PROXY에 프록시 자격 증명이,
 // ARTEX_LLM_BASE_URL에 토큰이 든 주소가 올 수 있어 접두사째 지운다.
-var (
-	secretEnvNames  = []string{PostgresDSNEnv, "ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
-	secretEnvPrefix = "ARTEX_LLM_"
-)
+var secretEnvNames = []string{PostgresDSNEnv, "ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
+
+const secretEnvPrefix = "ARTEX_LLM_"
 
 // SecretEnv 는 시작할 때 프로세스 환경에서 읽어 둔 비밀 환경 변수다. 키는 대문자 이름이다.
 // 제로값(nil)은 "비밀 환경 변수가 하나도 없음"이다.
@@ -26,7 +25,7 @@ func (e SecretEnv) Get(name string) string {
 }
 
 // ReadSecretEnv 는 ARTEX가 읽는 비밀 환경 변수를 프로세스 환경에서 읽기만 한다. 환경은 바꾸지 않는다.
-// 서버 시작에는 TakeSecretEnv를 쓴다. 이 함수는 환경을 지우면 안 되는 곳(같은 프로세스의 여러 테스트)을 위한 것이다.
+// 서버 시작에는 TakeSecretEnv를 쓴다. 이 함수는 환경을 지우면 안 되는 곳, 곧 같은 프로세스에서 여러 번 읽어야 하는 곳에 쓴다.
 func ReadSecretEnv() SecretEnv {
 	env := SecretEnv{}
 	for _, kv := range os.Environ() {

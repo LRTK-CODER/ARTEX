@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -15,7 +16,7 @@ import (
 // 그대로이며, 두 번 돌려도 같음을 확인한다(#160).
 func TestRefreshHanAgentDefaults(t *testing.T) {
 	skipWithoutPostgres(t)
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres not configured: %v", err)
 	}
