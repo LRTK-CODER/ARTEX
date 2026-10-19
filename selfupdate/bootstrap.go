@@ -21,6 +21,11 @@ import (
 // 명시적으로 끊으면 한눈에 보이고, 하위 프로세스의 쓸데없는 디스크 탐색도 한 번 줄인다.
 const smokeEnv = "ARTEX_SELFUPDATE_SMOKE"
 
+// smokeEnvAllowlist 는 스모크 테스트 하위 프로세스에 넘기는 서버 환경 변수다. 내려받은 바이너리는 출처가
+// 탈취됐다면 공격자 코드이므로, API 키·DB DSN 같은 비밀값이 든 서버 환경 전체를 넘기지 않는다.
+// -h 출력에 필요한 실행 환경만 둔다. SystemRoot·TEMP·TMP·USERPROFILE은 Windows 프로세스 시작에 쓰인다.
+var smokeEnvAllowlist = []string{"PATH", "HOME", "TMPDIR", "TEMP", "TMP", "SystemRoot", "USERPROFILE"}
+
 // Action 은 Bootstrap이 main에 주는 지시다.
 type Action int
 
@@ -182,7 +187,7 @@ func smokeTest(bin string) error {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "-h")
-	cmd.Env = append(os.Environ(), smokeEnv+"=1")
+	cmd.Env = smokeEnviron(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		return errors.New("스모크 테스트 시간 초과(새 바이너리가 응답하지 않음)")
@@ -195,6 +200,25 @@ func smokeTest(bin string) error {
 		return fmt.Errorf("스모크 테스트 실패: %v: %s", err, snippet)
 	}
 	return nil
+}
+
+// smokeEnviron 은 environ에서 허용 목록의 변수만 남기고 스모크 테스트 표시를 더한다.
+// Windows 환경 변수 이름은 대소문자를 가리지 않으므로 이름을 대소문자 구분 없이 비교한다.
+func smokeEnviron(environ []string) []string {
+	out := make([]string, 0, len(smokeEnvAllowlist)+1)
+	for _, kv := range environ {
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		for _, allowed := range smokeEnvAllowlist {
+			if strings.EqualFold(name, allowed) {
+				out = append(out, kv)
+				break
+			}
+		}
+	}
+	return append(out, smokeEnv+"=1")
 }
 
 // swap 은 현재 바이너리를 임시 저장한 새 버전으로 바꾼다.

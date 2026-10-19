@@ -102,7 +102,7 @@ func writeMarker(path string, m marker) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	return writeFilePrivate(path, b)
 }
 
 // cleanStaged 는 임시 저장본을 지운다. 바이너리 교체 성공, 검증 실패, 사용자 취소가 모두 이 함수를 지난다. 남은
