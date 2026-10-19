@@ -27,7 +27,6 @@ var allowedHosts = map[string]bool{
 	"github.com":                           true,
 	"objects.githubusercontent.com":        true, // release 자산이 실제로 저장되는 객체 스토리지
 	"release-assets.githubusercontent.com": true,
-	"raw.githubusercontent.com":            true,
 }
 
 // Release 는 GitHub Release에서 필요한 필드다.

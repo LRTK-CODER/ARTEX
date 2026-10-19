@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -20,6 +22,11 @@ const sumsAsset = "SHA256SUMS"
 
 // maxBinarySize 는 압축을 푼 바이너리 크기를 제한해 잘못된 zip이 디스크를 가득 채우지 못하게 한다.
 const maxBinarySize = 512 << 20 // 512 MiB
+
+// maxZipSize 는 내려받는 배포 패키지 크기의 고정 상한이다. 릴리스가 자산 크기를 알려 주지 않거나
+// 출처가 탈취돼 끝없는 응답을 보내도 디스크를 가득 채우지 못하게 한다. 현재 릴리스 zip은 플랫폼마다 약 13~14 MB라
+// 512 MiB는 30배 넘는 여유가 있다. 같은 크기인 maxBinarySize를 그대로 쓴다.
+const maxZipSize = maxBinarySize
 
 // Phase 는 업데이트 과정의 단계다. SSE 이벤트의 phase 필드로 그대로 쓴다.
 type Phase string
@@ -45,12 +52,17 @@ type Progress func(ph Phase, pct int, msg string)
 //
 // 함수가 반환하면 임시 저장이 끝난 것이다. 호출자는 이어서 정상 종료하고 ExitRestart로 종료한다.
 func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion string, prog Progress) error {
-	if prog == nil {
-		prog = func(Phase, int, string) {}
-	}
 	p, err := ResolvePaths()
 	if err != nil {
 		return err
+	}
+	return stageAt(ctx, c, rel, p, currentVersion, prog)
+}
+
+// stageAt 은 Stage의 본문이다. 경로를 인자로 받는 이유는 테스트가 실행 파일 디렉터리 대신 격리된 디렉터리를 쓰게 하기 위해서다.
+func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, currentVersion string, prog Progress) error {
+	if prog == nil {
+		prog = func(Phase, int, string) {}
 	}
 	if err := checkWritable(p.Dir); err != nil {
 		return err
@@ -82,7 +94,7 @@ func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion str
 	}()
 
 	prog(PhaseDownload, 0, fmt.Sprintf("%s(%s) 다운로드 중…", name, humanSize(asset.Size)))
-	got, err := download(ctx, c, asset, zipPath, prog)
+	got, err := download(ctx, c, asset, zipPath, maxZipSize, prog)
 	if err != nil {
 		return err
 	}
@@ -106,7 +118,7 @@ func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion str
 	if err != nil {
 		return fmt.Errorf("새 바이너리 체크섬 계산: %w", err)
 	}
-	if err := os.WriteFile(p.Sum, []byte(binSum), 0o644); err != nil {
+	if err := writeFilePrivate(p.Sum, []byte(binSum)); err != nil {
 		return fmt.Errorf("체크섬 쓰기: %w", err)
 	}
 	if err := os.Rename(binPath, p.New); err != nil {
@@ -188,23 +200,43 @@ func isHexSHA256(s string) bool {
 }
 
 // download 는 자산을 dst에 쓰면서 SHA256을 계산하고 Content-Length에 따라 진행 상황을 보고한다.
-func download(ctx context.Context, c *http.Client, a Asset, dst string, prog Progress) (string, error) {
+//
+// 받는 크기는 릴리스가 알려 준 자산 크기까지, 크기를 모르면 maxBytes까지다. 다 받은 뒤가 아니라 받는 도중에
+// 상한을 넘는 순간 멈춘다. 실패하면 dst를 지운다.
+func download(ctx context.Context, c *http.Client, a Asset, dst string, maxBytes int64, prog Progress) (_ string, err error) {
+	if a.Size > maxBytes {
+		return "", fmt.Errorf("%s의 크기(%s)가 상한 %s을(를) 넘어 다운로드를 거부합니다", a.Name, humanSize(a.Size), humanSize(maxBytes))
+	}
+	limit := maxBytes
+	if a.Size > 0 {
+		limit = a.Size
+	}
+
 	body, err := get(ctx, c, a.URL)
 	if err != nil {
 		return "", fmt.Errorf("%s 다운로드: %w", a.Name, err)
 	}
 	defer body.Close()
 
-	f, err := os.Create(dst)
+	f, err := createExclusive(dst, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("임시 파일 만들기: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close() // 성공 경로는 아래에서 Sync를 확인했고, 실패 경로는 파일을 지우므로 닫기 오류는 볼 필요가 없다
+		if err != nil {
+			_ = os.Remove(dst)
+		}
+	}()
 
 	h := sha256.New()
 	pw := &progressWriter{total: a.Size, prog: prog, name: a.Name, last: time.Now()}
-	if _, err := io.Copy(io.MultiWriter(f, h, pw), body); err != nil {
+	// 상한보다 1바이트 더 읽게 해서 "딱 상한"과 "상한 초과"를 가른다.
+	if _, err := io.Copy(io.MultiWriter(f, h, pw), io.LimitReader(body, limit+1)); err != nil {
 		return "", fmt.Errorf("다운로드 중단: %w", err)
+	}
+	if pw.written > limit {
+		return "", fmt.Errorf("%s 응답이 상한 %s을(를) 넘어 다운로드를 중단했습니다", a.Name, humanSize(limit))
 	}
 	if err := f.Sync(); err != nil {
 		return "", fmt.Errorf("디스크 쓰기 실패: %w", err)
@@ -213,6 +245,47 @@ func download(ctx context.Context, c *http.Client, a Asset, dst string, prog Pro
 		return "", fmt.Errorf("다운로드가 완전하지 않습니다: 기대값 %d바이트, 실제값 %d바이트", a.Size, pw.written)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// createExclusive 는 path에 새 파일을 만든다. 업데이트 임시 파일은 이름이 고정이라, 그 자리에 누가 미리 둔
+// 심볼릭 링크를 따라가면 엉뚱한 파일을 덮어쓴다. 그래서 남은 항목을 먼저 지우고(os.Remove는 링크 자체를 지운다)
+// O_EXCL로 만든다. 지운 뒤 다시 생기면 O_EXCL이 실패한다.
+func createExclusive(path string, perm os.FileMode) (*os.File, error) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+}
+
+// writeFilePrivate 는 data를 소유자만 읽고 쓸 수 있는(0600) 파일로 path에 쓴다. 같은 디렉터리의 무작위 이름
+// 임시 파일에 쓴 뒤 rename한다. 그래서 path가 심볼릭 링크여도 따라가지 않고 링크 자체를 바꾸며, 기존 파일의
+// 권한이 남지 않고, 쓰는 도중 실패해도 기존 파일이 깨지지 않는다.
+func writeFilePrivate(path string, data []byte) (err error) {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() {
+		if err != nil {
+			_ = f.Close() // 이미 실패했으므로 닫기 오류는 원래 오류보다 알려 주는 것이 없다
+			_ = os.Remove(tmp)
+		}
+	}()
+	// os.CreateTemp는 0600으로 만들지만, 이 함수의 약속이므로 명시한다.
+	if err := f.Chmod(0o600); err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // get 은 허용 목록 제약을 받는 GET을 보내고 응답 본문을 돌려준다.
@@ -261,7 +334,8 @@ func extractBinary(zipPath, dst string) error {
 		}
 		defer rc.Close()
 
-		f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+		// 바로 실행해 볼 파일이라 실행 권한은 두되 소유자만 쓰게 한다.
+		f, err := createExclusive(dst, 0o700)
 		if err != nil {
 			return fmt.Errorf("새 바이너리 쓰기: %w", err)
 		}
