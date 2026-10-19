@@ -322,3 +322,41 @@ func TestClaudePoolDoesNotResendRefusedRequest(t *testing.T) {
 		}
 	}
 }
+
+// 거절은 모델의 판단이지 프로필 장애가 아니다. 거절이 회로 차단 기준(softTripAfter)보다 많이 이어져도
+// 회로가 열리지 않고, 그다음 요청도 백업 프로필로 넘어가지 않아야 한다.
+func TestClaudeRefusalDoesNotTripPoolBreaker(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stream bool
+	}{{"complete", false}, {"stream", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var headCalls, backupCalls atomic.Int32
+			head := claudeRefusalServer(&headCalls)
+			t.Cleanup(head.Close)
+			backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { backupCalls.Add(1); w.WriteHeader(500) }))
+			t.Cleanup(backup.Close)
+			reg := llmpool.NewRegistry(nil, nil)
+			pool := llmpool.New([]*llmpool.Member{
+				{ID: 1, Rank: 2, Prov: newClaudeProvider(t, head.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})},
+				{ID: 2, Rank: 1, Prov: newClaudeProvider(t, backup.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})},
+			}, reg)
+			req := llm.CompletionRequest{Messages: []llm.Message{llm.UserText("hi")}}
+			for i := 1; i <= 4; i++ {
+				var err error
+				if tc.stream {
+					_, err = streamAll(t.Context(), pool, req)
+				} else {
+					_, _, _, err = pool.Complete(t.Context(), req)
+				}
+				if !errors.Is(err, ErrModelRefused) {
+					t.Fatalf("%d번째 호출이 거절 오류로 끝나지 않았다: %v", i, err)
+				}
+			}
+			if headCalls.Load() != 4 || backupCalls.Load() != 0 || reg.IsOpen(1) || reg.Get(1).Fails != 0 {
+				t.Fatalf("거절을 프로필 장애로 셌다: head=%d backup=%d open=%v fails=%d",
+					headCalls.Load(), backupCalls.Load(), reg.IsOpen(1), reg.Get(1).Fails)
+			}
+		})
+	}
+}

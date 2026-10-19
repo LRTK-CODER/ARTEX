@@ -26,6 +26,10 @@ func (e *ClaudeRequestError) Unwrap() error { return e.cause }
 // NoReplay 는 제공자 종류를 모르는 실패 전환 풀에서도 같은 요청을 다시 보내지 않게 한다.
 func (e *ClaudeRequestError) NoReplay() bool { return true }
 
+// ProfileHealthy 는 명시적 거절이 프로필 장애가 아니라 모델의 판단임을 실패 전환 풀에 알린다.
+// 풀은 이때 회로 차단기에 실패를 기록하지 않아, 거절이 이어져도 다음 요청이 백업 프로필로 가지 않는다.
+func (e *ClaudeRequestError) ProfileHealthy() bool { return errors.Is(e.cause, ErrModelRefused) }
+
 type claudeProvider struct{ llm.Provider }
 
 func (p claudeProvider) Complete(ctx context.Context, req llm.CompletionRequest) (llm.Message, string, llm.Usage, error) {

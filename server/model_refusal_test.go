@@ -202,3 +202,40 @@ func TestPlannerRefusalFailsTaskWithoutFurtherCalls(t *testing.T) {
 		t.Fatalf("거절로 끝난 작업을 다시 계획했다: calls=%d", calls.Load())
 	}
 }
+
+// 마감 뒤 최종 계획 회차에서 거절되면 작업은 timeout이 아니라 failed로 남아야 한다.
+func TestFinalPlannerRoundRefusalFailsTask(t *testing.T) {
+	m, err := NewManager(t.TempDir(), "")
+	if err != nil {
+		t.Skipf("postgres unavailable (%v) - skipping", err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+	var calls atomic.Int32
+	ts := newClaudeRefusalServer(t, &calls)
+	s := newRefusalTestServer(t, m, ts.URL, true)
+	task := newRefusalTestTask(t, m, 60)
+	if _, err := task.Store.AddNode(db.KindGoal, map[string]any{"text": "관리자 권한 확인"}, 0, "open", "system", nil); err != nil {
+		t.Fatal(err)
+	}
+	s.engine.SetAuthoritativeAgentResolver(func(rt *Task) (*agent.Planner, *agent.Worker) {
+		if rt.ID != task.ID {
+			return nil, nil
+		}
+		b := s.agentsForTask(rt)
+		return b.pl, b.wk
+	})
+	// 마감이 이미 지난 작업으로 만든다. 조정자는 곧바로 마무리 단계와 최종 계획 회차로 들어간다.
+	s.engine.deadline.Store(task.ID, time.Now().Add(-time.Second).Unix())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	s.engine.deadlineCoordinator(ctx, task)
+
+	if ctx.Err() != nil {
+		t.Fatalf("마감 조정자가 끝나지 않았다: %v", ctx.Err())
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("거절된 최종 계획 요청을 다시 보냈다: calls=%d", calls.Load())
+	}
+	assertRefusalFailedTask(t, m, task)
+}

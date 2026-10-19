@@ -368,3 +368,66 @@ func TestExpiredWindowIsClosed(t *testing.T) {
 		t.Fatal("expired window should read as closed")
 	}
 }
+
+// healthyRefusal 은 제공자가 정상 응답했지만 모델이 거절한 경우를 흉내 낸다(재전송 금지 + 프로필 정상).
+type healthyRefusal struct{}
+
+func (healthyRefusal) Error() string        { return "model refused" }
+func (healthyRefusal) NoReplay() bool       { return true }
+func (healthyRefusal) ProfileHealthy() bool { return true }
+
+// 프로필이 정상이라고 표시된 오류는 회로 차단기의 실패로 세지 않고, 백업으로도 넘기지 않는다.
+// 재전송 금지만 표시된 오류는 지금처럼 실패로 센다(음성 표본).
+func TestProfileHealthyErrorDoesNotTripBreaker(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		err      error
+		stream   bool
+		wantTrip bool
+	}{
+		{"complete healthy", healthyRefusal{}, false, false},
+		{"stream healthy", healthyRefusal{}, true, false},
+		{"complete noReplay only", noReplayErr{}, false, true},
+		{"stream noReplay only", noReplayErr{}, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &fakeProv{name: "a", errs: []error{tc.err}}
+			b := okProv("b", "ok")
+			reg := NewRegistry(nil, nil)
+			p := New([]*Member{member(1, "a", 10, a), member(2, "b", 5, b)}, reg)
+			for i := 0; i <= softTripAfter; i++ {
+				var err error
+				if tc.stream {
+					// 오류 뒤에도 끝까지 읽어 풀이 종료 오류를 처리하는 경로를 지나게 한다.
+					for _, e := range p.Stream(context.Background(), llm.CompletionRequest{}) {
+						if e != nil {
+							err = e
+						}
+					}
+				} else {
+					_, _, _, err = p.Complete(context.Background(), llm.CompletionRequest{})
+				}
+				if !errors.Is(err, tc.err) {
+					t.Fatalf("%d번째 호출 오류 = %v, want %v", i+1, err, tc.err)
+				}
+				if tc.wantTrip && reg.IsOpen(1) {
+					break // 회로가 열리면 다음 호출은 헤드를 건너뛴다. 여기까지가 확인할 동작이다
+				}
+			}
+			if !tc.wantTrip {
+				if got := reg.Get(1); got.Fails != 0 || got.Open() || b.calls != 0 {
+					t.Fatalf("정상 프로필의 거절을 장애로 셌다: fails=%d open=%v backup=%d", got.Fails, got.Open(), b.calls)
+				}
+				return
+			}
+			if !reg.IsOpen(1) {
+				t.Fatalf("재전송 금지 실패가 회로를 열지 않았다: %+v", reg.Get(1))
+			}
+		})
+	}
+}
+
+type noReplayErr struct{}
+
+func (noReplayErr) Error() string  { return "no replay" }
+func (noReplayErr) NoReplay() bool { return true }
