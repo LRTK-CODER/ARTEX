@@ -238,6 +238,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		if err := s.seedFindingRetester(); err != nil {
 			log.Printf("[retester] seed: %v", err)
 		}
+		s.reseedAgentsToKorean() // #160: 번역 전 설치에 남은 reporter·retester의 중국어 이름·설명을 한국어 기본값으로(한 번만, 한자가 남은 쪽만)
 		go s.evidenceStore().RunGC(s.ctx)
 		s.seedPythonInterpreter()     // 사용자 지정 스크립트 도구: 시작할 때 python 인터프리터를 찾아 저장한다(비어 있을 때만)
 		go newScheduler(s).Run(s.ctx) // P3 트리거 스케줄링(주기·finding·목표 이벤트). 사용자 지정 에이전트만

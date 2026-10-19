@@ -231,3 +231,132 @@ func TestClaudeResponsePreservesLargeToolInteger(t *testing.T) {
 		t.Fatal("오류 정제가 정상 도구 입력의 큰 정수를 바꿨다")
 	}
 }
+
+// claudeRefusalServer 는 HTTP 200으로 명시적 거절(stop_reason=refusal)을 돌려주는 가짜 Claude 서버다.
+// 시작 usage는 입력 10토큰, 종료 usage는 출력 0토큰으로 실제 진단에서 본 모양을 따른다.
+func claudeRefusalServer(calls *atomic.Int32) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		var body struct {
+			Stream bool `json:"stream"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, sseEvent("message_start", `{"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","content":[],"usage":{"input_tokens":10,"output_tokens":0}}}`)+
+				sseEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"refusal"},"usage":{"output_tokens":0}}`)+
+				sseEvent("message_stop", `{"type":"message_stop"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"m1","type":"message","role":"assistant","content":[],"stop_reason":"refusal","usage":{"input_tokens":10,"output_tokens":0}}`)
+	}))
+}
+
+func TestClaudeRefusalIsNonReplayableError(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stream bool
+	}{{"complete", false}, {"stream", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
+			ts := claudeRefusalServer(&calls)
+			defer ts.Close()
+			p := newClaudeProvider(t, ts.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})
+			req := llm.CompletionRequest{Messages: []llm.Message{llm.UserText("목표를 분해해줘")}}
+			var usage llm.Usage
+			var err error
+			if tc.stream {
+				acc := llm.NewAccumulator()
+				for ev, streamErr := range p.Stream(t.Context(), req) {
+					if streamErr != nil {
+						err = streamErr
+						break
+					}
+					acc.Add(ev)
+				}
+				usage = acc.Usage
+			} else {
+				_, _, usage, err = p.Complete(t.Context(), req)
+			}
+			if err == nil {
+				t.Fatal("명시적 거절이 오류 없이 빈 성공 응답으로 돌아왔다")
+			}
+			if !strings.Contains(err.Error(), "refusal") {
+				t.Fatalf("오류에 거절 사유가 없다: %v", err)
+			}
+			var noReplay *ClaudeRequestError
+			if !errors.As(fmt.Errorf("planner: %w", err), &noReplay) {
+				t.Fatal("상위 계층이 거절된 요청을 다시 보낼 수 있다")
+			}
+			if usage.InputTokens != 10 {
+				t.Fatalf("거절 응답의 토큰 사용량을 잃었다: %+v", usage)
+			}
+			if calls.Load() != 1 {
+				t.Fatalf("거절된 요청을 다시 보냈다: calls=%d", calls.Load())
+			}
+		})
+	}
+}
+
+func TestClaudePoolDoesNotResendRefusedRequest(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		var headCalls, backupCalls atomic.Int32
+		head := claudeRefusalServer(&headCalls)
+		backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { backupCalls.Add(1); w.WriteHeader(500) }))
+		pool := llmpool.New([]*llmpool.Member{
+			{ID: 1, Rank: 2, Prov: newClaudeProvider(t, head.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})},
+			{ID: 2, Rank: 1, Prov: newClaudeProvider(t, backup.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})},
+		}, nil)
+		req := llm.CompletionRequest{Messages: []llm.Message{llm.UserText("hi")}}
+		var err error
+		if stream {
+			_, err = streamAll(t.Context(), pool, req)
+		} else {
+			_, _, _, err = pool.Complete(t.Context(), req)
+		}
+		head.Close()
+		backup.Close()
+		if err == nil || headCalls.Load() != 1 || backupCalls.Load() != 0 {
+			t.Fatalf("거절된 요청을 다시 보내거나 백업 제공자에게 넘겼다: stream=%v err=%v head=%d backup=%d", stream, err, headCalls.Load(), backupCalls.Load())
+		}
+	}
+}
+
+// 거절은 모델의 판단이지 프로필 장애가 아니다. 거절이 회로 차단 기준(softTripAfter)보다 많이 이어져도
+// 회로가 열리지 않고, 그다음 요청도 백업 프로필로 넘어가지 않아야 한다.
+func TestClaudeRefusalDoesNotTripPoolBreaker(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stream bool
+	}{{"complete", false}, {"stream", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var headCalls, backupCalls atomic.Int32
+			head := claudeRefusalServer(&headCalls)
+			t.Cleanup(head.Close)
+			backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { backupCalls.Add(1); w.WriteHeader(500) }))
+			t.Cleanup(backup.Close)
+			reg := llmpool.NewRegistry(nil, nil)
+			pool := llmpool.New([]*llmpool.Member{
+				{ID: 1, Rank: 2, Prov: newClaudeProvider(t, head.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})},
+				{ID: 2, Rank: 1, Prov: newClaudeProvider(t, backup.URL, &fakeTokens{accessTokens: []string{fakeAccessToken}})},
+			}, reg)
+			req := llm.CompletionRequest{Messages: []llm.Message{llm.UserText("hi")}}
+			for i := 1; i <= 4; i++ {
+				var err error
+				if tc.stream {
+					_, err = streamAll(t.Context(), pool, req)
+				} else {
+					_, _, _, err = pool.Complete(t.Context(), req)
+				}
+				if !errors.Is(err, ErrModelRefused) {
+					t.Fatalf("%d번째 호출이 거절 오류로 끝나지 않았다: %v", i, err)
+				}
+			}
+			if headCalls.Load() != 4 || backupCalls.Load() != 0 || reg.IsOpen(1) || reg.Get(1).Fails != 0 {
+				t.Fatalf("거절을 프로필 장애로 셌다: head=%d backup=%d open=%v fails=%d",
+					headCalls.Load(), backupCalls.Load(), reg.IsOpen(1), reg.Get(1).Fails)
+			}
+		})
+	}
+}

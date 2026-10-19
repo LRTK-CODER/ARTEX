@@ -745,8 +745,7 @@ func (s *Server) seedReporterAgent() {
 	if exist, _ := s.m.pg.GetAgentByKey("reporter"); exist != nil {
 		return // key가 이미 쓰이고 있으면(사용자가 손수 만든 경우) 덮어쓰지 않는다
 	}
-	a, err := s.m.pg.CreateAgent("reporter", "보고서 작성",
-		"취약점 상세 보고서 작성: 취약점을 발견하면 자동으로 실행되어, 증거와 실행 과정을 조회한 뒤 Markdown 보고서를 작성해 기록한다.")
+	a, err := s.m.pg.CreateAgent("reporter", reporterAgentName, reporterAgentDescription)
 	if err != nil {
 		log.Printf("[reporter] agent 만들기 실패: %v", err)
 		return

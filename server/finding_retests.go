@@ -219,8 +219,8 @@ func (s *Server) seedFindingRetester() error {
 	}
 	var id int64
 	err = tx.QueryRow(`INSERT INTO agents(key,name,description,role,builtin,enabled)
-	VALUES ($1,'취약점 재검사','취약점 상세에서 직접 시작하며, 원래 증거를 읽고 별도의 재검사 결론을 저장합니다.','assistant',false,true)
-	ON CONFLICT (key) DO NOTHING RETURNING id`, db.FindingRetestAgentKey).Scan(&id)
+	VALUES ($1,$2,$3,'assistant',false,true)
+	ON CONFLICT (key) DO NOTHING RETURNING id`, db.FindingRetestAgentKey, retesterAgentName, retesterAgentDescription).Scan(&id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}

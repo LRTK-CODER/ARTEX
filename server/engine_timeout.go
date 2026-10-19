@@ -259,6 +259,10 @@ func (e *Engine) runFinalPlannerRound(ctx context.Context, t *Task) (met bool) {
 	e.BeginLLMCall(t.ID)
 	met, reason, err := planner.Plan(fctx, tTaskID, e.m.assets, t.Store, t.Goal, t.drainTriggers(), emit)
 	e.EndLLMCall(t.ID)
+	// 최종 회차의 거절은 timeout이 아니라 failed로 남긴다. 먼저 기록하면 settleTask의 가드가 timeout 덮어쓰기를 거부한다.
+	if e.failTaskOnModelRefusal(t, "최종 계획", err) {
+		return false
+	}
 	if err != nil {
 		log.Printf("[deadline] task %s 최종 계획 오류: %v", t.ID, err)
 	} else if met {
