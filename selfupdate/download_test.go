@@ -2,24 +2,53 @@ package selfupdate
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 // fixedBodyClient 는 어떤 요청에도 body를 200으로 돌려주는 가짜 클라이언트다.
 func fixedBodyClient(body string) *http.Client {
+	return readerClient(strings.NewReader(body))
+}
+
+// readerClient 는 어떤 요청에도 r을 본문으로 200을 돌려주는 가짜 클라이언트다.
+func readerClient(r io.Reader) *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader(body)),
+			Body:       io.NopCloser(r),
 			Header:     make(http.Header),
 		}, nil
 	})}
+}
+
+// countingReader 는 본문에서 실제로 읽힌 바이트 수를 센다. "다 받은 뒤"가 아니라 "받는 도중에" 멈췄는지 보려고 쓴다.
+type countingReader struct {
+	r     io.Reader
+	count int64
+}
+
+func (c *countingReader) Read(b []byte) (int, error) {
+	n, err := c.r.Read(b)
+	c.count += int64(n)
+	return n, err
+}
+
+// zeroReader 는 0바이트를 끝없이 돌려준다.
+type zeroReader struct{}
+
+func (zeroReader) Read(b []byte) (int, error) {
+	clear(b)
+	return len(b), nil
 }
 
 func TestDownloadStopsAtLimitAndRemovesTempFile(t *testing.T) {
@@ -61,6 +90,79 @@ func TestDownloadStopsAtLimitAndRemovesTempFile(t *testing.T) {
 				t.Errorf("실패한 다운로드의 임시 파일이 남아 있음: %v", statErr)
 			}
 		})
+	}
+
+	// 끝없는 응답은 상한+1바이트까지만 읽고 멈춰야 한다. 다 받은 뒤에 크기를 보는 검사만으로는 디스크가 먼저 찬다.
+	// 상한 없이 읽는 회귀가 테스트를 끝없이 붙잡지 않게 본문은 16 MiB에서 끝낸다.
+	t.Run("끝없는 응답은 받는 도중에 멈춤", func(t *testing.T) {
+		const maxBytes = 4
+		dst := filepath.Join(t.TempDir(), "artex.new.zip.part")
+		body := &countingReader{r: io.LimitReader(zeroReader{}, 16<<20)}
+		a := Asset{Name: "a.zip", URL: url}
+
+		_, err := download(context.Background(), readerClient(body), a, dst, maxBytes, nil)
+
+		if err == nil {
+			t.Fatal("상한을 넘는 응답은 오류를 내야 함")
+		}
+		if body.count > maxBytes+1 {
+			t.Errorf("읽은 양 = %d바이트, want ≤ %d(상한+1)", body.count, maxBytes+1)
+		}
+		if _, statErr := os.Lstat(dst); !os.IsNotExist(statErr) {
+			t.Errorf("실패한 다운로드의 임시 파일이 남아 있음: %v", statErr)
+		}
+	})
+}
+
+// TestStageWritesPrivateSumFile 은 Stage의 성공 경로가 임시 저장본과 0600 해시 파일을 남기는지 본다.
+// writeFilePrivate만이 아니라 Stage가 해시 파일을 그것으로 쓰는지(호출 지점)를 잡는다.
+func TestStageWritesPrivateSumFile(t *testing.T) {
+	requireUnix(t)
+	p := testPaths(t)
+	const tag = "v1.0.0"
+	name := AssetName(tag, runtime.GOOS, runtime.GOARCH)
+	binBody := "#!/bin/sh\nexit 0\n"
+
+	var zipBuf bytes.Buffer
+	zw := zip.NewWriter(&zipBuf)
+	w, err := zw.Create("artex-1.0.0/artex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(binBody)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	zipSum := sha256.Sum256(zipBuf.Bytes())
+	sums := hex.EncodeToString(zipSum[:]) + "  " + name + "\n"
+
+	base := "https://github.com/LRTK-CODER/ARTEX/releases/download/" + tag + "/"
+	bodies := map[string][]byte{base + name: zipBuf.Bytes(), base + sumsAsset: []byte(sums)}
+	c := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body, ok := bodies[r.URL.String()]
+		if !ok {
+			return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody, Header: make(http.Header)}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	rel := &Release{TagName: tag, Assets: []Asset{
+		{Name: name, URL: base + name, Size: int64(zipBuf.Len())},
+		{Name: sumsAsset, URL: base + sumsAsset, Size: int64(len(sums))},
+	}}
+
+	if err := stageAt(context.Background(), c, rel, p, "0.9.0", nil); err != nil {
+		t.Fatalf("stageAt: %v", err)
+	}
+
+	if got := readAll(t, p.New); got != binBody {
+		t.Errorf("임시 저장본 내용 = %q, want %q", got, binBody)
+	}
+	assertPrivateRegularFile(t, p.Sum)
+	binSum := sha256.Sum256([]byte(binBody))
+	if got := readAll(t, p.Sum); got != hex.EncodeToString(binSum[:]) {
+		t.Errorf("해시 파일 내용 = %q, want 임시 저장본의 sha256", got)
 	}
 }
 

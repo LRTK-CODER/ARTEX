@@ -24,8 +24,8 @@ const sumsAsset = "SHA256SUMS"
 const maxBinarySize = 512 << 20 // 512 MiB
 
 // maxZipSize 는 내려받는 배포 패키지 크기의 고정 상한이다. 릴리스가 자산 크기를 알려 주지 않거나
-// 출처가 탈취돼 끝없는 응답을 보내도 디스크를 가득 채우지 못하게 한다. zip은 압축을 푼 바이너리보다 크지 않으므로
-// maxBinarySize와 같게 둔다.
+// 출처가 탈취돼 끝없는 응답을 보내도 디스크를 가득 채우지 못하게 한다. 현재 릴리스 zip은 플랫폼마다 약 13~14 MB라
+// 512 MiB는 30배 넘는 여유가 있다. 같은 크기인 maxBinarySize를 그대로 쓴다.
 const maxZipSize = maxBinarySize
 
 // Phase 는 업데이트 과정의 단계다. SSE 이벤트의 phase 필드로 그대로 쓴다.
@@ -52,12 +52,17 @@ type Progress func(ph Phase, pct int, msg string)
 //
 // 함수가 반환하면 임시 저장이 끝난 것이다. 호출자는 이어서 정상 종료하고 ExitRestart로 종료한다.
 func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion string, prog Progress) error {
-	if prog == nil {
-		prog = func(Phase, int, string) {}
-	}
 	p, err := ResolvePaths()
 	if err != nil {
 		return err
+	}
+	return stageAt(ctx, c, rel, p, currentVersion, prog)
+}
+
+// stageAt 은 Stage의 본문이다. 경로를 인자로 받는 이유는 테스트가 실행 파일 디렉터리 대신 격리된 디렉터리를 쓰게 하기 위해서다.
+func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, currentVersion string, prog Progress) error {
+	if prog == nil {
+		prog = func(Phase, int, string) {}
 	}
 	if err := checkWritable(p.Dir); err != nil {
 		return err
