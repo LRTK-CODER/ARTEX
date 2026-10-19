@@ -889,6 +889,7 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		met, reason, err := planner.Plan(ectx, taskIDInt, e.m.assets, t.Store, t.Goal, triggers, emit)
 		e.EndLLMCall(t.ID)
 		switch {
+		case e.failTaskOnModelRefusal(t, "계획", err):
 		case err != nil && ectx.Err() == nil:
 			log.Printf("[planner] task %s 계획 오류: %v", t.ID, err)
 		case met:

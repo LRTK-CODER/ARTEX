@@ -74,8 +74,9 @@ type GoalSpec struct {
 
 // DecomposeGoals 는 LLM에게 침투 테스트 작업 목표를 서로 독립적으로 검증 가능한
 // 개별 목표(각각 하나의 goal 노드가 된다)로 쪼개 달라고 한다. 제공자가 설정되지 않았거나
-// 호출이 아무것도 내놓지 못하면 nil을 돌려준다 — 그러면 호출자가 규칙 기반 분해로
-// 되돌아가 goal 노드가 늘 존재하게 한다.
+// 호출이 아무것도 내놓지 못하면 빈 결과를 돌려준다 — 그러면 호출자가 원래 목표를 단일 목표로
+// 써 goal 노드가 늘 존재하게 한다. LLM 호출이 실패하면 그 오류도 함께 돌려준다. 호출자는
+// 명시적 거절(ErrModelRefused)처럼 대체로 넘어가면 안 되는 실패를 errors.Is로 가린다.
 //
 // prov는 호출자가 건넨다(여기서 Config로 만들지 않는다). 그래서 목표 분해가 엔진의
 // 나머지와 같은 제공자 인스턴스를 타고 돈다 — 같은 속도 제한기를 공유하고, llmrec에
@@ -95,9 +96,9 @@ type GoalSpec struct {
 // 런타임에 목표를 추가할 때 쓰는 것과 같은 관리 도구다). 돌려주는 spec은 저장소에서 다시
 // 읽어 오므로, 호출자가 목표별 활동을 내보내고 "LLM이 아무것도 못 냈다"는 경우를 감지해
 // 되돌아갈 수 있다.
-func DecomposeGoals(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, emit func(db.Activity)) []GoalSpec {
+func DecomposeGoals(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, emit func(db.Activity)) ([]GoalSpec, error) {
 	if prov == nil {
-		return nil
+		return nil, nil
 	}
 	return DecomposeGoalsWithProvider(ctx, prov, dataDir, goalText, desc, as, ts, taskID, false, 0, emit)
 }
@@ -106,9 +107,9 @@ func DecomposeGoals(ctx context.Context, prov llm.Provider, dataDir, goalText, d
 // ordered provider chain. It preserves the same tools and write behavior while
 // letting the caller own provider selection/failover. maxTokens is the profile's
 // per-reply output cap (0 = send none).
-func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, nonStreaming bool, maxTokens int, emit func(db.Activity)) []GoalSpec {
+func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir, goalText, desc string, as *db.AssetStore, ts *db.ExplorationStore, taskID int64, nonStreaming bool, maxTokens int, emit func(db.Activity)) ([]GoalSpec, error) {
 	if prov == nil {
-		return nil
+		return nil, nil
 	}
 	// 목표 분해는 일회성 호출이다: transcript store를 달지 않으므로 agentcore가 ctx에
 	// session id를 달지 않는다(writer가 있을 때만 단다. agentcore.Prompt 참고). 그런데
@@ -151,7 +152,7 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 			emit(r)
 		}
 	}
-	captureRun(ctx, agentcore.Options{
+	_, _, runErr := captureRun(ctx, agentcore.Options{
 		Provider:               prov,
 		SystemPrompt:           []string{sys},
 		Tools:                  tools,
@@ -166,7 +167,7 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 	// set_goals persisted the goals directly; read them back so the caller sees what
 	// was written (empty slice ⇒ the LLM produced nothing ⇒ caller falls back).
 	if ts == nil {
-		return nil
+		return nil, runErr
 	}
 	nodes, _ := ts.ListByKind(db.KindGoal, 10000)
 	var out []GoalSpec
@@ -180,5 +181,5 @@ func DecomposeGoalsWithProvider(ctx context.Context, prov llm.Provider, dataDir,
 			out = append(out, GoalSpec{Text: p.Text, VulnClass: p.VulnClass})
 		}
 	}
-	return out
+	return out, runErr
 }
