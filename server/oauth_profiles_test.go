@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/llmauth"
 	"github.com/Autumn-27/norma/llm"
@@ -94,7 +95,7 @@ type oauthFixture struct {
 func newOAuthFixture(t *testing.T, issuer *httptest.Server) *oauthFixture {
 	t.Helper()
 	skipWithoutPostgres(t)
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	pgdb "github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/enrich"
 	"github.com/Autumn-27/artex/guard"
@@ -245,6 +246,9 @@ type Manager struct {
 	// capture is on it becomes the MITM's upstream; when capture is off it is
 	// injected into agent bash env / WebFetch directly. See ProxyAddr.
 	globalProxy string
+	// secretEnv는 main이 시작할 때 config.TakeSecretEnv로 읽고 프로세스 환경에서 지운 비밀 환경 변수다.
+	// 환경에 남기면 에이전트 자식 프로세스가 물려받으므로, 시작 뒤에는 여기서만 읽는다(LLM 설정은 server.New).
+	secretEnv config.SecretEnv
 }
 
 // Settings keys the UI toggles at runtime.
@@ -341,7 +345,8 @@ func (m *Manager) Enrich() *enrich.Engine { return m.enrich }
 
 // NewManager connects to PostgreSQL and, if proxyAddr is non-empty, starts the
 // traffic-recording proxy. PostgreSQL is required (it is the single data source).
-func NewManager(dir, proxyAddr string) (*Manager, error) {
+// secretEnv는 시작할 때 읽어 둔 비밀 환경 변수다(config.TakeSecretEnv). DB DSN을 여기서 읽는다.
+func NewManager(dir, proxyAddr string, secretEnv config.SecretEnv) (*Manager, error) {
 	// Resolve the data dir to an ABSOLUTE path up front. Every data path derives
 	// from it — notably the MITM CA cert, whose path is injected into worker shells
 	// (SSL_CERT_FILE/CURL_CA_BUNDLE) and read by WebFetch. A relative path (the
@@ -354,7 +359,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	dsn, source, err := pgdb.DSN()
+	dsn, source, err := pgdb.DSN(secretEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +378,7 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if err := pg.EnsureLLMUsageTable(); err != nil {
 		log.Printf("[llmusage] create table: %v", err)
 	}
-	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg)}
+	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg), secretEnv: secretEnv}
 	if proxyAddr != "" {
 		tr, err := traffic.Open(filepath.Join(dir, "traffic"), proxyAddr)
 		if err != nil {

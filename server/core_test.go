@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
 // TestCoreTaskLifecyclePG exercises the migrated core (tasks/exploration on PG)
 // through the real HTTP mux: create → goal nodes seeded → list → delete cascade.
 func TestCoreTaskLifecyclePG(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
