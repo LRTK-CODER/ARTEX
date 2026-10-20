@@ -362,6 +362,7 @@ WantedBy=multi-user.target
 - 셸 대체 디렉터리를 실행 중에 바꾸려면 서버 uid나 root 권한이 필요하다. 시작할 때만 확인한다.
 - 작업 공간은 공용 에이전트 그룹으로 함께 쓰므로 작업 A의 에이전트는 작업 B·다른 세션의 작업 공간과 큰 출력을 읽고 쓸 수 있다(작업별 ACL은 #182). 같은 커널·네트워크 이름공간을 쓰므로 서버 포트·트래픽 기록 프록시에는 그대로 닿는다. 데이터 디렉터리의 다른 사용자 읽기 권한이 있는 항목(대화 기록 `transcripts`, `archives`, `traffic`)은 에이전트도 읽는다. 기록 프록시 CA 개인 키(`traffic/_ca/mitmproxy-ca.pem`)는 서버만 읽는다(0600).
 - 에이전트가 자기 디렉터리를 0700으로 바꾸면 서버가 그 안을 지우지 못할 수 있다.
+- 켜면 Monitor 도구는 실행되지 않는다(백그라운드 Bash를 쓴다). norma의 Monitor가 실행의 uid(`ToolContext.Env`)를 넘기지 않아 도우미가 `ARTEX_AGENT_UID is not set`으로 거부한다. 공용 uid나 서버 uid로 돌지 않는다. 모델에게는 "Started monitor"가 돌아가고, 그 작업의 출력과 상태(failed)에 거부가 남는다.
 
 ### 리버스 프록시 배포(HTTPS / 443만 열기)
 

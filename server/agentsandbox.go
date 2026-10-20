@@ -25,11 +25,14 @@ import (
 // 명령은 도우미(cmd/artex-sandbox)를 거쳐 그 작업·대화형 세션에 할당한 uid(#166 풀)와 공용 에이전트 gid로 돈다(#177).
 // 설정한 공용 uid(AgentUIDEnv)는 작업·세션에 속하지 않는 명령(설정 화면의 MCP 도구 목록, 사용자 지정 도구 시험)에만 쓴다.
 //
-//   - norma의 Bash(동기·백그라운드)·Monitor·shell_open·명령형 사용자 지정 도구: PATH에서 bash를 찾으므로 서버의
+//   - norma의 Bash(동기·백그라운드)·shell_open·명령형 사용자 지정 도구: PATH에서 bash를 찾으므로 서버의
 //     PATH를 도우미를 가리키는 bash 링크 하나만 든 셸 대체 디렉터리로 바꾼다(norma는 고치지 않는다). 원래 PATH는
 //     AgentPathEnv로 넘기고 도우미가 권한을 버린 뒤 되돌린다. 셸 대체 링크가 없어지면 bash를 찾지 못해 명령이
 //     실패한다. 서버 uid의 진짜 bash로 넘어가는 길이 없다.
 //     uid·gid는 실행마다 BashEnv(norma ToolContext.Env)로 넘긴다(RunEnv).
+//   - norma Monitor: 켜면 Monitor는 실행되지 않는다(백그라운드 Bash를 쓴다). Monitor는 ToolContext.Env를 넘기지
+//     않아 실행의 uid가 도우미에 닿지 않고, 서버 환경의 공용 uid는 지웠으므로 도우미가 거부한다(fail closed).
+//     norma는 원 저장소가 없어 고치거나 버전을 올릴 수 없다(#163).
 //   - stdio MCP, 사용자 지정 python 도구: 서버가 직접 띄우므로 "도우미 exec -- <명령>"으로 감싸고 그 실행의 uid·gid를 넘긴다.
 //   - 파일 도구(Read/Write 등)는 서버 프로세스 안에서 서버 uid로 돈다. 경로 제한(agent/filescope.go)이 맡는다.
 //

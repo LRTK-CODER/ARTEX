@@ -205,8 +205,12 @@ func (e *Engine) retryAgentUID(ctx context.Context, t *Task, cause error) {
 }
 
 // stopAgentUIDRetry 는 작업의 uid 재시도가 있으면 다음 시도를 기다리지 않고 끝낸다.
+//
+// 표시는 루틴이 끝나기를 기다리지 않고 여기서 바로 지운다. 루틴이 지우게 두면 일시 중지 직후의 Run이 남은 표시를
+// 보고 "재시도 중"으로 물러나고, 곧이어 루틴은 시작 없이 끝나 작업이 루프도 재시도도 없이 남는다. 늦게 끝난 옛
+// 루틴이 uid를 받아도 startTaskLoops가 started로 중복 시작을 막는다.
 func (e *Engine) stopAgentUIDRetry(taskID string) {
-	if v, ok := e.uidRetries.Load(taskID); ok {
+	if v, ok := e.uidRetries.LoadAndDelete(taskID); ok {
 		v.(*agentUIDRetry).cancel()
 	}
 }

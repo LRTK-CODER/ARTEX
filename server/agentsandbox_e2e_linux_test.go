@@ -279,6 +279,33 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		}
 		waitAgentProcess(t, otherUID, "sleep 305", false)
 	})
+	t.Run("monitor does not run even with the run's uid", func(t *testing.T) {
+		// norma Monitor는 ToolContext.Env를 넘기지 않아 실행의 uid가 도우미에 닿지 않는다. 서버 환경에는 공용 uid도
+		// 없으므로 도우미가 거부하고 명령은 실행되지 않는다(fail closed). 켠 상태의 한계로 README에 적었다.
+		// norma Monitor가 Env를 넘기게 되면 이 경우는 할당 uid로 도는 것을 기대하도록 바꾼다.
+		res := runToolResult(t, actool.NewMonitor(), managedCtx, map[string]any{"command": "id -u > mon-uid"})
+		t.Logf("monitor: isError=%v %q", res.IsError, res.Flatten())
+		id, ok := strings.CutPrefix(res.Flatten(), "Started monitor ")
+		if !ok {
+			t.Fatalf("monitor did not start a task: %q", res.Flatten())
+		}
+		id, _, _ = strings.Cut(id, ".")
+		info, done := tasks.Wait(ctx, id, e2eWait)
+		if !done {
+			t.Fatalf("monitor task %s did not finish", id)
+		}
+		out, err := tasks.Output(id, 4096)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("monitor task: status=%s output=%q", info.Status, out)
+		if info.Status != actool.TaskFailed || !strings.Contains(out, AgentUIDEnv+" is not set") {
+			t.Fatalf("monitor task = %s %q, want failed with the helper refusal", info.Status, out)
+		}
+		if _, err := os.Stat(filepath.Join(ws, "mon-uid")); !os.IsNotExist(err) {
+			t.Fatalf("monitor command ran: %v", err)
+		}
+	})
 	t.Run("a run without its uid does not run", func(t *testing.T) {
 		// 배선이 빠진 길(실행의 uid가 없는 ToolContext·python 환경)은 공용 uid로 떨어지지 않고 도우미가 거부한다.
 		bare := &actool.ToolContext{WorkingDir: ws}

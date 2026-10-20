@@ -756,8 +756,13 @@ func (e *Engine) ReadyFor(t *Task) bool {
 // automatically once LLM is set from the UI).
 //
 // uid 분리를 켰으면 작업 uid를 먼저 받는다(reserveAgentUID). 일시 오류로 다시 받는 중이면 그 재시도가 받은 뒤
-// 루프를 시작하므로 여기서는 아무것도 하지 않는다.
+// 루프를 시작하므로 여기서는 아무것도 하지 않는다. 이미 루프를 띄운 작업(다시 엶)은 uid를 받은 뒤라 확인을
+// 건너뛰고 계획 회차만 깨운다. 확인하면 그때의 DB 일시 오류로 재시도 루틴이 하나 더 뜨고 깨우기가 빠진다.
 func (e *Engine) Run(ctx context.Context, t *Task) {
+	if e.Started(t.ID) {
+		e.startTaskLoops(ctx, t)
+		return
+	}
 	if _, retrying := e.uidRetries.Load(t.ID); retrying {
 		return
 	}

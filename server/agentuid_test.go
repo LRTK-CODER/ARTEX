@@ -492,4 +492,91 @@ func TestEngineRunRetriesAgentUIDAfterTransientFailure(t *testing.T) {
 			t.Fatalf("agent uid rows for the task = %d, want 0", assigned)
 		}
 	})
+
+	// 일시 중지가 재시도 표시를 바로 지우므로, 옛 재시도 루틴이 끝나기 전에 Run이 불려도 물러나지 않고 다시 받는다.
+	// 예전에는 남은 표시를 보고 물러나 작업이 루프도 재시도도 없이 남았다.
+	t.Run("run right after pause acquires again instead of yielding to the ending retry", func(t *testing.T) {
+		task, _ := newAgentUIDTestTask(t, m, "agent uid retry pause run")
+		e, flaky, clock := newEngine(t, 1)
+
+		e.Run(t.Context(), task)
+		clock.nextWait(t)
+		e.Pause(task.ID, agent.AbortPausedByUser)
+		e.Run(t.Context(), task)
+		e.Resume(task)
+
+		waitForCondition(t, "the task to start", func() bool { return e.Started(task.ID) })
+		if n := flaky.calls.Load(); n != 2 {
+			t.Fatalf("uid attempts = %d, want 2 (one transient failure, then Run after the pause)", n)
+		}
+		if _, retrying := e.uidRetries.Load(task.ID); retrying {
+			t.Fatal("uid retry still registered after the task started")
+		}
+	})
+
+	// 이미 루프를 띄운 작업을 다시 열 때는 uid를 다시 확인하지 않는다. 그때 DB가 일시 오류여도 재시도 루틴이나
+	// "받으면 작업을 시작합니다" 활동이 생기지 않는다.
+	t.Run("run on a started task skips the uid check", func(t *testing.T) {
+		task, _ := newAgentUIDTestTask(t, m, "agent uid started rerun")
+		e, flaky, _ := newEngine(t, 0)
+
+		e.Run(t.Context(), task)
+		if !e.Started(task.ID) {
+			t.Fatal("task did not start with an agent uid")
+		}
+		flaky.failures.Store(1)
+		e.Run(t.Context(), task)
+
+		if n := flaky.calls.Load(); n != 1 {
+			t.Fatalf("uid attempts = %d, want 1 (no check on the second Run)", n)
+		}
+		if _, retrying := e.uidRetries.Load(task.ID); retrying {
+			t.Fatal("second Run on a started task registered a uid retry")
+		}
+		if summaries := agentUIDActivities(t, pg, task.ExpID); len(summaries) != 0 {
+			t.Fatalf("agent uid activities = %q, want none", summaries)
+		}
+	})
+}
+
+// 대화 차례는 uid를 풀 고갈이 아닌 오류로 받지 못해도 계속하지 않고 LLM을 부르지 않는다(#177). 일시 오류를
+// 결정적으로 만들 방법이 없어, 같은 분기로 가는 다른 DB 오류(차례 도중 대화가 지워져 uid 행의 외래 키가 깨짐)를 쓴다.
+// 이미 취소된 ctx는 uid를 받기 전에 차례가 끝나 이 분기에 닿지 않는다.
+func TestConversationTurnStopsWhenAgentUIDFailsWithOtherError(t *testing.T) {
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
+	if err != nil {
+		t.Skipf("postgres unavailable (%v) — skipping", err)
+	}
+	t.Cleanup(func() { m.Close() })
+	pg := m.PG()
+	td := t.TempDir()
+	s := newTestServer(t, m, td, td, td)
+	s.sandbox = &AgentSandbox{}
+	var calls atomic.Int32
+	s.cfgMu.Lock()
+	s.chatAgent = agent.NewChatAgent(countingProvider{calls: &calls}, "test", s.m.dir, nil, 10000)
+	s.cfgMu.Unlock()
+	c, err := pg.CreateConversation("agent-uid-other-error", "agent uid other error", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.DeleteConversation(c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.sandbox.ConversationUID(t.Context(), pg, c.ID); err == nil || errors.Is(err, db.ErrAgentUIDPoolExhausted) {
+		t.Fatalf("ConversationUID for a deleted conversation = %v, want a non-exhaustion error", err)
+	}
+
+	s.runConversationSync(c, "hello", s.convBusyKey(c.ID))
+
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("LLM called %d times without an agent uid", n)
+	}
+	var assigned int
+	if err := pg.QueryRow(`SELECT count(*) FROM agent_uids WHERE conversation_id=$1`, c.ID).Scan(&assigned); err != nil {
+		t.Fatal(err)
+	}
+	if assigned != 0 {
+		t.Fatalf("agent uid rows for the conversation = %d, want 0", assigned)
+	}
 }
