@@ -1,5 +1,8 @@
 //go:build !windows
 
+// Windows에는 O_NOFOLLOW·syscall.Stat_t가 없고 에이전트 uid 분리(#165)도 Linux 전용이라 이 파일을 빼고
+// workspace_windows.go로 빌드한다.
+
 package agent
 
 import (

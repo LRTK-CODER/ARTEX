@@ -1,5 +1,7 @@
 //go:build linux
 
+// 컨테이너 e2e는 Linux에서만 의미가 있고 syscall.Stat_t·/proc를 쓴다. 다른 OS에서 vet·빌드가 깨지지 않게 뺀다.
+
 package server
 
 import (
