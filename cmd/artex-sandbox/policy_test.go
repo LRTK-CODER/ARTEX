@@ -130,3 +130,28 @@ func TestStripShellDirs(t *testing.T) {
 		t.Fatalf("stripShellDirs = %q, want %q", got, want)
 	}
 }
+
+// TestCommandHome 은 서버가 넘긴 HOME(#178)이 passwd 홈보다 앞서고, 상대 경로는 거부하며, 둘 다 없으면 HOME을 바꾸지
+// 않는지(빈 값) 본다.
+func TestCommandHome(t *testing.T) {
+	cases := []struct {
+		name       string
+		serverHome string
+		passwdHome string
+		want       string
+		wantErr    bool
+	}{
+		{name: "server home wins", serverHome: "/data/tasks/7/home", passwdHome: "/nonexistent", want: "/data/tasks/7/home"},
+		{name: "passwd home without server home", passwdHome: "/home/artex-agent", want: "/home/artex-agent"},
+		{name: "neither", want: ""},
+		{name: "relative server home", serverHome: "tasks/7/home", passwdHome: "/nonexistent", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := commandHome(tc.serverHome, func() string { return tc.passwdHome })
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Fatalf("commandHome(%q) = %q, %v; want %q, error %v", tc.serverHome, got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}

@@ -10,10 +10,13 @@ import (
 
 // 대상 uid·gid를 주는 환경 변수. 서버 설정과 같은 이름이라 서버 환경을 물려받은 자식이 그대로 읽는다.
 // pathEnv는 서버가 넘기는 원래 PATH다. 기능을 켜면 서버 자신의 PATH는 셸 대체 디렉터리 하나뿐이다.
+// homeEnv는 서버가 작업·세션마다 만든 HOME이다(#178). 서버 자신의 HOME은 자식이 그대로 물려받아 HOME으로는 넘길 수
+// 없어 따로 받는다.
 const (
 	uidEnv  = "ARTEX_AGENT_UID"
 	gidEnv  = "ARTEX_AGENT_GID"
 	pathEnv = "ARTEX_AGENT_PATH"
+	homeEnv = "ARTEX_AGENT_HOME"
 )
 
 // 에이전트 uid·gid로 허용하는 범위. 도우미는 CAP_SETUID로 아무 uid나 될 수 있으므로, 서버가 넘긴 값을
@@ -119,4 +122,17 @@ func stripShellDirs(path string, isShellDir func(dir string) bool) string {
 		kept = append(kept, dir)
 	}
 	return strings.Join(kept, string(filepath.ListSeparator))
+}
+
+// commandHome 은 에이전트 명령의 HOME이다. 서버가 넘긴 값(serverHome, homeEnv)이 있으면 그것이고 절대 경로가 아니면
+// 오류다. 없으면(작업·세션에 속하지 않는 명령) passwd의 홈이고, 그것도 없으면 빈 문자열이다(HOME을 바꾸지 않는다).
+// 서버 사용자의 홈(0700)이 남으면 에이전트 uid가 쓰지 못해 npm·playwright 캐시가 실패한다.
+func commandHome(serverHome string, passwdHome func() string) (string, error) {
+	if serverHome != "" {
+		if !filepath.IsAbs(serverHome) {
+			return "", fmt.Errorf("%s=%q is not an absolute path", homeEnv, serverHome)
+		}
+		return serverHome, nil
+	}
+	return passwdHome(), nil
 }

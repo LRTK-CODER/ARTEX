@@ -174,7 +174,7 @@ type Traffic struct {
 
 // Open initializes the traffic tree, blob store and SQLite index under dir.
 func Open(dir, addr string) (*Traffic, error) {
-	for _, d := range []string{dir, filepath.Join(dir, "_index"), filepath.Join(dir, "_blobs"), filepath.Join(dir, "_ca")} {
+	for _, d := range []string{dir, filepath.Join(dir, "_index"), filepath.Join(dir, "_blobs"), filepath.Join(dir, CADirName)} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, err
 		}
@@ -204,7 +204,7 @@ func Open(dir, addr string) (*Traffic, error) {
 	p, err := mproxy.NewProxy(&mproxy.Options{
 		Addr:        addr,
 		SslInsecure: true,
-		CaRootPath:  filepath.Join(dir, "_ca"),
+		CaRootPath:  filepath.Join(dir, CADirName),
 	})
 	if err != nil {
 		db.Close()
@@ -214,7 +214,7 @@ func Open(dir, addr string) (*Traffic, error) {
 	// 돌아도(#165) 이 키를 읽으면 기록 프록시를 흉내 낼 수 있다. 에이전트가 믿을 인증서는 CACertPath의 별도 파일이므로
 	// 키 파일은 서버만 읽게 둔다. _ca는 에이전트가 쓰지 못하는 디렉터리라 경로로 바꿔도 된다.
 	// 실패해도(예: 예전 root 컨테이너가 만든 파일) 프록시는 그대로 쓸 수 있으므로 멈추지 않고 기록한다.
-	if err := os.Chmod(filepath.Join(dir, "_ca", caKeyFile), 0o600); err != nil {
+	if err := os.Chmod(filepath.Join(dir, CADirName, caKeyFile), 0o600); err != nil {
 		log.Printf("[traffic] CA 개인 키 권한을 0600으로 줄이지 못했다: %v", err)
 	}
 	// Upstream selection. By default (no global egress proxy set) targets are
@@ -359,10 +359,17 @@ func ValidateProxyURL(raw string) (*url.URL, error) {
 // caKeyFile 은 go-mitmproxy가 CA 개인 키와 인증서를 함께 쓰는 파일 이름이다(cert.SelfSignCA.caFile).
 const caKeyFile = "mitmproxy-ca.pem"
 
-// CACertPath returns the PEM CA cert clients must trust to verify HTTPS through
-// the MITM proxy (go-mitmproxy writes it here on first start).
+// CADirName 은 트래픽 디렉터리 안에서 go-mitmproxy가 CA를 두는 디렉터리 이름이다.
+const CADirName = "_ca"
+
+// CACertFileName 은 CADirName 안에서 클라이언트가 믿을 CA 인증서(개인 키 없음) 파일 이름이다. 에이전트 명령이 다른
+// uid로 돌 때(#165) 이 파일은 에이전트 uid가 읽어야 한다(SSL_CERT_FILE).
+const CACertFileName = "mitmproxy-ca-cert.pem"
+
+// CACertPath 는 기록 프록시를 지나는 HTTPS를 검증하려고 클라이언트가 믿을 PEM CA 인증서 경로다. go-mitmproxy가
+// 처음 시작할 때 쓴다.
 func (t *Traffic) CACertPath() string {
-	return filepath.Join(t.dir, "_ca", "mitmproxy-ca-cert.pem")
+	return filepath.Join(t.dir, CADirName, CACertFileName)
 }
 
 // Start runs the proxy (blocking); run in a goroutine.

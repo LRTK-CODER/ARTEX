@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/traffic"
 )
 
 // Linux capability·prctl 상수(include/uapi/linux/capability.h, prctl.h). syscall 패키지에 없다.
@@ -160,11 +161,12 @@ func prepareWorkspaceRoots(dataDir string) error {
 // 때 한 번 돈다. 실행 때 ensureRunDir·ensureSessionDir는 작업 공간 디렉터리만 맞추므로, 그 안에 이미 있는 서버 소유
 // 파일(파일 도구가 쓴 것, 예전 배치에서 공용 그룹으로 쓰던 것)과, 할당이 없는(지운 대화 등) 디렉터리는 여기서 맞춘다.
 //
-//	tasks/<tid>(할당 있음)                     작업 uid 읽기. work·i<iid>와 그 안은 읽기·쓰기, 나머지(uploads,
-//	                                           cmd-output 등)와 그 안은 읽기
+//	tasks/<tid>(할당 있음)                     작업 uid 읽기. work·i<iid>·home·tmp와 그 안은 읽기·쓰기, 나머지
+//	                                           (uploads, cmd-output 등)와 그 안은 읽기
 //	sessions/conv-<id>(할당 있음)              세션 uid 읽기·쓰기(그 안 포함)
-//	sessions/cmd-output                        모든 uid가 지나가기만(agent.EnsureContainerDir)
+//	sessions/cmd-output·home·tmp               모든 uid가 지나가기만(agent.EnsureContainerDir)
 //	sessions/cmd-output/conv-<id>(할당 있음)   세션 uid 읽기(그 안 포함)
+//	sessions/home·tmp/conv-<id>(할당 있음)     세션 uid 읽기·쓰기(그 안 포함). 명령의 HOME·TMPDIR(#178)
 //	그 밖(할당 없음, 모르는 이름, 시험 작업 공간)  서버 전용. 안으로 들어가지 않는다
 //
 // 에이전트는 작업 공간 안의 항목을 언제든 링크로 바꿀 수 있어 경로를 다시 풀지 않는다. 각 항목을 부모 디렉터리의 파일
@@ -187,13 +189,13 @@ func applyWorkspaceACL(dataDir string, owners workspaceOwners) error {
 			if top == "tasks" {
 				return shareTaskUnit(f, info, owners.taskUID(name))
 			}
-			if name == agent.ToolOutputDirName && info.IsDir() {
-				// sessions/cmd-output은 모든 세션이 지나가는 공유 디렉터리다. sessions/는 에이전트가 쓰지 못해 경로로 다뤄도 된다.
+			if access, ok := sessionSideDirs[name]; ok && info.IsDir() {
+				// sessions/cmd-output·home·tmp는 모든 세션이 지나가는 공유 디렉터리다. sessions/는 에이전트가 쓰지 못해 경로로 다뤄도 된다.
 				if err := agent.EnsureContainerDir(filepath.Join(dataDir, top, name)); err != nil {
 					return err
 				}
-				return eachEntry(f, func(out *os.File, outInfo fs.FileInfo, sid string) error {
-					return shareUnit(out, outInfo, owners.sessionUID(sid), agent.WorkspaceRead)
+				return eachEntry(f, func(unit *os.File, unitInfo fs.FileInfo, sid string) error {
+					return shareUnit(unit, unitInfo, owners.sessionUID(sid), access)
 				})
 			}
 			return shareUnit(f, info, owners.sessionUID(name), agent.WorkspaceWrite)
@@ -204,6 +206,105 @@ func applyWorkspaceACL(dataDir string, owners workspaceOwners) error {
 		}
 	}
 	return nil
+}
+
+// restrictDataDir 은 데이터 디렉터리에서 작업 공간이 아닌 항목을 서버 전용으로 닫는다(#186). 데이터 디렉터리는 모든
+// uid가 지나가는 공유 디렉터리라(prepareWorkspaceRoots), 그 바로 아래 항목이 umask대로 0755·0644면 아무 작업의
+// 에이전트 uid나 이름으로 들어가 트래픽 저장소·보관 묶음·대화 기록을 읽는다.
+//
+//	tasks, sessions, drafts             손대지 않는다(prepareWorkspaceRoots·applyWorkspaceACL이 맞춘다)
+//	traffic, traffic/_ca                모든 uid가 지나가기만(agent.EnsureContainerDir)
+//	traffic/_ca/mitmproxy-ca-cert.pem   모든 uid가 읽기(0644). 에이전트 명령이 믿을 프록시 CA 인증서다(SSL_CERT_FILE)
+//	그 밖(트래픽 색인·호스트, 보관 묶음 등)  서버 전용(디렉터리 0700, 파일 0600). 안쪽 전체를 맞춘다
+//
+// 데이터 디렉터리와 위 디렉터리에는 기본 ACL(agent.ServerOnlyDefaultACL)을 걸어, 서버가 나중에 새로 만드는 항목도
+// umask와 상관없이 서버 전용이 되게 한다. 이 디렉터리들은 에이전트가 쓰지 못해 경로로 다뤄도 되지만, 걷기는
+// applyWorkspaceACL과 같이 링크를 따라가지 않고 연 기술자에 쓴다. 서버 소유가 아닌 것(예전 root 컨테이너가 만든 것)은
+// 바꿀 수 없어 건너뛴다.
+func restrictDataDir(dataDir string) error {
+	data, err := os.Open(dataDir)
+	if err != nil {
+		return fmt.Errorf("open data dir: %w", err)
+	}
+	defer data.Close()
+	if err := setServerOnlyDefault(data); err != nil {
+		return err
+	}
+	return eachEntry(data, func(f *os.File, info fs.FileInfo, name string) error {
+		switch {
+		case workspaceRootNames[name]:
+			return nil
+		case name == trafficDirName && info.IsDir():
+			return restrictTrafficDir(filepath.Join(dataDir, name), f)
+		}
+		return restrictTree(f, info)
+	})
+}
+
+// workspaceRootNames 는 데이터 디렉터리 바로 아래에서 작업 공간을 담는 디렉터리 이름이다.
+var workspaceRootNames = map[string]bool{"tasks": true, "sessions": true, "drafts": true}
+
+// restrictTrafficDir 은 traffic(dir, f는 연 기술자)을 맞춘다. 에이전트 uid는 CA 인증서까지 지나가기만 하고, 나머지는
+// 서버 전용이다.
+func restrictTrafficDir(dir string, f *os.File) error {
+	if err := ensureServerOnlyContainer(dir, f); err != nil {
+		return err
+	}
+	return eachEntry(f, func(child *os.File, info fs.FileInfo, name string) error {
+		if name != traffic.CADirName || !info.IsDir() {
+			return restrictTree(child, info)
+		}
+		if err := ensureServerOnlyContainer(filepath.Join(dir, name), child); err != nil {
+			return err
+		}
+		return eachEntry(child, func(file *os.File, fileInfo fs.FileInfo, fileName string) error {
+			if fileName == traffic.CACertFileName && fileInfo.Mode().IsRegular() && isServerOwned(fileInfo) {
+				return file.Chmod(0o644)
+			}
+			return restrictTree(file, fileInfo)
+		})
+	})
+}
+
+// ensureServerOnlyContainer 는 dir(f는 연 기술자)을 모든 uid가 지나가기만 하는 디렉터리로 두고, 안에 새로 생기는
+// 항목은 서버 전용이 되게 기본 ACL을 건다.
+func ensureServerOnlyContainer(dir string, f *os.File) error {
+	if err := agent.EnsureContainerDir(dir); err != nil {
+		return fmt.Errorf("prepare %s for agent uid separation: %w", dir, err)
+	}
+	return setServerOnlyDefault(f)
+}
+
+// restrictTree 는 f와, f가 서버 소유 디렉터리면 그 안 전체를 서버 전용으로 맞춘다.
+func restrictTree(f *os.File, info fs.FileInfo) error {
+	if err := agent.ShareOpened(f, info, 0, agent.WorkspaceServerOnly); err != nil {
+		return err
+	}
+	if !info.IsDir() || !isServerOwned(info) {
+		return nil
+	}
+	if err := setServerOnlyDefault(f); err != nil {
+		return err
+	}
+	return eachEntry(f, func(child *os.File, childInfo fs.FileInfo, _ string) error {
+		return restrictTree(child, childInfo)
+	})
+}
+
+// setServerOnlyDefault 는 디렉터리 f에 서버 전용 기본 ACL을 건다.
+func setServerOnlyDefault(f *os.File) error {
+	if err := agent.SetACL(f, agent.ACLDefault, agent.ServerOnlyDefaultACL()); err != nil {
+		return fmt.Errorf("set the server-only default ACL on %s: %w", f.Name(), err)
+	}
+	return nil
+}
+
+// sessionSideDirs 는 sessions/ 아래에서 세션마다 하위 디렉터리(<이름>/conv-<id>)를 두는 공유 디렉터리와, 그 세션
+// uid가 하위 디렉터리에서 갖는 권한이다. 큰 출력은 서버만 쓰고, 명령의 HOME·TMPDIR는 세션 uid가 쓴다.
+var sessionSideDirs = map[string]agent.WorkspaceAccess{
+	agent.ToolOutputDirName:  agent.WorkspaceRead,
+	agent.CommandHomeDirName: agent.WorkspaceWrite,
+	agent.CommandTmpDirName:  agent.WorkspaceWrite,
 }
 
 // shareTaskUnit 은 tasks/<tid>를 맞춘다. 할당이 없으면 서버 전용으로 닫고 안으로 들어가지 않는다.

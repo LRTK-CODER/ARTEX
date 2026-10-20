@@ -7,6 +7,9 @@ import (
 	"iter"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -105,7 +108,7 @@ func TestAgentUIDPoolExhaustedStopsEveryRunPath(t *testing.T) {
 
 	t.Run("agent run gets no command environment", func(t *testing.T) {
 		_, taskID := newAgentUIDTestTask(t, m, "agent uid exhausted run")
-		wireAgentAugment(pg, t.TempDir(), nil, &AgentSandbox{})
+		wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, &AgentSandbox{})
 		t.Cleanup(func() { agent.ToolAugment = nil })
 		_, def, _ := agent.ToolAugment(agent.WithRunInfo(ctx, agent.RunInfo{TaskID: taskID}), "planner")
 		if def.CommandEnv != nil || !errors.Is(def.CommandErr, db.ErrAgentUIDPoolExhausted) {
@@ -219,9 +222,13 @@ func TestEngineRunWaitsForAgentUIDAfterTransientFailure(t *testing.T) {
 	}
 }
 
-// 에이전트 실행마다 ToolAugment가 그 실행의 작업·세션 uid를 명령 환경에 싣는다(#177). 받지 못하면(일시 오류, 속한 곳
-// 없음) 도구를 붙이지 않고 CommandErr로 알린다. 에이전트는 그 실행을 시작하지 않는다(agent 쪽 테스트).
+// 에이전트 실행마다 ToolAugment가 그 실행의 작업·세션 uid(#177)와 HOME·TMPDIR(#178)를 명령 환경에 싣는다. 받지
+// 못하면(일시 오류, 속한 곳 없음) 도구를 붙이지 않고 CommandErr로 알린다. 에이전트는 그 실행을 시작하지 않는다(agent
+// 쪽 테스트).
 func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("HOME·TMPDIR 디렉터리의 POSIX ACL은 Linux에서만 쓸 수 있다")
+	}
 	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
@@ -238,7 +245,8 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 	sessionKey := (&Server{}).convBusyKey(c.ID)
 
 	sb := &AgentSandbox{uid: 20000, gid: 20000}
-	wireAgentAugment(pg, t.TempDir(), nil, sb)
+	dataDir := t.TempDir()
+	wireAgentAugment(pg, dataDir, t.TempDir(), nil, sb)
 	t.Cleanup(func() { agent.ToolAugment = nil })
 	augment := func(ctx context.Context, ri agent.RunInfo) agent.DeferredInfo {
 		t.Helper()
@@ -262,22 +270,32 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 
 	taskDef := augment(t.Context(), agent.RunInfo{TaskID: taskID, IntentID: 7})
 	convDef := augment(t.Context(), agent.RunInfo{SessionID: sessionKey})
+	taskDir := filepath.Join(dataDir, "tasks", strconv.FormatInt(taskID, 10))
+	sessions := filepath.Join(dataDir, "sessions")
 	for _, tc := range []struct {
-		name string
-		def  agent.DeferredInfo
-		uid  string
+		name      string
+		def       agent.DeferredInfo
+		uid       string
+		home, tmp string
 	}{
-		{name: "task run", def: taskDef, uid: assignedUID("task_id", taskID)},
-		{name: "conversation run", def: convDef, uid: assignedUID("conversation_id", c.ID)},
+		{name: "task run", def: taskDef, uid: assignedUID("task_id", taskID),
+			home: filepath.Join(taskDir, "home"), tmp: filepath.Join(taskDir, "tmp")},
+		{name: "conversation run", def: convDef, uid: assignedUID("conversation_id", c.ID),
+			home: filepath.Join(sessions, "home", sessionKey), tmp: filepath.Join(sessions, "tmp", sessionKey)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// gid는 공용 gid(20000)가 아니라 uid와 같은 값이다(#182).
-			want := []string{AgentUIDEnv + "=" + tc.uid, AgentGIDEnv + "=" + tc.uid}
+			// gid는 공용 gid(20000)가 아니라 uid와 같은 값이다(#182). HOME·TMPDIR는 작업·세션마다 다르다(#178).
+			want := []string{AgentUIDEnv + "=" + tc.uid, AgentGIDEnv + "=" + tc.uid, agent.AgentHomeEnv + "=" + tc.home, "TMPDIR=" + tc.tmp}
 			if tc.def.CommandErr != nil || strings.Join(tc.def.CommandEnv, " ") != strings.Join(want, " ") {
 				t.Fatalf("CommandEnv = %v, %v, want %v", tc.def.CommandEnv, tc.def.CommandErr, want)
 			}
 			if got := strconv.Itoa(tc.def.WorkspaceUID); got != tc.uid {
 				t.Fatalf("WorkspaceUID = %s, want the run uid %s", got, tc.uid)
+			}
+			for _, dir := range []string{tc.home, tc.tmp} {
+				if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+					t.Fatalf("%s was not created: %v", dir, err)
+				}
 			}
 		})
 	}
@@ -306,7 +324,7 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 	}
 
 	// 꺼져 있으면 지금과 같다. uid를 싣지 않고 막지도 않는다.
-	wireAgentAugment(pg, t.TempDir(), nil, nil)
+	wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, nil)
 	if def := augment(t.Context(), agent.RunInfo{}); def.CommandEnv != nil || def.CommandErr != nil || def.WorkspaceUID != 0 {
 		t.Fatalf("sandbox off: %+v", def)
 	}

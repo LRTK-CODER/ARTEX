@@ -24,13 +24,22 @@ import (
 // capture is on) to add to EVERY agent's base list — the DB tools table then
 // filters them per-agent binding. Empty/nil → no host tools this run (capture off).
 // sandbox가 nil이 아니면 이 실행(ctx의 agent.RunInfo)의 작업·세션 uid를 받아 에이전트 명령 환경(CommandEnv)에 싣고
-// stdio MCP를 그 uid로 띄우며, 작업 공간을 그 uid에만 열게 한다(WorkspaceUID). uid를 받지 못하면 도구를 붙이지 않고
+// stdio MCP를 그 uid로 띄우며, 작업 공간을 그 uid에만 열게 한다(WorkspaceUID). 데이터 디렉터리 dataDir 아래에 그
+// 작업·세션의 HOME·TMPDIR를 만들어 명령 환경에 더한다(#178). uid나 HOME·TMPDIR를 받지 못하면 도구를 붙이지 않고
 // CommandErr로 알린다. 에이전트는 그 실행을 시작하지 않는다(#177).
-func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), sandbox *AgentSandbox) {
+func wireAgentAugment(pg *db.DB, dataDir, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), sandbox *AgentSandbox) {
 	agent.ToolAugment = func(ctx context.Context, agentKey string) ([]actool.CoreTool, agent.DeferredInfo, func()) {
-		workspaceUID, commandEnv, err := sandbox.RunIdentity(ctx, pg, agent.RunInfoFrom(ctx))
+		ri := agent.RunInfoFrom(ctx)
+		workspaceUID, commandEnv, err := sandbox.RunIdentity(ctx, pg, ri)
 		if err != nil {
 			return nil, agent.DeferredInfo{CommandErr: fmt.Errorf("%s 실행하지 않습니다(%s): %w", agentUIDUnavailableMessage, agentUIDRetryHint(err), err)}, nil
+		}
+		if workspaceUID != 0 {
+			dirsEnv, err := agent.EnsureCommandDirs(dataDir, ri, workspaceUID)
+			if err != nil {
+				return nil, agent.DeferredInfo{CommandErr: fmt.Errorf("에이전트 명령의 HOME·TMPDIR를 준비하지 못해 실행하지 않습니다: %w", err)}, nil
+			}
+			commandEnv = append(commandEnv, dirsEnv...)
 		}
 		a, err := pg.GetAgentByKey(agentKey)
 		if err != nil || a == nil {

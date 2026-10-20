@@ -98,6 +98,9 @@ func TestApplyWorkspaceACL(t *testing.T) {
 	writeFileWithMode(t, filepath.Join(task, "uploads", "a.txt"), 0o664)
 	mkdirWithMode(t, filepath.Join(task, "cmd-output", "i3"), 0o777)
 	writeFileWithMode(t, filepath.Join(task, "cmd-output", "i3", "output-1-1.txt"), 0o666)
+	mkdirWithMode(t, filepath.Join(task, "home"), 0o700)
+	mkdirWithMode(t, filepath.Join(task, "tmp"), 0o700)
+	writeFileWithMode(t, filepath.Join(task, "tmp", "scratch"), 0o600)
 	if err := os.Chmod(task, fs.ModeSetgid|fs.ModeSticky|0o775); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +124,11 @@ func TestApplyWorkspaceACL(t *testing.T) {
 	writeFileWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-1", "out.txt"), 0o666)
 	mkdirWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-5"), 0o777)
 	mkdirWithMode(t, filepath.Join(realData, "sessions", "conv-5"), 0o775)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "home"), 0o777)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tmp"), 0o777)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "home", "conv-1"), 0o700)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tmp", "conv-1"), 0o700)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tmp", "conv-5"), 0o700)
 	mkdirWithMode(t, filepath.Join(realData, "sessions", "tool-test-1"), 0o770)
 	mkdirWithMode(t, filepath.Join(realData, "drafts", "d1", "uploads"), 0o777)
 	writeFileWithMode(t, filepath.Join(realData, "traffic.db"), 0o644)
@@ -167,6 +175,9 @@ func TestApplyWorkspaceACL(t *testing.T) {
 		{rel: "tasks/7/cmd-output", mode: 0o750, access: readDir, def: readDir},
 		{rel: "tasks/7/cmd-output/i3", mode: 0o750, access: readDir, def: readDir},
 		{rel: "tasks/7/cmd-output/i3/output-1-1.txt", mode: 0o640, access: agentACL(rw, taskUID, r)},
+		{rel: "tasks/7/home", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/tmp", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/tmp/scratch", mode: 0o660, access: agentACL(rw, taskUID, rw)},
 		{rel: "sessions/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
 		{rel: "sessions/conv-1/uploads", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
 		{rel: "sessions/conv-1/uploads/f.txt", mode: 0o660, access: agentACL(rw, convUID, rw)},
@@ -174,6 +185,11 @@ func TestApplyWorkspaceACL(t *testing.T) {
 		{rel: "sessions/cmd-output/conv-1", mode: 0o750, access: agentACL(rwx, convUID, rx), def: agentACL(rwx, convUID, rx)},
 		{rel: "sessions/cmd-output/conv-1/out.txt", mode: 0o640, access: agentACL(rw, convUID, r)},
 		{rel: "sessions/cmd-output/conv-5", mode: 0o700},
+		{rel: "sessions/home", mode: 0o711},
+		{rel: "sessions/home/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
+		{rel: "sessions/tmp", mode: 0o711},
+		{rel: "sessions/tmp/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
+		{rel: "sessions/tmp/conv-5", mode: 0o700},
 		{rel: "sessions/conv-5", mode: 0o700},
 		{rel: "sessions/tool-test-1", mode: 0o700},
 	}
@@ -489,5 +505,108 @@ func TestCheckWorkspaceACL(t *testing.T) {
 				t.Fatalf("data dir has %d leftover entries (first %q), want none", len(entries), entries[0].Name())
 			}
 		})
+	}
+}
+
+// TestRestrictDataDir 는 uid 분리를 켜면 데이터 디렉터리에서 작업 공간이 아닌 항목을 서버 전용으로 닫는지 본다(#186).
+// 트래픽 색인·호스트, 보관 묶음, 대화 기록, 그 밖의 파일은 안쪽까지 디렉터리 0700·파일 0600이 되고, 에이전트 명령이
+// 믿을 프록시 CA 인증서까지만 지나가기와 읽기가 남는다. tasks·sessions·drafts는 손대지 않는다. 걸어 둔 기본 ACL
+// 때문에 서버가 나중에 0755·0644로 새로 만드는 항목도 서버 전용이다. 밖을 가리키는 링크는 따라가지 않는다.
+func TestRestrictDataDir(t *testing.T) {
+	skipWithoutACL(t)
+	base := t.TempDir()
+	data := filepath.Join(base, "data")
+	outsideDir := filepath.Join(base, "outside")
+	mkdirWithMode(t, outsideDir, 0o755)
+	writeFileWithMode(t, filepath.Join(outsideDir, "keep.txt"), 0o644)
+	mkdirWithMode(t, data, 0o711)
+	mkdirWithMode(t, filepath.Join(data, "tasks"), 0o711)
+	for _, dir := range []string{"tasks/7", "sessions/conv-1", "drafts/d1", "traffic/_index", "traffic/_blobs/ab",
+		"traffic/_ca", "traffic/example.com/443", "archives/tasks", "transcripts", ".delete-staging/7"} {
+		mkdirWithMode(t, filepath.Join(data, dir), 0o755)
+	}
+	for _, file := range []string{"tasks/7/plan.md", "traffic/_index/index.sqlite", "traffic/_blobs/ab/blob",
+		"traffic/_ca/mitmproxy-ca.pem", "traffic/_ca/mitmproxy-ca-cert.pem", "traffic/example.com/443/req.json",
+		"archives/tasks/7.zip", "transcripts/7.jsonl", "notes.txt"} {
+		writeFileWithMode(t, filepath.Join(data, file), 0o644)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(data, "evidence")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := restrictDataDir(data); err != nil {
+		t.Fatal(err)
+	}
+	// 서버가 나중에 새로 만드는 항목. 기본 ACL이 umask 대신 권한을 정한다.
+	for _, dir := range []string{"noa/s1", "traffic/new.example/80", "archives/tasks/staging"} {
+		if err := os.MkdirAll(filepath.Join(data, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, file := range []string{"noa/s1/a.json", "traffic/new.example/80/req.json", "archives/tasks/8.zip", "late.txt"} {
+		if err := os.WriteFile(filepath.Join(data, file), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cases := []struct {
+		rel        string // data 기준
+		mode       fs.FileMode
+		hasDefault bool // 서버 전용 기본 ACL이 있는가
+	}{
+		{rel: ".", mode: 0o711, hasDefault: true},
+		{rel: "tasks", mode: 0o711},
+		{rel: "tasks/7/plan.md", mode: 0o644},
+		{rel: "sessions/conv-1", mode: 0o755},
+		{rel: "drafts/d1", mode: 0o755},
+		{rel: "traffic", mode: 0o711, hasDefault: true},
+		{rel: "traffic/_ca", mode: 0o711, hasDefault: true},
+		{rel: "traffic/_ca/mitmproxy-ca-cert.pem", mode: 0o644},
+		{rel: "traffic/_ca/mitmproxy-ca.pem", mode: 0o600},
+		{rel: "traffic/_index", mode: 0o700, hasDefault: true},
+		{rel: "traffic/_index/index.sqlite", mode: 0o600},
+		{rel: "traffic/_blobs/ab", mode: 0o700, hasDefault: true},
+		{rel: "traffic/_blobs/ab/blob", mode: 0o600},
+		{rel: "traffic/example.com/443", mode: 0o700, hasDefault: true},
+		{rel: "traffic/example.com/443/req.json", mode: 0o600},
+		{rel: "archives", mode: 0o700, hasDefault: true},
+		{rel: "archives/tasks/7.zip", mode: 0o600},
+		{rel: "transcripts/7.jsonl", mode: 0o600},
+		{rel: ".delete-staging/7", mode: 0o700, hasDefault: true},
+		{rel: "notes.txt", mode: 0o600},
+		{rel: "noa", mode: 0o700, hasDefault: true},
+		{rel: "noa/s1/a.json", mode: 0o600},
+		{rel: "traffic/new.example/80", mode: 0o700, hasDefault: true},
+		{rel: "traffic/new.example/80/req.json", mode: 0o600},
+		{rel: "archives/tasks/staging", mode: 0o700, hasDefault: true},
+		{rel: "archives/tasks/8.zip", mode: 0o600},
+		{rel: "late.txt", mode: 0o600},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rel, func(t *testing.T) {
+			p := filepath.Join(data, filepath.FromSlash(tc.rel))
+			info, err := os.Lstat(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := info.Mode().Perm(); got != tc.mode {
+				t.Errorf("mode = %v, want %v", got, tc.mode)
+			}
+			if !info.IsDir() {
+				return
+			}
+			var want agent.ACL
+			if tc.hasDefault {
+				want = agent.ServerOnlyDefaultACL()
+			}
+			if got := readACLOf(t, p, agent.ACLDefault); !slices.Equal(got, want) {
+				t.Errorf("default ACL = %v, want %v", got, want)
+			}
+		})
+	}
+	for p, want := range map[string]fs.FileMode{outsideDir: 0o755, filepath.Join(outsideDir, "keep.txt"): 0o644} {
+		if info, err := os.Stat(p); err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s outside the data dir changed: %v, %v", p, info.Mode(), err)
+		}
 	}
 }

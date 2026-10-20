@@ -329,11 +329,12 @@ const UploadsDirName = "uploads"
 // taskWorkName 은 uid 분리를 켰을 때 planner·mainagent의 작업 디렉터리 이름이다(tasks/<taskID> 아래).
 const taskWorkName = "work"
 
-// IsTaskWorkspaceName 은 name이 uid 분리를 켰을 때 tasks/<taskID> 바로 아래의 에이전트 작업 디렉터리 이름(work,
-// i<intentID>)인지 본다. server의 작업 공간 권한 규칙이 이 이름에만 에이전트 쓰기를 준다. runDirPath가
-// 만드는 모양(앞에 0이 없는 양수)만 받는다.
+// IsTaskWorkspaceName 은 name이 uid 분리를 켰을 때 tasks/<taskID> 바로 아래에서 에이전트가 쓰는 디렉터리 이름(작업
+// 디렉터리 work·i<intentID>, 명령의 HOME·TMPDIR home·tmp)인지 본다. server의 작업 공간 권한 규칙이 이 이름에만
+// 에이전트 쓰기를 준다. i<intentID>는 runDirPath가 만드는 모양(앞에 0이 없는 양수)만 받는다.
 func IsTaskWorkspaceName(name string) bool {
-	if name == taskWorkName {
+	switch name {
+	case taskWorkName, CommandHomeDirName, CommandTmpDirName:
 		return true
 	}
 	digits, ok := strings.CutPrefix(name, "i")
