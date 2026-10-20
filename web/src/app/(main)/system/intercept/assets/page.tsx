@@ -57,6 +57,15 @@ function KindBadge({ kind }: { kind: AssetInterceptKind }) {
   );
 }
 
+// patternHint 는 일치 방식마다 "일치시킬 값"을 어떻게 해석하는지 알려 준다.
+function patternHint(kind: AssetInterceptKind): string {
+  if (kind === "cidr") return "CIDR 대역. 예: 192.168.0.0/16";
+  if (kind === "suffix_domain")
+    return "접미사 일치: 이 도메인 자체와 하위 도메인이 일치합니다. 앞 점은 있어도 없어도 같습니다";
+  if (kind.startsWith("fuzzy_")) return "부분 일치: 대상에 이 값이 들어 있으면 일치합니다";
+  return "정확히 일치: 대상이 이 값과 완전히 같아야 합니다";
+}
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -299,18 +308,7 @@ export default function AssetInterceptPage() {
               </Select>
             </Field>
 
-            <Field
-              label="일치시킬 값"
-              hint={
-                form.kind === "cidr"
-                  ? "CIDR 대역. 예: 192.168.0.0/16"
-                  : form.kind === "suffix_domain"
-                    ? "접미사 일치: 이 도메인 자체와 하위 도메인이 일치합니다. 앞 점은 있어도 없어도 같습니다"
-                    : form.kind.startsWith("fuzzy_")
-                      ? "부분 일치: 대상에 이 값이 들어 있으면 일치합니다"
-                      : "정확히 일치: 대상이 이 값과 완전히 같아야 합니다"
-              }
-            >
+            <Field label="일치시킬 값" hint={patternHint(form.kind)}>
               <Input
                 placeholder={placeholder}
                 value={form.pattern}
