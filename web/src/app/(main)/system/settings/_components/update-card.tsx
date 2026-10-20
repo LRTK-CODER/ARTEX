@@ -136,12 +136,7 @@ export function UpdateCard() {
     if (!info) return;
     const from = info.current;
     const ok = window.confirm(
-      `${info.latest}(으)로 업데이트할까요?\n\n` +
-        "업데이트하면 프로그램이 재시작되고 실행 중인 작업이 중단됩니다.\n" +
-        (info.mode === "docker"
-          ? "\n주의: 컨테이너 안의 업데이트는 프로그램만 바꾸고 이미지의 playwright / nmap 등 도구 모음은 업데이트하지 않습니다. " +
-            "새 버전에 새 도구가 필요하면 docker compose pull을 쓰세요."
-          : ""),
+      `${info.latest}(으)로 업데이트할까요?\n\n업데이트하면 프로그램이 재시작되고 실행 중인 작업이 중단됩니다.`,
     );
     if (!ok) return;
 
@@ -184,6 +179,8 @@ export function UpdateCard() {
   // 걸리는 시간을 알 수 없는 단계라, 진행 막대를 채우고 깜박임 애니메이션으로 "작업 중이지만 얼마나 걸릴지 모름"을 나타낸다.
   const downloading = !restarting && phase === "downloading";
   const pct = downloading ? Math.max(progress?.percent ?? 0, 0) : 100;
+  // 컨테이너에서는 서버가 바이너리를 바꿀 수 없다(/app 읽기 전용, root가 아닌 사용자). 적용·롤백 버튼 대신 이미지 교체를 안내한다.
+  const isDocker = info?.mode === "docker";
 
   return (
     // 설정 페이지는 다단 메이슨리 레이아웃이라 카드가 직접 행 간격을 주고 단 사이에서 끊기지 않게 한다(page.tsx 주석 참고).
@@ -194,7 +191,9 @@ export function UpdateCard() {
           버전과 업데이트
         </CardTitle>
         <CardDescription>
-          GitHub에서 새 버전을 확인하고 설치합니다. 업데이트하면 프로그램이 재시작되고 실행 중인 작업이 중단됩니다.
+          {isDocker
+            ? "GitHub에서 새 버전을 확인합니다. Docker에서는 이미지를 바꿔 업데이트합니다."
+            : "GitHub에서 새 버전을 확인하고 설치합니다. 업데이트하면 프로그램이 재시작되고 실행 중인 작업이 중단됩니다."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -247,7 +246,7 @@ export function UpdateCard() {
 
         {info && !info.comparable && info.reason && <p className="text-xs text-muted-foreground">{info.reason}</p>}
 
-        {info?.has_update && info.asset_available === false && (
+        {!isDocker && info?.has_update && info.asset_available === false && (
           <p className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
             <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
             {info.latest}에 {info.os}/{info.arch}용 릴리스 파일이 없어({info.asset} 없음) 자동으로 업데이트할 수
@@ -255,7 +254,7 @@ export function UpdateCard() {
           </p>
         )}
 
-        {info?.has_update && info.asset_available !== false && (
+        {!isDocker && info?.has_update && info.asset_available !== false && (
           <p className="text-xs text-muted-foreground">
             <span className="font-mono">{info.asset}</span> {info.size ? `(${humanSize(info.size)})` : ""}을(를)
             내려받아 SHA256 검증과 스모크 테스트를 통과해야 교체합니다. 실패하면 현재 버전을 자동으로 유지합니다.
@@ -269,12 +268,11 @@ export function UpdateCard() {
           </p>
         )}
 
-        {info?.mode === "docker" && info.has_update && (
-          <p className="text-xs text-muted-foreground">
-            Docker에서의 업데이트는 프로그램만 바꾸고 이미지의 playwright / nmap 등 도구 모음은 업데이트하지 않습니다.
-            또 <span className="font-mono"> docker compose up -d </span>로 컨테이너를 다시 만들면 이미지에 든 버전으로
-            돌아갑니다. 이미지까지 함께 올리려면 다음을 실행하세요:{" "}
-            <span className="font-mono"> docker compose pull artex &amp;&amp; docker compose up -d artex</span>
+        {isDocker && (
+          <p className="text-muted-foreground text-xs">
+            {info?.has_update ? `새 버전 ${info.latest}이(가) 나왔습니다. ` : ""}
+            Docker에서는 원클릭 업데이트를 쓰지 않습니다. 호스트의 compose 디렉터리에서 다음을 실행해 이미지를 바꾸세요:{" "}
+            <span className="font-mono">docker compose pull artex &amp;&amp; docker compose up -d artex</span>
           </p>
         )}
 
@@ -294,15 +292,17 @@ export function UpdateCard() {
             <RefreshCwIcon className={checking ? "size-4 animate-spin" : "size-4"} />
             업데이트 확인
           </Button>
-          <Button
-            size="sm"
-            onClick={doUpdate}
-            disabled={busy || restarting || !info?.has_update || info?.asset_available === false}
-          >
-            <DownloadIcon className="size-4" />
-            {info?.has_update ? `${info.latest}(으)로 업데이트` : "지금 업데이트"}
-          </Button>
-          {info?.has_backup && (
+          {!isDocker && (
+            <Button
+              size="sm"
+              onClick={doUpdate}
+              disabled={busy || restarting || !info?.has_update || info?.asset_available === false}
+            >
+              <DownloadIcon className="size-4" />
+              {info?.has_update ? `${info.latest}(으)로 업데이트` : "지금 업데이트"}
+            </Button>
+          )}
+          {!isDocker && info?.has_backup && (
             <Button variant="ghost" size="sm" onClick={doRollback} disabled={busy || restarting}>
               <RotateCcwIcon className="size-4" />
               이전 버전으로 롤백
@@ -310,11 +310,13 @@ export function UpdateCard() {
           )}
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          원클릭 업데이트는 감시 스크립트가 프로그램을 재시작하는 것에 기댑니다.{" "}
-          <span className="font-mono">start.sh</span>(Windows는<span className="font-mono"> start.bat</span>)로 ARTEX를
-          시작하세요. artex 실행 파일을 직접 실행하면 프로그램이 끝난 뒤 자동으로 다시 시작되지 않습니다.
-        </p>
+        {!isDocker && (
+          <p className="text-xs text-muted-foreground">
+            원클릭 업데이트는 감시 스크립트가 프로그램을 재시작하는 것에 기댑니다.{" "}
+            <span className="font-mono">start.sh</span>(Windows는<span className="font-mono"> start.bat</span>)로
+            ARTEX를 시작하세요. artex 실행 파일을 직접 실행하면 프로그램이 끝난 뒤 자동으로 다시 시작되지 않습니다.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

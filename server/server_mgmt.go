@@ -972,8 +972,15 @@ type skillFileNode struct {
 	LastUsed *time.Time `json:"last_used,omitempty"`
 }
 
+// 스킬 디렉터리·파일 권한. 그룹 쓰기 비트를 둔다. Docker 이미지는 umask 002로 돌고 ./skills를 그룹 artex(setgid)로
+// 공유하므로, 화면에서 만든 스킬도 호스트 사용자가 고칠 수 있다. 단독 실행 파일(umask 022)에서는 0755/0644가 된다.
+const (
+	skillDirPerm  os.FileMode = 0o775
+	skillFilePerm os.FileMode = 0o664
+)
+
 func (s *Server) fsListSkills(w http.ResponseWriter, r *http.Request) {
-	_ = os.MkdirAll(s.skillDir, 0o755)
+	_ = os.MkdirAll(s.skillDir, skillDirPerm)
 	allReg, _ := skill.LoadDir(s.skillDir)
 	metaByDir := map[string]skill.Skill{}
 	if allReg != nil {
@@ -1098,7 +1105,7 @@ func (s *Server) fsCreateSkill(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "skill already exists")
 		return
 	}
-	if err := os.MkdirAll(skillPath, 0o755); err != nil {
+	if err := os.MkdirAll(skillPath, skillDirPerm); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
@@ -1129,7 +1136,7 @@ func (s *Server) fsCreateSkill(w http.ResponseWriter, r *http.Request) {
 		sb.WriteString("<!-- Describe step-by-step instructions in Markdown. -->\n\n")
 		sb.WriteString("1. \n2. \n3. \n")
 	}
-	if err := os.WriteFile(filepath.Join(skillPath, "SKILL.md"), []byte(sb.String()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillPath, "SKILL.md"), []byte(sb.String()), skillFilePerm); err != nil {
 		_ = os.RemoveAll(skillPath)
 		writeErr(w, 500, err.Error())
 		return
@@ -1169,7 +1176,7 @@ func (s *Server) fsUpdateSkillMeta(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	if err := os.WriteFile(skillMD, updated, 0o644); err != nil {
+	if err := os.WriteFile(skillMD, updated, skillFilePerm); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
@@ -1364,7 +1371,7 @@ func (s *Server) fsUploadSkill(w http.ResponseWriter, r *http.Request) {
 
 	// extract into a temp dir first, then atomically swap in — a bad entry aborts
 	// the whole upload without leaving a half-written skill.
-	_ = os.MkdirAll(s.skillDir, 0o755)
+	_ = os.MkdirAll(s.skillDir, skillDirPerm)
 	tmp, err := os.MkdirTemp(s.skillDir, ".upload-*")
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -1398,7 +1405,7 @@ func (s *Server) fsUploadSkill(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		dst := filepath.Join(tmp, clean)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dst), skillDirPerm); err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}
@@ -1437,6 +1444,13 @@ func (s *Server) fsUploadSkill(w http.ResponseWriter, r *http.Request) {
 	if err := os.Rename(tmp, skillPath); err != nil {
 		writeErr(w, 500, "스킬을 설치하지 못했습니다: "+err.Error())
 		return
+	}
+	// MkdirTemp는 0700으로 만든다. 다른 스킬과 같은 권한으로 맞춰 호스트 사용자(그룹)도 읽고 고치게 한다.
+	// 부모(./skills)에서 물려받은 setgid는 남긴다. 빼고 chmod하면 지워져 그 아래 새 파일의 그룹이 어긋난다.
+	if fi, err := os.Stat(skillPath); err != nil {
+		log.Printf("[skills] %s 권한 확인 실패: %v", skillPath, err)
+	} else if err := os.Chmod(skillPath, skillDirPerm|fi.Mode()&os.ModeSetgid); err != nil {
+		log.Printf("[skills] %s 권한 설정 실패: %v", skillPath, err)
 	}
 	writeJSON(w, 201, map[string]any{"name": name, "files": entries})
 }
@@ -1634,11 +1648,11 @@ func (s *Server) fsWriteFile(w http.ResponseWriter, r *http.Request) {
 	}
 	fullPath := filepath.Join(skillPath, file)
 	// create parent subdirectory if needed (e.g. scripts/, references/, assets/)
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(fullPath), skillDirPerm); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if err := os.WriteFile(fullPath, []byte(body.Content), 0o644); err != nil {
+	if err := os.WriteFile(fullPath, []byte(body.Content), skillFilePerm); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
@@ -1668,7 +1682,7 @@ func (s *Server) fsCreateDir(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "skill not found")
 		return
 	}
-	if err := os.MkdirAll(filepath.Join(skillPath, dir), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(skillPath, dir), skillDirPerm); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}

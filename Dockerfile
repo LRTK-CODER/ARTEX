@@ -20,10 +20,17 @@ FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472
 FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
 ARG TARGETARCH
 # 자주 쓰는 도구: ripgrep / curl / vim과 정보 수집에 늘 쓰는 도구 몇 가지(필요에 따라 더하거나 뺀다).
+# 서버는 root가 아닌 사용자로 돈다. nmap의 SYN 스캔(-sS)·OS 탐지는 raw 소켓이 필요하므로 nmap 실행 파일에만
+# cap_net_raw를 준다. cap_net_admin은 주지 않는다. Docker 기본 capability 집합에 NET_ADMIN이 없어서 파일 cap에
+# 들어 있으면 exec 자체가 실패한다. setcap을 담은 libcap2-bin(Debian 공식 저장소)은 이 단계에서만 쓰고 지운다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip \
-      dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
+      dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap libcap2-bin \
+    && setcap cap_net_raw+eip /usr/bin/nmap \
+    && apt-get purge -y libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
+# nmap은 uid가 0이 아니면 raw 소켓 권한이 없다고 보고 SYN 스캔을 거부한다. 파일 cap이 있음을 알려 준다.
+ENV NMAP_PRIVILEGED=1
 # 두 이미지 모두 Debian bookworm(glibc)이라 node 바이너리를 그대로 옮길 수 있다.
 # npm·npx는 실행 링크가 복사되지 않으므로 공식 이미지와 같은 상대 경로로 다시 만든다.
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
@@ -44,6 +51,8 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # 이어서 chromium과 그 시스템 의존 패키지를 미리 넣어 컨테이너 첫 실행에 받지 않게 한다.
 COPY docker/playwright/package.json docker/playwright/package-lock.json /opt/playwright/
 ENV NODE_PATH=/opt/playwright/node_modules
+# chromium을 root의 홈(~/.cache)이 아니라 모든 사용자가 읽는 고정 경로에 둔다. 서버는 artex 사용자로 돈다.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN cd /opt/playwright && npm ci --omit=dev \
     && mkdir -p /usr/local/lib/node_modules/@playwright \
     && for pkg in @playwright/mcp @playwright/cli playwright; do \
@@ -57,20 +66,30 @@ RUN cd /opt/playwright && npm ci --omit=dev \
     && playwright-cli --help \
     && playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
+# 서버와 에이전트 명령을 돌릴 사용자. uid·gid는 호스트 볼륨 소유권을 맞출 때 쓰므로 고정한다(README "Docker 볼륨 소유권").
+ARG ARTEX_UID=10001
+RUN groupadd --system --gid "$ARTEX_UID" artex \
+    && useradd --system --uid "$ARTEX_UID" --gid artex --home-dir /home/artex --create-home --shell /usr/sbin/nologin artex
 WORKDIR /app
+# /app 아래 실행 파일·스크립트·스킬은 root 소유에 읽기 전용(755/644)이다. 프롬프트 주입을 당한 에이전트가 같은 uid로
+# 돌아도 서버 바이너리나 시작 스크립트를 바꿔 다음 재시작 때 자기 코드를 실행시키지 못하게 한다.
+# 그래서 컨테이너에서는 원클릭 업데이트를 쓰지 않고 이미지 교체(docker compose pull && docker compose up -d)로만 올린다.
 # 미리 빌드한 해당 아키텍처 바이너리(dist/amd64/artex 또는 dist/arm64/artex)
-COPY dist/${TARGETARCH}/artex /app/artex
-# 감시 시작 스크립트: 프로세스가 끝나면 종료 코드로 다시 띄울지 정한다. 화면의 원클릭 업데이트가 이것으로 바이너리를 바꾼다.
-# SIGTERM을 artex에 전달하는 일도 맡는다. docker stop은 PID 1에만 신호를 보내므로
+COPY --chmod=755 dist/${TARGETARCH}/artex /app/artex
+# 감시 시작 스크립트: 비정상 종료면 다시 띄우고, SIGTERM을 artex에 전달한다. docker stop은 PID 1에만 신호를 보내므로
 # 전달하지 않으면 artex가 받지 못해 정상 종료를 하지 못하고 10초 뒤 SIGKILL로 강제 종료된다.
-COPY start.sh /app/start.sh
-RUN chmod +x /app/artex /app/start.sh
+COPY --chmod=755 start.sh /app/start.sh
 COPY skills/ /app/skills/
+# 쓰기 경로는 작업 공간과 서버 키 두 곳뿐이다. 빈 볼륨이 처음 붙을 때 이미지의 소유권을 물려받도록 미리 만든다.
+RUN mkdir -p /app/data /app/keys && chown artex:artex /app/data /app/keys && chmod 700 /app/keys
 # 서버 키(jwt.key, oauth.key)는 작업 공간(/app/data) 밖의 /app/keys 에 둔다.
 # 볼륨이어야 컨테이너를 다시 만들어도 키가 남아 웹 세션과 ChatGPT 구독 로그인이 유지된다.
 ENV ARTEX_KEY_DIR=/app/keys
 # data/(SQLite 등)와 keys/(서버 키)를 남기는 볼륨 지점
 VOLUME ["/app/data", "/app/keys"]
 EXPOSE 8787 8788
-ENTRYPOINT ["/app/start.sh"]
+USER artex:artex
+# umask 002: 컨테이너가 ./skills(그룹 artex, setgid)에 만든 스킬 파일도 그룹 쓰기가 되게 해 호스트 사용자와 함께 고친다.
+# 키 파일은 서버가 0600으로 만들므로 영향이 없다.
+ENTRYPOINT ["/bin/sh", "-c", "umask 002 && exec /app/start.sh \"$@\"", "start.sh"]
 CMD ["-addr", ":8787", "-proxy", ":8788"]

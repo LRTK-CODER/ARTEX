@@ -159,14 +159,23 @@ func parseVersion(s string) ([3]int, bool) {
 	return out, true
 }
 
-// InDocker 는 프로세스가 컨테이너 안에서 실행 중인지 알려 준다. Docker에서는 바이너리 교체가 컨테이너의 쓰기 가능 계층에 쓰므로,
-// `docker compose up -d`로 컨테이너를 다시 만들면 이미지에 든 버전으로 돌아간다. 이는 의도한 동작이지만
-// (그때 사용자는 원래 새 이미지를 받는 중이다), 프런트엔드가 이를 근거로 사정을 분명히 알려 줄 수 있어야 한다.
-func InDocker() bool {
-	if _, err := os.Stat("/.dockerenv"); err == nil {
-		return true
+// InDocker 는 프로세스가 컨테이너 안에서 실행 중인지 알려 준다.
+//
+// 컨테이너에서는 원클릭 업데이트를 쓰지 않는다(서버 API가 적용·롤백을 거부한다). 이미지는 /app을 root 소유
+// 읽기 전용으로 두고 서버를 root가 아닌 사용자로 돌리므로 바이너리를 바꿀 수 없고, 바꿀 수 있다 해도
+// 컨테이너를 다시 만들면 이미지에 든 버전으로 돌아간다. 업데이트는 이미지 교체(docker compose pull)로만 한다.
+func InDocker() bool { return inContainer("/") }
+
+// inContainer 는 root 아래에서 컨테이너 런타임이 남기는 흔적을 찾는다. Docker는 /.dockerenv를, Podman은
+// /run/.containerenv를 만든다. cgroup v1에서는 /proc/1/cgroup 경로에 런타임 이름이 보인다(cgroup v2는 "0::/"뿐이라
+// 표식 파일에 기댄다).
+func inContainer(root string) bool {
+	for _, marker := range []string{".dockerenv", "run/.containerenv"} {
+		if _, err := os.Stat(filepath.Join(root, marker)); err == nil {
+			return true
+		}
 	}
-	b, err := os.ReadFile("/proc/1/cgroup")
+	b, err := os.ReadFile(filepath.Join(root, "proc/1/cgroup"))
 	if err != nil {
 		return false
 	}

@@ -18,7 +18,7 @@ import (
 // 여기서는 인증 경계, 동시 실행 막기, 진행률 방송, 그리고 '이제 종료하라'를 main에 알리는 일만 한다.
 //
 // 재시작은 이 프로세스가 하지 않는다. 새 버전을 임시로 받아 둔 뒤 selfupdate.ExitRestart로 종료하면
-// 감시 스크립트(start.sh / start.bat, Docker에서는 ENTRYPOINT)가 다시 띄운다.
+// 감시 스크립트(start.sh / start.bat)가 다시 띄운다. 컨테이너에서는 적용·롤백을 거부하고 새 버전 확인만 한다.
 
 // restartCh는 업데이트 준비나 롤백이 끝나면 닫힌다. main은 이를 받고 ExitRestart로 종료한다.
 var (
@@ -75,6 +75,11 @@ const (
 )
 
 var relCache = &releaseCache{}
+
+// errContainerUpdate 는 컨테이너에서 원클릭 업데이트·롤백을 요청했을 때의 안내다.
+// 이미지는 /app을 root 소유 읽기 전용으로 두므로 서버가 바이너리를 바꿀 수 없고, 바꿀 수 있다 해도
+// 컨테이너를 다시 만들면 이미지의 버전으로 돌아간다. 업데이트는 이미지 교체로만 한다.
+const errContainerUpdate = "컨테이너에서는 원클릭 업데이트를 쓸 수 없습니다. 호스트에서 docker compose pull && docker compose up -d 로 이미지를 바꾸세요"
 
 // get 은 최신 Release를 돌려준다. 캐시에 적중하면 네트워크에 접근하지 않는다.
 //
@@ -210,7 +215,7 @@ func (h *updateHub) subscribe() (<-chan updateProgress, func()) {
 func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	current := BuildVersion
 	mode := "binary"
-	if selfupdate.InDocker() {
+	if s.inContainer() {
 		mode = "docker"
 	}
 	boot := bootUpdateState()
@@ -268,6 +273,10 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 // 바로 202를 돌려주고 실제 일은 백그라운드 goroutine에서 한다. 전체 패키지 다운로드는 몇 분 걸릴 수 있어
 // 요청에 묶어 두면 리버스 프록시 시간 초과로 끊긴다. 진행률은 /api/update/stream으로 보낸다.
 func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
+	if s.inContainer() {
+		writeErr(w, http.StatusConflict, errContainerUpdate)
+		return
+	}
 	current := BuildVersion
 
 	// 캐시를 쓴다. 사용자가 화면에서 보고 확인한 바로 그 버전을 설치하기 위해서다.
@@ -313,6 +322,10 @@ func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
 
 // updateRollback 은 이전 버전(교체 전에 백업한 artex.old)으로 직접 되돌린다.
 func (s *Server) updateRollback(w http.ResponseWriter, r *http.Request) {
+	if s.inContainer() {
+		writeErr(w, http.StatusConflict, errContainerUpdate)
+		return
+	}
 	if _, running := updHub.snapshot(); running {
 		writeErr(w, 409, "업데이트가 진행 중이어서 롤백할 수 없습니다")
 		return
