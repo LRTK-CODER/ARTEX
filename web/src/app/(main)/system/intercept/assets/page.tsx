@@ -189,8 +189,8 @@ export default function AssetInterceptPage() {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          정확히 일치·부분 일치하는 도메인 / IP / URL과 CIDR 대역을 지원합니다. 내장 규칙은 기본으로 정부(.gov /
-          .gov.cn)와 교육(.edu / .edu.cn) 웹사이트를 부분 일치로 차단합니다
+          정확히 일치·부분 일치하는 도메인 / IP / URL과 CIDR 대역을 지원합니다. 내장 규칙은 기본으로 한국
+          공공·교육기관(.go.kr, .ac.kr 등)과 미국 정부·교육기관(.gov / .edu) 웹사이트를 차단합니다
         </p>
         <Button onClick={openNew} size="sm" className="shrink-0">
           <PlusIcon className="h-4 w-4" />새 규칙
