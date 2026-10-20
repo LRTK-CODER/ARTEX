@@ -22,6 +22,8 @@ func AssetInterceptKindLabel(kind string) string {
 		return "URL(정확히 일치)"
 	case "fuzzy_domain":
 		return "도메인(부분 일치)"
+	case "suffix_domain":
+		return "도메인(접미사 일치)"
 	case "fuzzy_ip":
 		return "IP(부분 일치)"
 	case "fuzzy_url":
@@ -73,6 +75,16 @@ func matchOne(r AssetInterceptRule, domains, ips, urls []string) (string, bool) 
 				return d, true
 			}
 		}
+	case "suffix_domain":
+		suffix := NormalizeSuffixDomain(p)
+		if suffix == "" {
+			return "", false
+		}
+		for _, d := range domains {
+			if c := normalizeDomain(d); c == suffix || strings.HasSuffix(c, "."+suffix) {
+				return d, true
+			}
+		}
 	case "fuzzy_ip":
 		for _, ip := range ips {
 			if ip != "" && strings.Contains(ip, p) {
@@ -98,6 +110,17 @@ func matchOne(r AssetInterceptRule, domains, ips, urls []string) (string, bool) 
 		}
 	}
 	return "", false
+}
+
+// NormalizeSuffixDomain 은 suffix_domain 패턴을 비교용 형태로 바꾼다. 앞뒤 공백과 앞뒤 점을 떼고
+// 소문자로 바꾸므로 ".go.kr"와 "go.kr"는 같은 패턴이다. 남는 것이 없으면 빈 문자열이다.
+func NormalizeSuffixDomain(pattern string) string {
+	return strings.Trim(strings.ToLower(strings.TrimSpace(pattern)), ".")
+}
+
+// normalizeDomain 은 후보 도메인을 비교용 형태로 바꾼다. 끝 점(FQDN 표기)은 같은 이름이므로 뗀다.
+func normalizeDomain(domain string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
 }
 
 // MatchAssetInterceptRules 는 주어진 도메인/IP/URL 후보 문자열과 처음 일치한 사용 중인 규칙과

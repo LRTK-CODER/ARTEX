@@ -127,3 +127,46 @@ func TestAssetInterceptCandidates(t *testing.T) {
 		t.Fatalf("URL 안의 IP가 CIDR과 일치해야 함, ips=%v rule=%+v", ips, r)
 	}
 }
+
+// TestMatchSuffixDomain 은 suffix_domain이 도메인 자체와 하위 도메인만 맞추고 레이블 경계를 넘는 이름은
+// 맞추지 않는지 본다(#193). 앞 점·대소문자·끝 점은 차이를 만들지 않는다.
+func TestMatchSuffixDomain(t *testing.T) {
+	cases := []struct {
+		pattern, domain string
+		want            bool
+	}{
+		{"go.kr", "www.moe.go.kr", true},
+		{"go.kr", "go.kr", true},
+		{".go.kr", "go.kr", true},
+		{".go.kr", "www.moe.go.kr", true},
+		{"Go.KR", "WWW.Moe.Go.Kr", true},
+		{"go.kr.", "www.moe.go.kr.", true},
+		{"go.kr", "foo.go.kr.example.com", false},
+		{"go.kr", "a.go.krypton.io", false},
+		{"go.kr", "mygo.kr", false},
+		{"gov.kr", "mygov.kr", false},
+		{"gov", "api.government.io", false},
+		{"edu", "x.education.com", false},
+		{"edu", "cdn.edu-tech.co.kr", false},
+		{"edu", "mit.edu", true},
+		{".", "go.kr", false},
+		{"  ", "go.kr", false},
+	}
+	for _, c := range cases {
+		t.Run(c.pattern+" "+c.domain, func(t *testing.T) {
+			_, _, ok := MatchAssetInterceptRules([]AssetInterceptRule{rule("suffix_domain", c.pattern, true)}, []string{c.domain}, nil, nil)
+			if ok != c.want {
+				t.Fatalf("suffix_domain %q ~ %q 일치 = %v, 기대값 %v", c.pattern, c.domain, ok, c.want)
+			}
+		})
+	}
+}
+
+// TestMatchSuffixDomainURLHost 는 URL만 있는 자산도 host를 떼어 suffix_domain과 맞추는지 본다.
+func TestMatchSuffixDomainURLHost(t *testing.T) {
+	a := &Asset{URL: "https://www.moe.go.kr/login"}
+	domains, ips, urls := a.interceptCandidates()
+	if _, v, ok := MatchAssetInterceptRules([]AssetInterceptRule{rule("suffix_domain", ".go.kr", true)}, domains, ips, urls); !ok || v != "www.moe.go.kr" {
+		t.Fatalf("URL host 일치 = (%q, %v), 기대값 (www.moe.go.kr, true)", v, ok)
+	}
+}

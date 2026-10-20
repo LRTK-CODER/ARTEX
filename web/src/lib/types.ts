@@ -1318,6 +1318,7 @@ export type AssetInterceptKind =
   | "fuzzy_domain"
   | "fuzzy_ip"
   | "fuzzy_url"
+  | "suffix_domain"
   | "cidr";
 
 // action은 작업 단위 규칙에만 쓴다: block=차단(테스트 금지) allow=허용(허용 목록).

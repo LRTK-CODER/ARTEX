@@ -16,10 +16,11 @@ export const ASSET_INTERCEPT_KIND_OPTIONS: {
   label: string;
   placeholder: string;
 }[] = [
-  { value: "exact_domain", label: "도메인(정확히 일치)", placeholder: "example.gov.cn" },
+  { value: "exact_domain", label: "도메인(정확히 일치)", placeholder: "example.go.kr" },
   { value: "exact_ip", label: "IP(정확히 일치)", placeholder: "203.0.113.10" },
   { value: "exact_url", label: "URL(정확히 일치)", placeholder: "https://example.com/login" },
-  { value: "fuzzy_domain", label: "도메인(부분 일치)", placeholder: ".gov.cn" },
+  { value: "suffix_domain", label: "도메인(접미사 일치)", placeholder: "go.kr" },
+  { value: "fuzzy_domain", label: "도메인(부분 일치)", placeholder: ".go.kr" },
   { value: "fuzzy_ip", label: "IP(부분 일치)", placeholder: "203.0.113." },
   { value: "fuzzy_url", label: "URL(부분 일치)", placeholder: "/admin" },
   { value: "cidr", label: "CIDR 대역", placeholder: "192.168.0.0/16" },

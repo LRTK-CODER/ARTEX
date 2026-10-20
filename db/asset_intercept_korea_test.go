@@ -77,14 +77,18 @@ func isolateAssetRules(t *testing.T, d *DB) {
 		}
 	}
 	t.Cleanup(func() {
-		d.Exec(`DELETE FROM asset_intercept_rules`)
+		if _, err := d.Exec(`DELETE FROM asset_intercept_rules`); err != nil {
+			t.Errorf("자산 차단 규칙 비우기: %v", err)
+		}
 		for _, r := range saved {
 			if _, err := d.Exec(`INSERT INTO asset_intercept_rules(id, kind, pattern, note, enabled, builtin) VALUES ($1,$2,$3,$4,$5,$6)`,
 				r.id, r.kind, r.pattern, r.note, r.isEnabled, r.builtin); err != nil {
 				t.Errorf("자산 차단 규칙 복원: %v", err)
 			}
 		}
-		d.Exec(`DELETE FROM settings WHERE key IN ($1, $2)`, assetSeedV1Flag, assetSeedV2Flag)
+		if _, err := d.Exec(`DELETE FROM settings WHERE key IN ($1, $2)`, assetSeedV1Flag, assetSeedV2Flag); err != nil {
+			t.Errorf("seed 플래그 비우기: %v", err)
+		}
 		for k, v := range savedFlags {
 			if err := d.SetSetting(k, v); err != nil {
 				t.Errorf("설정 %s 복원: %v", k, err)
@@ -294,8 +298,12 @@ BEGIN RAISE EXCEPTION 'test-issue-191 injected failure'; END $$ LANGUAGE plpgsql
 		t.Fatal(err)
 	}
 	dropTrigger := func() {
-		d.Exec(`DROP TRIGGER IF EXISTS test_issue_191_fail ON asset_intercept_rules`)
-		d.Exec(`DROP FUNCTION IF EXISTS test_issue_191_fail_insert()`)
+		if _, err := d.Exec(`DROP TRIGGER IF EXISTS test_issue_191_fail ON asset_intercept_rules`); err != nil {
+			t.Errorf("시험 트리거 지우기: %v", err)
+		}
+		if _, err := d.Exec(`DROP FUNCTION IF EXISTS test_issue_191_fail_insert()`); err != nil {
+			t.Errorf("시험 함수 지우기: %v", err)
+		}
 	}
 	t.Cleanup(dropTrigger)
 	if _, err := d.Exec(`
