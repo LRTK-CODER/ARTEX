@@ -92,6 +92,29 @@ ORDER BY g LIMIT 1`, AgentUIDPoolFirst, AgentUIDPoolLast).Scan(&uid)
 	return uid, tx.Commit()
 }
 
+// TaskAgentUID 는 작업에 할당한 에이전트 uid를 돌려준다. 할당이 없으면 ok가 false다. AcquireTaskAgentUID와 달리 새로
+// 할당하지 않는다. 작업을 지우거나 보관하기 전에 그 uid의 남은 프로세스를 끝낼 때 쓴다(#179).
+func (d *DB) TaskAgentUID(ctx context.Context, taskID int64) (uid int, ok bool, err error) {
+	return d.assignedAgentUID(ctx, agentUIDOwnerTask, taskID)
+}
+
+// ConversationAgentUID 는 대화형 세션(conversations)에 대해 TaskAgentUID와 같은 일을 한다.
+func (d *DB) ConversationAgentUID(ctx context.Context, conversationID int64) (uid int, ok bool, err error) {
+	return d.assignedAgentUID(ctx, agentUIDOwnerConversation, conversationID)
+}
+
+func (d *DB) assignedAgentUID(ctx context.Context, owner agentUIDOwnerColumn, ownerID int64) (int, bool, error) {
+	var uid int
+	err := d.QueryRowContext(ctx, `SELECT uid FROM agent_uids WHERE `+string(owner)+`=$1`, ownerID).Scan(&uid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return uid, true, nil
+}
+
 // AgentUIDAssignment 는 풀의 uid 하나와 그 소유자다. TaskID와 ConversationID 중 하나만 0이 아니다.
 type AgentUIDAssignment struct {
 	UID            int

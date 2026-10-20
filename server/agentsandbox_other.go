@@ -2,6 +2,8 @@
 
 package server
 
+import "context"
+
 // EnableAgentSandbox는 Linux가 아니면 이 함수들을 부르기 전에 ErrAgentSandboxUnsupported로 멈춘다.
 // 아래는 빌드만 되게 둔 것이다.
 
@@ -17,4 +19,8 @@ func installShellDir(string, string) (string, error) { return "", ErrAgentSandbo
 
 func shareTaskWorkspace(string, string, int) error { return ErrAgentSandboxUnsupported }
 
-func agentOwnedTopDirs(string) ([]agentOwnedDirs, error) { return nil, ErrAgentSandboxUnsupported }
+func (s *AgentSandbox) removeAgentOwned(context.Context, string) ([]error, error) {
+	return nil, ErrAgentSandboxUnsupported
+}
+
+func liveAgentProcesses(int, int) ([]int, error) { return nil, ErrAgentSandboxUnsupported }

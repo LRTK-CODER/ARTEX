@@ -497,14 +497,14 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		archivePath := taskArchivePath(dataDir, archiveID, "179")
-		pkg, err := writeTaskArchivePackage(archivePath, stage.payload, &db.TaskArchiveSnapshot{FormatVersion: db.TaskArchiveFormatVersion, TaskID: 179})
+		pkg, err := writeTaskArchivePackage(archivePath, stage.payload, &db.TaskArchiveSnapshot{FormatVersion: db.TaskArchiveFormatVersion, TaskID: 179}, true)
 		if err != nil {
 			t.Fatalf("archive failed instead of skipping the agent's locked entries: %v", err)
 		}
-		t.Logf("archive skipped: %q", pkg.skipped)
+		t.Logf("archive skipped: %d %q", pkg.skipped.count, pkg.skipped.names)
 		t.Logf("archive warning: %s", skippedArchiveWarning(pkg.skipped))
-		if want := []string{"files/tasks/179/work/locked", "files/tasks/179/work/secret.txt"}; !slices.Equal(slices.Sorted(slices.Values(pkg.skipped)), want) {
-			t.Fatalf("skipped = %q, want %q", pkg.skipped, want)
+		if want := []string{"files/tasks/179/work/locked", "files/tasks/179/work/secret.txt"}; pkg.skipped.count != len(want) || !slices.Equal(slices.Sorted(slices.Values(pkg.skipped.names)), want) {
+			t.Fatalf("skipped = %d %q, want %q", pkg.skipped.count, pkg.skipped.names, want)
 		}
 		if err := os.RemoveAll(stage.root); err == nil {
 			t.Fatal("the server uid removed the agent's chmod 000 directory on its own; the test does not exercise the helper")
@@ -560,6 +560,43 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatalf("task delete staging still exists: %v", err)
 		}
 		t.Log("task 180 with a chmod 000 directory: files deleted")
+	})
+	t.Run("stopping a uid ends its detached processes and no other uid's", func(t *testing.T) {
+		// 셸에서 떼어 띄운 프로세스는 명령이 끝나도 남는다. 작업·대화를 지우거나 보관하기 전에 StopProcesses로 끝낸다(#179).
+		out := runTool(t, bash, syncCtx, map[string]any{"command": "setsid sleep 311 </dev/null >/dev/null 2>&1 & " +
+			"nohup sleep 312 </dev/null >/dev/null 2>&1 & (setsid sh -c 'sleep 313' </dev/null >/dev/null 2>&1 &); echo started"})
+		t.Logf("task A leaves detached processes: %s", out)
+		syncB := &actool.ToolContext{WorkingDir: wsB, Env: envB}
+		runTool(t, bash, syncB, map[string]any{"command": "setsid sleep 314 </dev/null >/dev/null 2>&1 & echo started"})
+		waitAgentProcess(t, uid, "sleep 311", true)
+		waitAgentProcess(t, uid, "sleep 313", true)
+		waitAgentProcess(t, otherUID, "sleep 314", true)
+		t.Logf("before stop: uid %s: %v %v %v, uid %s: %v", uid, agentProcesses(uid, "sleep 311"), agentProcesses(uid, "sleep 312"),
+			agentProcesses(uid, "sleep 313"), otherUID, agentProcesses(otherUID, "sleep 314"))
+		if err := sb.StopProcesses(ctx, uidA); err != nil {
+			t.Fatalf("StopProcesses(%d): %v", uidA, err)
+		}
+		// StopProcesses가 돌아오면 이미 끝났다. 기다리지 않고 바로 본다(좀비는 cmdline이 비어 잡히지 않는다).
+		for _, marker := range []string{"sleep 311", "sleep 312", "sleep 313"} {
+			if pids := agentProcesses(uid, marker); len(pids) != 0 {
+				t.Fatalf("uid %s %q still runs after StopProcesses: %v", uid, marker, pids)
+			}
+		}
+		pidsB := agentProcesses(otherUID, "sleep 314")
+		t.Logf("after stopping uid %s: its sleeps are gone; uid %s still runs %v", uid, otherUID, pidsB)
+		if len(pidsB) == 0 {
+			t.Fatalf("stopping uid %s also ended uid %s's process", uid, otherUID)
+		}
+		if err := sb.StopProcesses(ctx, uidB); err != nil {
+			t.Fatalf("StopProcesses(%d): %v", uidB, err)
+		}
+		if pids := agentProcesses(otherUID, "sleep 314"); len(pids) != 0 {
+			t.Fatalf("uid %s still runs after StopProcesses: %v", otherUID, pids)
+		}
+		// 남은 프로세스가 없어도 성공이다.
+		if err := sb.StopProcesses(ctx, uidA); err != nil {
+			t.Fatalf("StopProcesses(%d) with nothing left: %v", uidA, err)
+		}
 	})
 	// 마지막에 둔다. 셸 대체 링크를 지운 뒤에는 어떤 경로도 명령을 실행하지 않아야 한다(서버 uid로 넘어가지 않는다).
 	t.Run("missing shell substitute fails closed", func(t *testing.T) {

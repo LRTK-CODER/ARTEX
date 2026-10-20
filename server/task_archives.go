@@ -134,6 +134,10 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 	if err := s.drainTaskSideQuestions(drainCtx, taskID); err != nil {
 		return err
 	}
+	// 파일을 옮기기 전에 작업 uid의 남은 프로세스를 끝낸다. 남아 있으면 옮긴 임시 디렉터리 안에 cwd·fd로 계속 닿는다(#179).
+	if err := s.stopTaskAgentProcesses(s.ctx, job.TaskID); err != nil {
+		return fmt.Errorf("작업의 에이전트 프로세스를 끝내지 못해 보관하지 않았습니다: %w", err)
+	}
 	task, err := s.m.pg.GetTask(job.TaskID)
 	if err != nil {
 		return err
@@ -189,7 +193,9 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "compress", 50)
-	pkg, err := writeTaskArchivePackage(archivePath, fileStage.payload, snapshot)
+	// 권한 오류 건너뛰기는 uid 분리를 켰을 때만이다. 꺼져 있으면 모든 파일이 서버 소유라 읽지 못하는 파일은 결함이고,
+	// 건너뛰면 원본이 임시 디렉터리 정리로 사라진다.
+	pkg, err := writeTaskArchivePackage(archivePath, fileStage.payload, snapshot, s.sandbox != nil)
 	if err != nil {
 		return err
 	}
@@ -244,19 +250,19 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 	return nil
 }
 
-// maxSkippedArchiveListed 는 보관 경고에 이름을 적는 건너뛴 항목 수의 상한이다. 에이전트가 읽을 수 없는 파일을
-// 수없이 만들어도 경고 한 줄이 끝없이 커지지 않게 한다. 나머지는 개수만 적는다.
-const maxSkippedArchiveListed = 50
-
 // skippedArchiveWarning 은 보관에서 건너뛴 항목(writeArchivePayload)을 보관 기록 경고 한 줄로 만든다. 없으면 빈 문자열이다.
-func skippedArchiveWarning(skipped []string) string {
-	if len(skipped) == 0 {
+// 이름은 에이전트가 정하므로 %q로 적어 줄바꿈·제어 문자가 로그 한 줄과 경고를 깨지 않게 한다.
+func skippedArchiveWarning(skipped skippedEntries) string {
+	if skipped.count == 0 {
 		return ""
 	}
-	listed := skipped[:min(len(skipped), maxSkippedArchiveListed)]
+	quoted := make([]string, len(skipped.names))
+	for i, name := range skipped.names {
+		quoted[i] = strconv.Quote(name)
+	}
 	warning := fmt.Sprintf("서버가 읽을 수 없는 항목 %d개를 보관하지 못했습니다(에이전트가 권한을 바꾼 파일·디렉터리, 복원해도 없습니다): %s",
-		len(skipped), strings.Join(listed, ", "))
-	if rest := len(skipped) - len(listed); rest > 0 {
+		skipped.count, strings.Join(quoted, ", "))
+	if rest := skipped.count - len(skipped.names); rest > 0 {
 		warning += fmt.Sprintf(" 외 %d개", rest)
 	}
 	return warning

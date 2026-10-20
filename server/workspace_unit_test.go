@@ -367,7 +367,7 @@ func TestTaskArchivePackageDoesNotFollowLinks(t *testing.T) {
 
 	archivePath := filepath.Join(dataDir, "archive.tar.zst")
 	snapshot := &pgdb.TaskArchiveSnapshot{FormatVersion: pgdb.TaskArchiveFormatVersion, TaskID: 1}
-	if _, err := writeTaskArchivePackage(archivePath, payload, snapshot); err != nil {
+	if _, err := writeTaskArchivePackage(archivePath, payload, snapshot, false); err != nil {
 		t.Fatalf("링크가 있어도 보관은 성공해야 한다: %v", err)
 	}
 	names, contents := readArchiveEntries(t, archivePath)

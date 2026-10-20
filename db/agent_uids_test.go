@@ -336,6 +336,63 @@ func TestAgentUIDKeptThroughArchiveRestoreAndReturnedOnArchiveDelete(t *testing.
 
 // ListAgentUIDs 는 할당한 uid를 소유자 종류와 함께 돌려주고, 지운 작업의 uid는 빠진다(시작 때 작업 공간 ACL 재적용,
 // #182). 다른 테스트가 같은 DB에 할당을 남길 수 있어 이 테스트가 만든 소유자만 본다.
+// 할당을 읽기만 하는 조회는 할당이 없으면 없다고 알리고 새로 할당하지 않는다. 할당이 있으면 그 값이고, 소유자를
+// 지우면 다시 없다(#179).
+func TestAssignedAgentUIDLooksUpWithoutAssigning(t *testing.T) {
+	d := openTestDB(t)
+	ctx := t.Context()
+	task, err := d.CreateTaskWithOptions("agent uid lookup", "agent uid lookup", TaskCreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.DeleteTask(task.ID) })
+	convID := newAgentUIDTestConversation(t, d)
+	owners := []struct {
+		name    string
+		lookup  func() (int, bool, error)
+		acquire func() (int, error)
+		remove  func() error
+		count   string
+		ownerID int64
+	}{
+		{name: "task", ownerID: task.ID, count: `SELECT count(*) FROM agent_uids WHERE task_id=$1`,
+			lookup:  func() (int, bool, error) { return d.TaskAgentUID(ctx, task.ID) },
+			acquire: func() (int, error) { return d.AcquireTaskAgentUID(ctx, task.ID) },
+			remove:  func() error { return d.DeleteTask(task.ID) }},
+		{name: "conversation", ownerID: convID, count: `SELECT count(*) FROM agent_uids WHERE conversation_id=$1`,
+			lookup:  func() (int, bool, error) { return d.ConversationAgentUID(ctx, convID) },
+			acquire: func() (int, error) { return d.AcquireConversationAgentUID(ctx, convID) },
+			remove:  func() error { return d.DeleteConversation(convID) }},
+	}
+	for _, o := range owners {
+		t.Run(o.name, func(t *testing.T) {
+			if uid, ok, err := o.lookup(); err != nil || ok || uid != 0 {
+				t.Fatalf("lookup before acquire = %d, %v, %v; want 0, false, nil", uid, ok, err)
+			}
+			var rows int
+			if err := d.QueryRow(o.count, o.ownerID).Scan(&rows); err != nil {
+				t.Fatal(err)
+			}
+			if rows != 0 {
+				t.Fatalf("lookup assigned a uid (%d rows)", rows)
+			}
+			acquired, err := o.acquire()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uid, ok, err := o.lookup(); err != nil || !ok || uid != acquired {
+				t.Fatalf("lookup after acquire = %d, %v, %v; want %d, true, nil", uid, ok, err, acquired)
+			}
+			if err := o.remove(); err != nil {
+				t.Fatal(err)
+			}
+			if uid, ok, err := o.lookup(); err != nil || ok {
+				t.Fatalf("lookup after delete = %d, %v, %v; want no assignment", uid, ok, err)
+			}
+		})
+	}
+}
+
 func TestListAgentUIDs(t *testing.T) {
 	d := openTestDB(t)
 	ctx := t.Context()

@@ -26,6 +26,9 @@ func TestDeleteTaskKeepingFilesClosesWorkspaceBeforeReturningUID(t *testing.T) {
 	t.Cleanup(func() { m.Close() })
 	s := newTestServer(t, m, t.TempDir(), t.TempDir(), t.TempDir())
 	s.sandbox = &AgentSandbox{uid: 20000, gid: 20000}
+	// 남은 프로세스 끝내기(#179)는 TestTaskDeleteAndArchiveStopAgentProcessesFirst가 본다. 실제 구현은 그 uid가 되어
+	// kill(-1)을 보내므로 여기서는 끝낸 것으로 둔다.
+	s.stopAgentUID = func(context.Context, int) error { return nil }
 	if err := prepareWorkspaceRoots(m.dir); err != nil {
 		t.Fatal(err)
 	}

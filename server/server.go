@@ -94,6 +94,10 @@ type Server struct {
 	// stopTicker 는 대화를 지울 때 돌고 있는 차례가 끝났는지 다시 확인하는 박자를 준다(closeConversationWorkspace).
 	// 테스트가 박자를 직접 보내 "차례가 도는 동안 확인을 돌았다"를 시간 기다림 없이 확인하려고 이음매로 둔다.
 	stopTicker func() (ticks <-chan time.Time, stop func())
+	// stopAgentUID 는 에이전트 uid 하나의 프로세스를 모두 끝낸다(stopAgentProcessesOf). nil이면 sandbox.StopProcesses다.
+	// 실제 구현은 그 uid가 되어 kill(-1)을 보내므로 테스트에서는 돌릴 수 없다(테스트 사용자의 프로세스가 모두 죽는다).
+	// 테스트가 지우기·보관이 이것을 부르고 실패하면 멈추는지 보려고 이음매로 둔다.
+	stopAgentUID func(ctx context.Context, uid int) error
 
 	// triggerQ는 P3 트리거 실행을 에이전트별로 쌓아 둔다. 에이전트마다 하나인 "pump"가
 	// 에이전트 정책에서 나온 동시 실행 제한까지 실행을 띄운다: serial → 제한 1(+ 선택적

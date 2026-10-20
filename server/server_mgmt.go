@@ -173,6 +173,12 @@ func (s *Server) pgDeleteTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// 파일을 옮기거나 uid를 풀에 돌려주기 전에 그 uid의 남은 프로세스를 끝낸다. 끝내지 못하면 지우지 않는다.
+	taskID, _ := strconv.ParseInt(id, 10, 64) // canonicalTaskID가 확인했다
+	if err := s.stopTaskAgentProcesses(r.Context(), taskID); err != nil {
+		writeErr(w, http.StatusConflict, workspaceCloseMessage("작업 공간", err))
+		return
+	}
 	result, err := s.m.DeleteTask(id, opts)
 	if err != nil {
 		var committed *taskDeleteCommittedError
@@ -214,6 +220,40 @@ func (s *Server) closeTaskWorkspace(id string) error {
 	err := agent.ShareDir(filepath.Join(s.m.dir, "tasks", id), 0, agent.WorkspaceServerOnly)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
+	}
+	return nil
+}
+
+// errAgentProcessesNotStopped 는 작업·대화를 지우거나 보관하기 전에 그 uid의 프로세스를 끝내지 못했다는 뜻이다
+// (stopAgentProcesses). 사용자에게는 따로 가려 한국어 안내로 보인다(workspaceCloseMessage).
+var errAgentProcessesNotStopped = errors.New("could not stop the agent processes")
+
+// stopTaskAgentProcesses 는 uid 분리를 켰을 때 작업에 할당한 uid의 남은 프로세스를 모두 끝낸다(#179). 셸에서 떼어 띄운
+// 프로세스는 실행이 끝나도(waitTaskQuiescent) 남아 작업 공간에 닿는다. 작업 파일을 지우거나 보관하기 전, 그리고 작업을
+// 지워 uid가 풀로 돌아가기 전에 부른다. 끝내지 못하면 errAgentProcessesNotStopped를 감싼 오류다. 호출자는 지우기·보관을
+// 멈춘다. 꺼져 있거나 할당이 없으면 아무것도 하지 않는다.
+func (s *Server) stopTaskAgentProcesses(ctx context.Context, taskID int64) error {
+	if s.sandbox == nil {
+		return nil
+	}
+	uid, ok, err := s.m.pg.TaskAgentUID(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("%w: read the agent uid of task %d: %w", errAgentProcessesNotStopped, taskID, err)
+	}
+	if !ok {
+		return nil
+	}
+	return s.stopAgentProcesses(ctx, uid)
+}
+
+// stopAgentProcesses 는 uid의 프로세스를 모두 끝낸다(stopAgentUID 이음매, 없으면 AgentSandbox.StopProcesses).
+func (s *Server) stopAgentProcesses(ctx context.Context, uid int) error {
+	stop := s.stopAgentUID
+	if stop == nil {
+		stop = s.sandbox.StopProcesses
+	}
+	if err := stop(ctx, uid); err != nil {
+		return fmt.Errorf("%w: %w", errAgentProcessesNotStopped, err)
 	}
 	return nil
 }

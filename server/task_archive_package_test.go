@@ -59,12 +59,12 @@ func TestTaskArchivePackageFilesRoundTrip(t *testing.T) {
 		FormatVersion: pgdb.TaskArchiveFormatVersion, TaskID: 42, ExplorationID: explorationID,
 		StreamedTables: map[string]string{"llm_records": pgdb.TaskArchiveLLMRecordsPath},
 	}
-	pkg, err := writeTaskArchivePackage(archivePath, stage.payload, snapshot)
+	pkg, err := writeTaskArchivePackage(archivePath, stage.payload, snapshot, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checksum := pkg.checksum
-	if pkg.originalSize == 0 || pkg.compressedSize == 0 || checksum == "" || len(pkg.skipped) != 0 {
+	if pkg.originalSize == 0 || pkg.compressedSize == 0 || checksum == "" || pkg.skipped.count != 0 {
 		t.Fatalf("invalid package metrics %+v", pkg)
 	}
 	if err := stage.commit(); err != nil {
@@ -112,7 +112,7 @@ func TestTaskArchivePackageSkipsSymlink(t *testing.T) {
 
 	archivePath := filepath.Join(dataDir, "archive.tar.zst")
 	snapshot := &pgdb.TaskArchiveSnapshot{FormatVersion: pgdb.TaskArchiveFormatVersion, TaskID: 42}
-	pkg, err := writeTaskArchivePackage(archivePath, payload, snapshot)
+	pkg, err := writeTaskArchivePackage(archivePath, payload, snapshot, false)
 	checksum := pkg.checksum
 	if err != nil {
 		t.Fatalf("archive should skip symlink, not fail: %v", err)

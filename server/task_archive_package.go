@@ -533,11 +533,38 @@ type taskArchivePackage struct {
 	originalSize   int64
 	compressedSize int64
 	checksum       string
-	// skipped 는 payload 기준 경로(슬래시 구분)다. 에이전트가 권한을 바꿔(chmod 600·000, setfacl) 서버가 읽지 못한 것이다.
-	skipped []string
+	// skipped 는 에이전트가 권한을 바꿔(chmod 600·000, setfacl) 서버가 읽지 못해 넣지 못한 항목이다.
+	skipped skippedEntries
 }
 
-func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot) (taskArchivePackage, error) {
+// maxSkippedArchiveListed 는 보관에서 건너뛴 항목 가운데 이름을 기억하는 수의 상한이고, maxSkippedNameBytes 는 기억하는
+// 이름 하나의 길이 상한이다. 이름은 에이전트가 정한다. 읽을 수 없는 파일을 수없이 만들거나 아주 긴 이름을 써도 메모리와
+// 보관 기록 경고가 끝없이 커지지 않게 한다. 나머지는 개수만 센다.
+const (
+	maxSkippedArchiveListed = 50
+	maxSkippedNameBytes     = 256
+)
+
+// skippedEntries 는 보관에서 건너뛴 항목의 payload 기준 경로(슬래시 구분) 앞부분과 전체 개수다.
+type skippedEntries struct {
+	names []string
+	count int
+}
+
+func (e *skippedEntries) add(name string) {
+	e.count++
+	if len(e.names) >= maxSkippedArchiveListed {
+		return
+	}
+	if len(name) > maxSkippedNameBytes {
+		name = name[:maxSkippedNameBytes] + "…"
+	}
+	e.names = append(e.names, name)
+}
+
+// writeTaskArchivePackage 는 payloadDir 을 보관 패키지 path 로 쓴다. skipUnreadable 이면 서버가 권한 오류로 읽지 못한
+// 항목을 건너뛰고 돌려준다(writeArchivePayload). uid 분리를 켰을 때만 참으로 넘긴다.
+func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot, skipUnreadable bool) (taskArchivePackage, error) {
 	var pkg taskArchivePackage
 	if snapshot == nil {
 		return pkg, errors.New("nil task archive snapshot")
@@ -584,7 +611,7 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		return pkg, err
 	}
 	tarWriter := tar.NewWriter(encoder)
-	skipped, walkErr := writeArchivePayload(tarWriter, payloadDir, &pkg.originalSize)
+	skipped, walkErr := writeArchivePayload(tarWriter, payloadDir, &pkg.originalSize, skipUnreadable)
 	if walkErr != nil {
 		_ = tarWriter.Close()
 		_ = encoder.Close()
@@ -621,7 +648,7 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 }
 
 // writeArchivePayload 는 payloadDir 아래의 디렉터리와 일반 파일을 tar로 쓰고, 쓴 파일 크기의 합을 originalSize에
-// 더한다. 서버가 읽지 못해 넣지 못한 항목의 payload 기준 경로를 돌려준다. payloadDir 는 os.Root로 열어 그 안에서만
+// 더한다. skipUnreadable 이면 서버가 읽지 못해 넣지 못한 항목을 돌려준다. payloadDir 는 os.Root로 열어 그 안에서만
 // 읽는다(#176). 걷기(lstat)와 열기 사이에 에이전트가 파일을 링크로 바꿔도 payload 밖은 열지 않는다. 연 파일이 걷기에서
 // 본 파일과 같은 일반 파일인지(os.SameFile) 다시 보고 아니면 오류로 끝내므로 파일을 payload 안의 다른 파일을 가리키는
 // 링크로 바꿔도 그 내용이 엉뚱한 이름으로 들어가지 않는다. 디렉터리는 이 확인을 하지 않는다. 걷기는 디렉터리를 경로로
@@ -634,19 +661,20 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 //
 // 에이전트 uid 분리를 켜면 작업 공간 안의 에이전트 파일은 에이전트 uid 소유다. 에이전트가 권한을 바꾸면(chmod 600·000,
 // setfacl) 서버는 그 파일을 읽거나 그 디렉터리를 나열하지 못한다(#179). 보관 전체를 실패시키면 그 작업은 영영 보관할 수
-// 없으므로, 권한 오류로 읽지 못한 항목은 건너뛰고 돌려준다. 호출자가 보관 기록에 남긴다. 디렉터리를 나열하지 못하면
-// 디렉터리 항목만 들어가고 그 안은 빠진다.
-func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize *int64) ([]string, error) {
+// 없으므로, skipUnreadable 이면 권한 오류로 읽지 못한 항목은 건너뛰고 돌려준다. 호출자가 보관 기록에 남긴다. 디렉터리를
+// 나열하지 못하면 디렉터리 항목만 들어가고 그 안은 빠진다. 꺼져 있으면(skipUnreadable 거짓) 모든 파일이 서버 소유라
+// 읽지 못하는 것은 결함이므로 보관을 실패시킨다.
+func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize *int64, skipUnreadable bool) (skippedEntries, error) {
+	var skipped skippedEntries
 	root, err := os.OpenRoot(payloadDir)
 	if err != nil {
-		return nil, err
+		return skipped, err
 	}
 	defer root.Close()
-	var skipped []string
 	err = fs.WalkDir(root.FS(), ".", func(current string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			if current != "." && errors.Is(walkErr, fs.ErrPermission) {
-				skipped = append(skipped, current)
+			if skipUnreadable && current != "." && errors.Is(walkErr, fs.ErrPermission) {
+				skipped.add(current)
 				return nil
 			}
 			return walkErr
@@ -655,8 +683,8 @@ func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize 
 			return nil
 		}
 		info, err := entry.Info()
-		if errors.Is(err, fs.ErrPermission) {
-			skipped = append(skipped, current)
+		if skipUnreadable && errors.Is(err, fs.ErrPermission) {
+			skipped.add(current)
 			return nil
 		}
 		if err != nil {
@@ -676,8 +704,8 @@ func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize 
 		}
 		// FIFO로 바꿔치기돼도 열기에서 멈추지 않게 O_NONBLOCK으로 연다. 일반 파일에는 영향이 없다.
 		input, err := root.OpenFile(filepath.FromSlash(current), os.O_RDONLY|syscall.O_NONBLOCK, 0)
-		if errors.Is(err, fs.ErrPermission) {
-			skipped = append(skipped, current)
+		if skipUnreadable && errors.Is(err, fs.ErrPermission) {
+			skipped.add(current)
 			return nil
 		}
 		if err != nil {

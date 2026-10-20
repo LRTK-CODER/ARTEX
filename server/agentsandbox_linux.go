@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"syscall"
 	"unsafe"
 
@@ -393,46 +395,138 @@ func shareTaskWorkspace(dataDir, taskID string, uid int) error {
 	return shareTaskUnit(f, info, uid)
 }
 
-// agentOwnedTopDirs 는 root 아래에서 서버 소유가 아닌 디렉터리 가운데 가장 위의 것들을 부모 디렉터리·소유 uid별로
-// 모은다(AgentSandbox.RemoveAll). 그 안으로는 들어가지 않는다(그 안은 소유 uid가 지운다). 서버가 읽지 못하는 서버 소유
-// 디렉터리는 없지만, 걷는 도중 사라진 항목처럼 읽지 못한 곳은 건너뛴다. 남은 것은 호출자가 다시 지울 때 오류로 보인다.
-func agentOwnedTopDirs(root string) ([]agentOwnedDirs, error) {
-	type key struct {
-		dir string
-		uid int
-	}
-	index := map[key]int{}
-	var groups []agentOwnedDirs
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if path == root {
-				return walkErr
-			}
-			return nil
+// oPath 는 open(2)의 O_PATH다(include/uapi/asm-generic/fcntl.h). syscall 패키지에 없다. 릴리스 대상(amd64, arm64)에서
+// 같은 값이다. 읽기 권한이 없는 디렉터리(에이전트가 chmod 000으로 바꾼 것)도 열어 fstat할 수 있다.
+const oPath = 0x200000
+
+// agentDirVisitor 는 walkAgentOwnedDirs가 서버 소유 디렉터리(dir, 연 fd) 하나에서 찾은, 한 uid 소유의 하위 디렉터리
+// 이름들을 받는다.
+type agentDirVisitor func(dir *os.File, uid int, names []string)
+
+// isAgentOwnedDir 는 RemoveAll이 쓰는 walkAgentOwnedDirs의 판단이다. 서버 uid 소유가 아니면 에이전트(다른 uid) 소유다.
+func isAgentOwnedDir(st *syscall.Stat_t) bool {
+	return int(st.Uid) != os.Getuid()
+}
+
+// removeAgentOwned 는 path 아래의 에이전트 소유 디렉터리를 소유 uid마다 도우미로 지운다(RemoveAll). 도우미가 보고한
+// 오류는 모아 돌려주고, 걷기 오류는 따로 돌려준다.
+func (s *AgentSandbox) removeAgentOwned(ctx context.Context, path string) ([]error, error) {
+	var helperErrs []error
+	err := walkAgentOwnedDirs(path, isAgentOwnedDir, func(dir *os.File, uid int, names []string) {
+		if err := s.removeAsOwner(ctx, dir, uid, names); err != nil {
+			helperErrs = append(helperErrs, err)
 		}
-		if !entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		if path == root || isServerOwned(info) {
-			return nil
-		}
-		st, ok := info.Sys().(*syscall.Stat_t)
-		if !ok {
-			return nil
-		}
-		k := key{dir: filepath.Dir(path), uid: int(st.Uid)}
-		i, seen := index[k]
-		if !seen {
-			i = len(groups)
-			index[k] = i
-			groups = append(groups, agentOwnedDirs{dir: k.dir, uid: k.uid})
-		}
-		groups[i].names = append(groups[i].names, filepath.Base(path))
-		return fs.SkipDir
 	})
-	return groups, err
+	return helperErrs, err
+}
+
+// walkAgentOwnedDirs 는 root 아래에서 에이전트 소유(isAgentOwned)인 디렉터리 가운데 가장 위의 것들을, 바로 위 서버
+// 소유 디렉터리마다 소유 uid별로 묶어 visit에 넘긴다(AgentSandbox.RemoveAll). 에이전트 소유 디렉터리 안으로는 들어가지
+// 않는다(그 안은 소유 uid가 지운다).
+//
+// 경로를 다시 풀지 않는다(#179). root를 링크를 따라가지 않고 연 뒤, 항목마다 부모 fd 기준으로 O_PATH|O_NOFOLLOW로
+// 열고 그 fd를 fstat해 소유자와 유형을 본다. 서버 소유 디렉터리는 그 fd에서 다시 열어(openat ".") 내려간다. 그래서 걷는
+// 도중 이름이 링크나 다른 디렉터리로 바뀌어도 root 밖으로 내려가지 않고, 링크는 건너뛴다. visit에 넘기는 dir도 이렇게
+// 연 fd다. 열기 전에 사라진 항목은 건너뛴다. 남은 것은 호출자가 다시 지울 때 오류로 보인다. 같은 디렉터리의 이름은
+// 정렬한 순서로 보고, 서버 소유 하위 디렉터리를 모두 걸은 뒤에 그 디렉터리의 묶음을 visit에 넘긴다.
+func walkAgentOwnedDirs(root string, isAgentOwned func(*syscall.Stat_t) bool, visit agentDirVisitor) error {
+	fd, err := syscall.Open(root, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return &fs.PathError{Op: "open", Path: root, Err: err}
+	}
+	dir := os.NewFile(uintptr(fd), root)
+	defer dir.Close()
+	return walkAgentOwnedIn(dir, isAgentOwned, visit)
+}
+
+func walkAgentOwnedIn(dir *os.File, isAgentOwned func(*syscall.Stat_t) bool, visit agentDirVisitor) error {
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", dir.Name(), err)
+	}
+	slices.Sort(names)
+	namesByUID := map[int][]string{}
+	var uids []int
+	for _, name := range names {
+		pathFD, err := syscall.Openat(int(dir.Fd()), name, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		if errors.Is(err, syscall.ENOENT) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("open %s: %w", filepath.Join(dir.Name(), name), err)
+		}
+		var st syscall.Stat_t
+		err = syscall.Fstat(pathFD, &st)
+		if err != nil || st.Mode&syscall.S_IFMT != syscall.S_IFDIR {
+			syscall.Close(pathFD)
+			if err != nil {
+				return fmt.Errorf("stat %s: %w", filepath.Join(dir.Name(), name), err)
+			}
+			continue // 파일·링크는 서버가 부모에서 지운다
+		}
+		if isAgentOwned(&st) {
+			syscall.Close(pathFD)
+			uid := int(st.Uid)
+			if _, seen := namesByUID[uid]; !seen {
+				uids = append(uids, uid)
+			}
+			namesByUID[uid] = append(namesByUID[uid], name)
+			continue
+		}
+		// O_PATH fd에서 "."을 다시 열면 이름을 거치지 않고 방금 fstat한 그 디렉터리가 열린다. 바로 내려가 닫으므로
+		// 열린 fd는 깊이만큼만 쌓인다.
+		childFD, err := syscall.Openat(pathFD, ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+		syscall.Close(pathFD)
+		if err != nil {
+			return fmt.Errorf("open %s: %w", filepath.Join(dir.Name(), name), err)
+		}
+		child := os.NewFile(uintptr(childFD), filepath.Join(dir.Name(), name))
+		err = walkAgentOwnedIn(child, isAgentOwned, visit)
+		child.Close()
+		if err != nil {
+			return err
+		}
+	}
+	for _, uid := range uids {
+		visit(dir, uid, namesByUID[uid])
+	}
+	return nil
+}
+
+// liveAgentProcesses 는 /proc에서 real·effective·saved·filesystem uid 가운데 하나라도 uid인 살아 있는 프로세스의 pid를
+// 돌려준다(AgentSandbox.StopProcesses). probe는 그 uid로 돌고 있는 확인용 프로세스(도우미)다. 결과에서 빼고, 보이지
+// 않으면 오류다. /proc가 다른 uid의 프로세스를 숨기면(hidepid) 남은 프로세스를 찾지 못해 끝났다고 잘못 판단하기 때문이다.
+// 읽는 사이 끝난 프로세스는 건너뛴다.
+func liveAgentProcesses(uid, probe int) ([]int, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, fmt.Errorf("list processes: %w", err)
+	}
+	var alive []int
+	sawProbe := false
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil || pid <= 0 {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "status"))
+		if err != nil {
+			continue // 그사이 끝났거나(ENOENT, ESRCH) 읽을 수 없다. 읽을 수 없는 경우는 probe가 보이지 않는 것으로 드러난다
+		}
+		st, ok := parseProcStatus(data)
+		if !ok || !slices.Contains(st.uids, uid) {
+			continue
+		}
+		if pid == probe {
+			sawProbe = true
+			continue
+		}
+		if st.isAlive() {
+			alive = append(alive, pid)
+		}
+	}
+	if !sawProbe {
+		return nil, fmt.Errorf("cannot see processes of agent uid %d in /proc (is /proc mounted with hidepid, or does the server run with systemd ProtectProc=?)", uid)
+	}
+	return alive, nil
 }

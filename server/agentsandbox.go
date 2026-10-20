@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -412,17 +413,12 @@ func (o workspaceOwners) sessionUID(name string) int {
 // agentRemoveTimeout 은 RemoveAll이 에이전트 uid로 지우는 도우미 실행 하나에 주는 시간이다. 큰 작업 공간도 수 초면 끝난다.
 const agentRemoveTimeout = 5 * time.Minute
 
-// agentRemoveScript 는 에이전트 uid로 돌아 인자의 디렉터리(그 uid 소유)를 지운다. 소유자는 자기 디렉터리를 chmod로
-// 다시 열 수 있다(chmod -R은 디렉터리 권한을 먼저 바꾼 뒤 안을 읽는다). 일부를 지우지 못해도 끝 코드로 판단하지
-// 않고, 서버가 다시 지워 남은 것이 있는지로 판단한다.
-const agentRemoveScript = `chmod -R u+rwX -- "$@"; rm -rf -- "$@"`
-
-// agentOwnedDirs 는 한 디렉터리(dir) 바로 아래에 있는, 한 uid 소유의 디렉터리 이름들이다(agentOwnedTopDirs).
-type agentOwnedDirs struct {
-	dir   string
-	uid   int
-	names []string
-}
+// agentRemoveScript 는 에이전트 uid로 돌아 인자의 디렉터리(그 uid 소유)를 지운다. 지울 자리는 경로가 아니라 서버가 연
+// 디렉터리 fd 3으로 받는다. 서버가 경로를 다시 풀거나 chdir하지 않으므로, 걷기와 실행 사이에 상위 이름이 링크로
+// 바뀌어도 서버가 연 디렉터리 밖에서 지우지 않는다(#179). cd에 실패하면 아무것도 지우지 않고 끝난다. 소유자는 자기
+// 디렉터리를 chmod로 다시 열 수 있다(chmod -R은 디렉터리 권한을 먼저 바꾼 뒤 안을 읽는다). 일부를 지우지 못해도 끝
+// 코드로 판단하지 않고, 서버가 다시 지워 남은 것이 있는지로 판단한다.
+const agentRemoveScript = `cd -P /proc/self/fd/3 || exit 1; chmod -R u+rwX -- "$@"; rm -rf -- "$@"`
 
 // RemoveAll 은 서버 전용 임시 자리로 옮긴 작업 파일 path(작업 삭제·보관의 임시 디렉터리)를 지운다(#179). 먼저 서버
 // uid로 지운다. uid 분리를 켜면 에이전트 uid 소유의 디렉터리가 있을 수 있고, 에이전트가 그 권한을 바꾸면(chmod 000,
@@ -431,25 +427,17 @@ type agentOwnedDirs struct {
 // 도우미는 늘 하던 대로 허용 범위 밖의 uid(0, 서버 uid 등)를 거부한다. 소유 uid는 파일 시스템에서 읽으므로 DB 할당이
 // 없어진 뒤(예전 공용 uid의 파일 포함)에도 지운다.
 //
-// path는 에이전트가 닿지 못하는 곳이어야 한다(경로로 걷는다). 도우미는 그 부모 디렉터리를 작업 디렉터리로 받아 상대
-// 이름으로만 지우므로 에이전트 uid가 path의 상위를 지나갈 권한이 없어도 된다. 꺼져 있으면 os.RemoveAll과 같다.
+// 걷기는 path부터 링크를 따라가지 않고 fd 기준으로 내려가고(walkAgentOwnedDirs), 도우미에는 경로 대신 서버가 연 부모
+// 디렉터리 fd를 넘긴다. 그래서 걷는 도중이나 도우미를 띄우기 전에 이름이 링크로 바뀌어도 path 밖을 지우지 않는다.
+// 호출자는 그 작업 uid의 프로세스를 먼저 끝낸다(StopProcesses). 꺼져 있으면 os.RemoveAll과 같다.
 func (s *AgentSandbox) RemoveAll(ctx context.Context, path string) error {
 	err := os.RemoveAll(path)
 	if err == nil || s == nil {
 		return err
 	}
-	groups, walkErr := agentOwnedTopDirs(path)
+	helperErrs, walkErr := s.removeAgentOwned(ctx, path)
 	if walkErr != nil {
-		return errors.Join(err, fmt.Errorf("find agent-owned directories under %s: %w", path, walkErr))
-	}
-	if len(groups) == 0 {
-		return err
-	}
-	var helperErrs []error
-	for _, g := range groups {
-		if err := s.removeAsOwner(ctx, g); err != nil {
-			helperErrs = append(helperErrs, err)
-		}
+		return errors.Join(append([]error{err, fmt.Errorf("find agent-owned directories under %s: %w", path, walkErr)}, helperErrs...)...)
 	}
 	if err := os.RemoveAll(path); err != nil {
 		return errors.Join(append([]error{err}, helperErrs...)...)
@@ -460,19 +448,144 @@ func (s *AgentSandbox) RemoveAll(ctx context.Context, path string) error {
 	return nil
 }
 
-// removeAsOwner 는 도우미로 g.uid가 되어 g.dir 안의 g.names를 지운다. gid도 같은 값이다(풀 사용자마다 같은 번호의 그룹).
-func (s *AgentSandbox) removeAsOwner(ctx context.Context, g agentOwnedDirs) error {
+// removeAsOwner 는 도우미로 uid가 되어 dir 안의 names를 지운다. gid도 같은 값이다(풀 사용자마다 같은 번호의 그룹).
+// dir은 경로가 아니라 연 fd로 넘긴다(agentRemoveScript).
+func (s *AgentSandbox) removeAsOwner(ctx context.Context, dir *os.File, uid int, names []string) error {
 	ctx, cancel := context.WithTimeout(ctx, agentRemoveTimeout)
 	defer cancel()
 	// "sh -c 스크립트 이름 인자..."에서 "artex-remove"는 $0이다. 디렉터리 이름은 인자로만 넘겨 셸이 해석하지 않는다.
-	name, args := s.Command("sh", append([]string{"-c", agentRemoveScript, "artex-remove"}, g.names...))
+	name, args := s.Command("sh", append([]string{"-c", agentRemoveScript, "artex-remove"}, names...))
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = g.dir
-	cmd.Env = append(identityEnv(g.uid, g.uid), AgentPathEnv+"="+s.agentPath)
+	cmd.Dir = "/"
+	cmd.ExtraFiles = []*os.File{dir} // 자식에서 fd 3이 된다(agentRemoveScript)
+	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("remove %q in %s as agent uid %d: %v: %s", g.names, g.dir, g.uid, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("remove %q in %s as agent uid %d: %v: %s", names, dir.Name(), uid, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// agentStopTimeout 은 StopProcesses가 한 uid의 프로세스가 모두 끝나기를 기다리는 상한이다. SIGKILL을 받은 프로세스는
+// 보통 수 밀리초 안에 끝난다. 디스크 입출력에 묶인 프로세스(D 상태)만 조금 더 걸린다.
+const agentStopTimeout = 10 * time.Second
+
+// agentStopRetry 는 StopProcesses가 남은 프로세스를 다시 죽이고 확인하는 간격이다.
+const agentStopRetry = 50 * time.Millisecond
+
+// agentKillScript 는 에이전트 uid로 돌아 그 uid의 다른 프로세스를 모두 SIGKILL로 죽인다. kill(-1)은 호출한 프로세스
+// 자신을 빼고 보낼 권한이 있는 모든 프로세스에 보내는데, 권한을 버린 이 셸이 보낼 수 있는 것은 같은 uid의 프로세스뿐이라
+// 다른 uid는 건드리지 않는다. 서버가 /proc에서 pid를 골라 죽이면 그사이 pid가 다른 프로세스에 다시 쓰일 수 있다.
+// 죽인 뒤 "ready"를 찍고 표준 입력이 닫힐 때까지 살아 있다. 서버는 그동안 /proc를 읽어 남은 프로세스를 찾고, 이
+// 프로세스가 보이는지로 /proc가 그 uid의 프로세스를 숨기지 않는지(hidepid) 확인한다.
+const agentKillScript = `kill -9 -1 2>/dev/null; echo ready; exec cat >/dev/null`
+
+// errAgentProcessesRemain 은 StopProcesses가 상한 안에 그 uid의 프로세스를 모두 끝내지 못했다는 뜻이다.
+var errAgentProcessesRemain = errors.New("agent processes are still running")
+
+// StopProcesses 는 에이전트 uid 하나의 프로세스를 모두 끝내고, 끝났는지 /proc에서 확인한다(#179). 작업·대화를 지우거나
+// 작업을 보관하기 전에 부른다. 셸에서 떼어 띄운 프로세스(setsid, nohup, 이중 fork)는 실행이 끝나도 남아 cwd·열린
+// fd로 작업 공간에 계속 닿는다. 지운 뒤 uid가 다른 작업에 다시 할당되면 새 작업의 작업 공간에도 닿는다. 그래서 파일을
+// 옮기거나 지우거나 uid를 돌려주기 전에 끝낸다. 좀비는 작업 공간에 닿지 못하므로 끝난 것으로 본다.
+//
+// 상한(agentStopTimeout) 안에 끝나지 않거나, 도우미를 실행하지 못하거나, /proc에서 그 uid의 프로세스를 볼 수 없으면
+// 오류다. 호출자는 지우기·보관을 멈춘다. 꺼져 있으면 아무것도 하지 않는다.
+func (s *AgentSandbox) StopProcesses(ctx context.Context, uid int) error {
+	if s == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, agentStopTimeout)
+	defer cancel()
+	for {
+		remaining, err := s.killProcesses(ctx, uid)
+		if err != nil {
+			return err
+		}
+		if len(remaining) == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w: agent uid %d still runs pids %v after %s", errAgentProcessesRemain, uid, remaining, agentStopTimeout)
+		case <-time.After(agentStopRetry):
+		}
+	}
+}
+
+// killProcesses 는 도우미로 uid가 되어 그 uid의 프로세스를 한 번 모두 죽이고(agentKillScript), 그 직후 아직 살아 있는
+// 그 uid의 프로세스 pid를 돌려준다. 죽인 프로세스가 실제로 끝나는 데는 조금 걸리므로 호출자가 다시 부른다.
+func (s *AgentSandbox) killProcesses(ctx context.Context, uid int) ([]int, error) {
+	name, args := s.Command("sh", []string{"-c", agentKillScript, "artex-kill"})
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = "/"
+	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start the sandbox helper to stop agent uid %d: %w", uid, err)
+	}
+	ready, readErr := bufio.NewReader(stdout).ReadString('\n')
+	var remaining []int
+	var scanErr error
+	if readErr == nil && ready == "ready\n" {
+		remaining, scanErr = liveAgentProcesses(uid, cmd.Process.Pid)
+	}
+	stdin.Close() // 확인이 끝났으니 cat을 끝낸다
+	waitErr := cmd.Wait()
+	if readErr != nil || ready != "ready\n" {
+		return nil, fmt.Errorf("stop agent uid %d: the sandbox helper did not run (%v, %v): %s", uid, readErr, waitErr, strings.TrimSpace(stderr.String()))
+	}
+	if scanErr != nil {
+		return nil, fmt.Errorf("stop agent uid %d: %w", uid, scanErr)
+	}
+	return remaining, nil
+}
+
+// procStatus 는 /proc/<pid>/status에서 StopProcesses가 보는 값이다.
+type procStatus struct {
+	state byte  // State 줄의 첫 글자(R, S, D, Z, X 등)
+	uids  []int // Uid 줄의 real, effective, saved, filesystem uid
+}
+
+// parseProcStatus 는 /proc/<pid>/status 내용에서 State와 Uid를 읽는다. 둘 중 하나라도 없으면 false다.
+func parseProcStatus(data []byte) (procStatus, bool) {
+	var st procStatus
+	hasState := false
+	for line := range strings.Lines(string(data)) {
+		key, value, ok := strings.Cut(strings.TrimRight(line, "\n"), ":")
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		switch key {
+		case "State":
+			if value != "" {
+				st.state = value[0]
+				hasState = true
+			}
+		case "Uid":
+			for _, field := range strings.Fields(value) {
+				uid, err := strconv.Atoi(field)
+				if err != nil {
+					return procStatus{}, false
+				}
+				st.uids = append(st.uids, uid)
+			}
+		}
+	}
+	return st, hasState && len(st.uids) > 0
+}
+
+// isAlive 는 프로세스가 아직 작업 공간에 닿을 수 있는지다. 좀비(Z)와 끝나는 중(X)은 cwd와 열린 fd를 이미 놓았다.
+func (st procStatus) isAlive() bool {
+	return st.state != 'Z' && st.state != 'X'
 }
 
 // reopenRestoredWorkspace 는 uid 분리를 켰을 때 복원한 작업 공간 tasks/<taskID>를 그 작업의 uid에 다시 연다(#179).
