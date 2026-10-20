@@ -200,7 +200,7 @@ func saveUniqueUpload(root *os.Root, dir string, hdr *multipart.FileHeader, name
 	}
 	defer src.Close()
 	// 첨부(uploads/)는 에이전트가 읽기만 하는 곳이라(#165) 그룹 쓰기를 주지 않는다.
-	out, base, err := createUniqueUpload(root, dir, name, 0o644)
+	out, base, err := createUniqueUpload(root, dir, name, 0o666)
 	if err != nil {
 		return "", err
 	}

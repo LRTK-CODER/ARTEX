@@ -51,3 +51,39 @@ func TestWorkspaceUploadKeepsGroupWritableUnderSharedUmask(t *testing.T) {
 		})
 	}
 }
+
+// 웹 작업 공간 쓰기와 채팅 첨부도 작업 공간 안에 서버가 만드는 파일이라 같은 규칙(0666, umask가 정함)을 따른다.
+// 채팅 첨부는 에이전트 작업 디렉터리(sessions/<id>/uploads)에 저장된다.
+func TestServerCreatedWorkspaceFilesFollowUmask(t *testing.T) {
+	previous := syscall.Umask(0o002)
+	t.Cleanup(func() { syscall.Umask(previous) })
+
+	t.Run("작업 공간 쓰기", func(t *testing.T) {
+		f := newUnitFixture(t)
+		rec := serveWorkspace(f.server.wsWrite, workspaceJSON("/api/workspace/write", `{"path":"tasks/1/work/new.txt","content":"x"}`))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d; body = %s", rec.Code, rec.Body.String())
+		}
+		assertMode(t, filepath.Join(f.data, "tasks", "1", "work", "new.txt"), 0o664)
+	})
+	t.Run("채팅 첨부", func(t *testing.T) {
+		data := t.TempDir()
+		s := &Server{m: &Manager{dir: data}}
+		rec := serveWorkspace(s.chatUpload, chatUploadRequest(t, "s1", "body"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d; body = %s", rec.Code, rec.Body.String())
+		}
+		assertMode(t, filepath.Join(data, "sessions", "s1", "uploads", "report.txt"), 0o664)
+	})
+}
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("mode = %v, want %v", got, want)
+	}
+}

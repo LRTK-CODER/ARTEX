@@ -388,7 +388,7 @@ func (s *Server) wsWrite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if err := root.WriteFile(p.name, []byte(req.Content), 0o644); err != nil {
+	if err := root.WriteFile(p.name, []byte(req.Content), 0o666); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
