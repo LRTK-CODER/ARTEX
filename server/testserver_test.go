@@ -56,3 +56,27 @@ func stopTaskRuntimes(e *Engine) {
 		e.StopTask(taskID)
 	}
 }
+
+// newTestServerWithoutArchiveWorker 는 배경 보관 작업자가 돌지 않는 서버를 띄운다. 보관 작업을
+// runOneTaskArchiveJob으로 직접 돌려 그 결과를 보는 테스트가 쓴다. 작업자가 돌면 runOneTaskArchiveJob이
+// 끝에 깨운 작업자가 테스트가 이어서 넣은 작업(예: 보관 직후의 복원)을 먼저 가져가, 테스트의 호출은 빈 큐를
+// 보고 바로 돌아오고 작업자가 아직 처리하는 중에 결과를 읽게 된다(#199).
+// 이미 취소한 컨텍스트로 New를 불러 작업자와 다른 백그라운드 루프가 바로 끝나게 하고, 끝나기를 기다린 뒤
+// 서버 컨텍스트를 테스트가 끝날 때 취소하는 새 컨텍스트로 바꾼다. 정리 순서는 newTestServer와 같다.
+func newTestServerWithoutArchiveWorker(t *testing.T, m *Manager, skillDir, dataDir, keyDir string) *Server {
+	t.Helper()
+	restoreHooks := saveAgentHooks()
+	stopped, stop := context.WithCancel(context.Background())
+	stop()
+	s := New(stopped, m, skillDir, dataDir, keyDir, nil)
+	s.archiveWG.Wait()
+	<-s.side.done
+	ctx, cancel := context.WithCancel(context.Background())
+	s.ctx = ctx
+	t.Cleanup(func() {
+		cancel()
+		stopTaskRuntimes(s.engine)
+		restoreHooks()
+	})
+	return s
+}

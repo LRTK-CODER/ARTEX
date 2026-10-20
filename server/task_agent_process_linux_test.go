@@ -28,7 +28,7 @@ func TestTaskDeleteAndArchiveStopAgentProcessesFirst(t *testing.T) {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
 	t.Cleanup(func() { m.Close() })
-	s := newTestServer(t, m, t.TempDir(), t.TempDir(), t.TempDir())
+	s := newTestServerWithoutArchiveWorker(t, m, t.TempDir(), t.TempDir(), t.TempDir())
 	s.sandbox = &AgentSandbox{uid: 20000, gid: 20000}
 	m.sandbox = s.sandbox
 	if err := prepareWorkspaceRoots(m.dir); err != nil {
