@@ -12,6 +12,7 @@ const SCOPE_KIND_LABELS: Record<CompanyScopeKind, string> = {
   domain: "도메인",
   ip: "IP",
   cidr: "CIDR",
+  // 편집 중 보존되는 예전 ICP 범위(#192 이전에 만든 것)의 개수를 보여 준다.
   icp: "ICP",
   keyword: "키워드",
 };
@@ -22,7 +23,7 @@ export function ScopeTextEditor({
   onValueChange,
   parsed,
   label = "자산 범위",
-  description = "한 줄에 하나씩 입력하세요. 도메인, IP, CIDR, ICP 등록 번호, 기업 키워드를 자동으로 구분합니다.",
+  description = "한 줄에 하나씩 입력하세요. 도메인, IP, CIDR, 기업 키워드를 자동으로 구분합니다.",
 }: {
   id: string;
   value: string;
@@ -46,7 +47,7 @@ export function ScopeTextEditor({
         rows={8}
         value={value}
         aria-invalid={parsed.errors.length > 0}
-        placeholder={"example.com\n203.0.113.10\n198.51.100.0/24\n京ICP备12345678号-1\n기업 이름 키워드"}
+        placeholder={"example.com\n203.0.113.10\n198.51.100.0/24\n기업 이름 키워드"}
         className="min-h-36 resize-y font-mono text-sm"
         onChange={(event) => onValueChange(event.target.value)}
       />

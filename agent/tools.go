@@ -2044,7 +2044,7 @@ func (t *ToolSet) PlannerTools() []actool.CoreTool {
 		// list_assets: 규획 때 DSL로 전체 자산 라이브러리를 검색한다(list_untested_assets의 "범위 내 미테스트" 관점과 함께,
 		// "도메인/지문/포트/상태 코드 등 조건으로 전체 라이브러리에서 조회"하는 능력을 보탠다).
 		t.listAssets(),
-		// add_company_scope: 규획 때 도메인/IP/CIDR/ICP/키워드를 어떤 기업의 자산 범위에 넣을 수 있다(일치한 자산을 자동 인수).
+		// add_company_scope: 규획 때 도메인/IP/CIDR/키워드를 어떤 기업의 자산 범위에 넣을 수 있다(일치한 자산을 자동 인수).
 		t.addCompanyScope(),
 		// add_task_scope: 루트 도메인 전체/기업 전체/어떤 하위 도메인/IP를 이 작업의 테스트 범위(커버리지 분모)에 능동적으로 넣는다.
 		t.addTaskScope(),

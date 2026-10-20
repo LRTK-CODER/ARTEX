@@ -166,7 +166,8 @@ export function classifyCompanyScopeLine(
     const error = companyScopeRuleError(rule);
     return error ? { line, error } : { line, rule };
   }
-  if (/icp|备案/i.test(value)) return { line, rule: { kind: "icp", value } };
+  // 한국 사용에서는 ICP 등록 번호를 쓰지 않아 "icp"·"备案"이 든 글도 키워드로 둔다(#192).
+  // 백엔드 ParseAutoScopeLine과 같은 규칙이다. 예전 ICP 범위는 preservedRule로 종류가 유지된다.
   return { line, rule: { kind: "keyword", value } };
 }
 

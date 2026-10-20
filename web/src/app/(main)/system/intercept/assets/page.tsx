@@ -22,10 +22,11 @@ import type { AssetInterceptKind, AssetInterceptRule } from "@/lib/types";
 // ---- kind 메타 정보 ----
 
 const KIND_OPTIONS: { value: AssetInterceptKind; label: string; group: string; placeholder: string }[] = [
-  { value: "exact_domain", label: "도메인(정확히 일치)", group: "정확히 일치", placeholder: "example.gov.cn" },
+  { value: "exact_domain", label: "도메인(정확히 일치)", group: "정확히 일치", placeholder: "example.go.kr" },
   { value: "exact_ip", label: "IP(정확히 일치)", group: "정확히 일치", placeholder: "203.0.113.10" },
-  { value: "exact_url", label: "URL(정확히 일치)", group: "정확히 일치", placeholder: "https://example.gov.cn/login" },
-  { value: "fuzzy_domain", label: "도메인(부분 일치)", group: "부분 일치", placeholder: ".gov.cn" },
+  { value: "exact_url", label: "URL(정확히 일치)", group: "정확히 일치", placeholder: "https://example.go.kr/login" },
+  { value: "suffix_domain", label: "도메인(접미사 일치)", group: "접미사 일치", placeholder: "go.kr" },
+  { value: "fuzzy_domain", label: "도메인(부분 일치)", group: "부분 일치", placeholder: ".go.kr" },
   { value: "fuzzy_ip", label: "IP(부분 일치)", group: "부분 일치", placeholder: "203.0.113." },
   { value: "fuzzy_url", label: "URL(부분 일치)", group: "부분 일치", placeholder: "/admin" },
   { value: "cidr", label: "CIDR 대역", group: "네트워크 대역", placeholder: "192.168.0.0/16" },
@@ -35,25 +36,31 @@ const KIND_LABEL: Record<AssetInterceptKind, string> = Object.fromEntries(
   KIND_OPTIONS.map((o) => [o.value, o.label]),
 ) as Record<AssetInterceptKind, string>;
 
-const KIND_GROUPS = ["정확히 일치", "부분 일치", "네트워크 대역"];
+const KIND_GROUPS = ["정확히 일치", "접미사 일치", "부분 일치", "네트워크 대역"];
+
+// kindBadgeClass 는 일치 방식 묶음마다 배지 색을 정한다. 접미사 일치는 정확히 일치와 구분되게 따로 둔다.
+function kindBadgeClass(kind: AssetInterceptKind): string {
+  if (kind === "cidr") return "border-sky-400 text-sky-600";
+  if (kind === "suffix_domain") return "border-violet-400 text-violet-600";
+  if (kind.startsWith("fuzzy_")) return "border-amber-400 text-amber-600";
+  return "border-emerald-400 text-emerald-600";
+}
 
 function KindBadge({ kind }: { kind: AssetInterceptKind }) {
-  const fuzzy = kind.startsWith("fuzzy_");
-  const cidr = kind === "cidr";
   return (
-    <Badge
-      variant="outline"
-      className={
-        cidr
-          ? "border-sky-400 text-sky-600"
-          : fuzzy
-            ? "border-amber-400 text-amber-600"
-            : "border-emerald-400 text-emerald-600"
-      }
-    >
+    <Badge variant="outline" className={kindBadgeClass(kind)}>
       {KIND_LABEL[kind]}
     </Badge>
   );
+}
+
+// patternHint 는 일치 방식마다 "일치시킬 값"을 어떻게 해석하는지 알려 준다.
+function patternHint(kind: AssetInterceptKind): string {
+  if (kind === "cidr") return "CIDR 대역. 예: 192.168.0.0/16";
+  if (kind === "suffix_domain")
+    return "접미사 일치: 이 도메인 자체와 하위 도메인이 일치합니다. 앞 점은 있어도 없어도 같습니다";
+  if (kind.startsWith("fuzzy_")) return "부분 일치: 대상에 이 값이 들어 있으면 일치합니다";
+  return "정확히 일치: 대상이 이 값과 완전히 같아야 합니다";
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -189,8 +196,8 @@ export default function AssetInterceptPage() {
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          정확히 일치·부분 일치하는 도메인 / IP / URL과 CIDR 대역을 지원합니다. 내장 규칙은 기본으로 정부(.gov /
-          .gov.cn)와 교육(.edu / .edu.cn) 웹사이트를 부분 일치로 차단합니다
+          정확히 일치·부분 일치하는 도메인 / IP / URL, 도메인 접미사 일치와 CIDR 대역을 지원합니다. 내장 규칙은 기본으로
+          한국 공공·교육기관(.go.kr, .ac.kr 등)과 미국 정부·교육기관(.gov / .edu) 웹사이트를 차단합니다
         </p>
         <Button onClick={openNew} size="sm" className="shrink-0">
           <PlusIcon className="h-4 w-4" />새 규칙
@@ -298,16 +305,7 @@ export default function AssetInterceptPage() {
               </Select>
             </Field>
 
-            <Field
-              label="일치시킬 값"
-              hint={
-                form.kind === "cidr"
-                  ? "CIDR 대역. 예: 192.168.0.0/16"
-                  : form.kind.startsWith("fuzzy_")
-                    ? "부분 일치: 대상에 이 값이 들어 있으면 일치합니다"
-                    : "정확히 일치: 대상이 이 값과 완전히 같아야 합니다"
-              }
-            >
+            <Field label="일치시킬 값" hint={patternHint(form.kind)}>
               <Input
                 placeholder={placeholder}
                 value={form.pattern}

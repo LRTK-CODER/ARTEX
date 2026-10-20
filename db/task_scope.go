@@ -212,7 +212,7 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 		}
 		ts.Value = parsed.Value
 	default:
-		return ts, fmt.Errorf("지원하지 않는 kind: %s(company/root_domain/subdomain/ip/cidr/icp/keyword)", kind)
+		return ts, fmt.Errorf("지원하지 않는 kind: %s(company/root_domain/subdomain/ip/cidr/keyword)", kind)
 	}
 	if err := s.upsertTaskScope(ts); err != nil {
 		return ts, err
@@ -310,7 +310,7 @@ target AS (
     OR (ts.kind='root_domain' AND a.root_domain = ts.domain)
     OR (ts.kind='subdomain'   AND a.domain = ts.domain)
     OR (ts.kind IN ('ip','cidr') AND ts.net >>= try_inet(a.ip))
-    OR (ts.kind='icp' AND (
+    OR (ts.kind='icp' AND ts.value <> '' AND (
          lower(regexp_replace(COALESCE(a.icp,''), '[[:space:]]+', '', 'g')) = ts.value
          OR lower(regexp_replace(COALESCE(a.app_icp,''), '[[:space:]]+', '', 'g')) = ts.value
        ))

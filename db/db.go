@@ -259,29 +259,26 @@ ON CONFLICT (agent_id, var_name) DO UPDATE
 	if err := d.seedDefaultAssetInterceptRules(); err != nil {
 		return fmt.Errorf("seed asset intercept rules: %w", err)
 	}
+	if err := d.migrateAssetInterceptRulesToKorea(); err != nil {
+		return fmt.Errorf("자산 차단 규칙 한국 도메인 이전: %w", err)
+	}
 	if err := d.migrateBuiltinRuleTexts(); err != nil {
 		return fmt.Errorf("migrate builtin rule texts: %w", err)
 	}
 	return nil
 }
 
-// seedDefaultAssetInterceptRules inserts the built-in asset blocklist (fuzzy
-// domain matches for government / education sites) once on first startup. Gated
-// by a settings flag so a user's later disable/delete is never resurrected on
-// restart — same policy as the intercept-rule seed.
+// seedDefaultAssetInterceptRules 는 첫 시작 때 내장 자산 차단 목록(정부·교육기관 도메인 부분 일치)을
+// 한 번 넣는다. 사용자가 나중에 끄거나 지운 규칙을 다시 시작할 때 되살리지 않도록 설정 플래그로
+// 막는다(명령 차단 규칙 seed와 같은 정책). 한국 규칙은 기존 설치와 같은 경로로 받도록
+// migrateAssetInterceptRulesToKorea가 넣는다.
 func (d *DB) seedDefaultAssetInterceptRules() error {
 	if v, _, _ := d.GetSetting("asset_intercept_default_rules_v1"); v == "done" {
 		return nil
 	}
-	rules := []struct {
-		kind    string
-		pattern string
-		note    string
-	}{
-		{"fuzzy_domain", ".gov", "[내장] 정부 웹사이트 (.gov)"},
-		{"fuzzy_domain", ".gov.cn", "[내장] 정부 웹사이트 (.gov.cn)"},
-		{"fuzzy_domain", ".edu", "[내장] 교육 웹사이트 (.edu)"},
-		{"fuzzy_domain", ".edu.cn", "[내장] 교육 웹사이트 (.edu.cn)"},
+	rules := []assetInterceptSeedRule{
+		{"fuzzy_domain", ".gov", "[내장] 미국 정부 웹사이트 (.gov)"},
+		{"fuzzy_domain", ".edu", "[내장] 미국 교육기관 웹사이트 (.edu)"},
 	}
 	for _, r := range rules {
 		if _, err := d.Exec(`

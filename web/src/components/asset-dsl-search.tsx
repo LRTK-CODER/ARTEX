@@ -58,15 +58,6 @@ const DSL_FIELDS: { name: string; desc: string; ops: { op: string; desc: string 
     ],
   },
   {
-    name: "icp",
-    desc: "ICP 등록 번호",
-    ops: [
-      { op: "=", desc: "부분 일치" },
-      { op: "==", desc: "정확히 일치" },
-      { op: "!=", desc: "제외" },
-    ],
-  },
-  {
     name: "service_name",
     desc: "서비스 이름(HTTP 외 서비스)",
     ops: [
@@ -96,15 +87,6 @@ const DSL_FIELDS: { name: string; desc: string; ops: { op: string; desc: string 
   {
     name: "category",
     desc: "애플리케이션 분류",
-    ops: [
-      { op: "=", desc: "부분 일치" },
-      { op: "==", desc: "정확히 일치" },
-      { op: "!=", desc: "제외" },
-    ],
-  },
-  {
-    name: "app_icp",
-    desc: "애플리케이션 ICP 등록 번호",
     ops: [
       { op: "=", desc: "부분 일치" },
       { op: "==", desc: "정확히 일치" },
