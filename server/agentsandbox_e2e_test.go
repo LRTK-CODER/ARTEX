@@ -254,7 +254,8 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		}
 	})
 	t.Run("nmap connect scan works and syn scan does not", func(t *testing.T) {
-		if _, err := exec.LookPath("nmap"); err != nil {
+		// 켠 뒤 서버 PATH에는 셸 대체만 있으므로 에이전트 명령의 PATH에서 찾는다.
+		if _, err := sb.LookPath("nmap"); err != nil {
 			t.Skip("nmap is not installed")
 		}
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
