@@ -64,3 +64,10 @@ func workspaceDefaultACL(agentUID, serverUID int, access WorkspaceAccess) ACL {
 	}
 	return acl
 }
+
+// ServerOnlyDefaultACL 은 서버 전용 디렉터리에 거는 기본 ACL이다(#186). 소유 그룹과 other 권한이 없어, 서버가
+// 그 안에 0755·0644로 만들어도 커널이 umask 대신 이 ACL을 써서 0700·0600이 된다. 이름 있는 항목이 없어 mask가
+// 필요 없다.
+func ServerOnlyDefaultACL() ACL {
+	return ACL{{Tag: ACLUserOwner, Perm: aclPermAll}, {Tag: ACLGroupOwner}, {Tag: ACLOther}}
+}

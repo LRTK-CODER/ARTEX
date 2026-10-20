@@ -360,7 +360,8 @@ func (s *AgentSandbox) ConversationUID(ctx context.Context, pg *db.DB, conversat
 }
 
 // PrepareAgentWorkspaces 는 uid 분리를 켰을 때 DB의 할당 표(agent_uids)대로 작업 공간 ACL을 다시 건다(#182). 할당이
-// 있는 작업·대화의 작업 공간은 그 uid에만 열고, 할당이 없는 것(지운 대화 등)은 서버 전용으로 닫는다. 에이전트가
+// 있는 작업·대화의 작업 공간은 그 uid에만 열고, 할당이 없는 것(지운 대화 등)은 서버 전용으로 닫는다. 데이터
+// 디렉터리의 작업 공간이 아닌 항목(트래픽 저장소, 보관 묶음 등)도 서버 전용으로 닫는다(restrictDataDir, #186). 에이전트가
 // 명령을 실행하기 전, 서버가 시작할 때 한 번 부른다. 실패하면 원인을 올린다(시작하지 않는다). 꺼져 있으면 nil이다.
 func PrepareAgentWorkspaces(ctx context.Context, m *Manager, sandbox *AgentSandbox) error {
 	if sandbox == nil {
@@ -377,6 +378,10 @@ func PrepareAgentWorkspaces(ctx context.Context, m *Manager, sandbox *AgentSandb
 		} else {
 			owners.conversations[a.ConversationID] = a.UID
 		}
+	}
+	// 트래픽 저장소는 NewManager가 만들므로 그 뒤에 닫는다.
+	if err := restrictDataDir(m.dir); err != nil {
+		return err
 	}
 	if err := applyWorkspaceACL(m.dir, owners); err != nil {
 		return err

@@ -343,6 +343,9 @@ func (m *Manager) SetWorkers(n int) error {
 // Enrich returns the asset auto-completion engine (may be nil if init failed).
 func (m *Manager) Enrich() *enrich.Engine { return m.enrich }
 
+// trafficDirName 은 데이터 디렉터리 안의 트래픽 저장소 디렉터리 이름이다.
+const trafficDirName = "traffic"
+
 // NewManager connects to PostgreSQL and, if proxyAddr is non-empty, starts the
 // traffic-recording proxy. PostgreSQL is required (it is the single data source).
 // secretEnv는 시작할 때 읽어 둔 비밀 환경 변수다(config.TakeSecretEnv). DB DSN을 여기서 읽는다.
@@ -380,7 +383,7 @@ func NewManager(dir, proxyAddr string, secretEnv config.SecretEnv) (*Manager, er
 	}
 	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg), secretEnv: secretEnv}
 	if proxyAddr != "" {
-		tr, err := traffic.Open(filepath.Join(dir, "traffic"), proxyAddr)
+		tr, err := traffic.Open(filepath.Join(dir, trafficDirName), proxyAddr)
 		if err != nil {
 			log.Printf("[traffic] disabled: %v", err)
 		} else {
