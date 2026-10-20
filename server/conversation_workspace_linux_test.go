@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/config"
@@ -92,20 +94,33 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 		s.chatMu.Lock()
 		s.chatBusy[key] = true
 		s.chatMu.Unlock()
-		done := make(chan *httptest.ResponseRecorder)
+		// 확인 박자를 테스트가 보낸다. 박자를 받아 간 것은 삭제가 바쁨 표시를 확인하고 아직 기다린다는 뜻이다.
+		ticks := make(chan time.Time)
+		s.stopTicker = func() (<-chan time.Time, func()) { return ticks, func() {} }
+		t.Cleanup(func() { s.stopTicker = newStopTicker })
+		done := make(chan *httptest.ResponseRecorder, 1)
 		go func() { done <- deleteConversation(t, c.ID) }()
-		select {
-		case rec := <-done:
-			t.Fatalf("delete finished while the turn was running: %d %s", rec.Code, rec.Body.String())
-		default:
+		for range 2 {
+			select {
+			case ticks <- time.Now():
+			case rec := <-done:
+				t.Fatalf("delete finished while the turn was running: %d %s", rec.Code, rec.Body.String())
+			}
 		}
+		// 두 번째 박자까지 받아 갔으니 삭제는 바쁨 표시를 본 채 기다리는 중이고, 아직 닫지 않았다.
 		if acl := readACLOf(t, dirs[0], agent.ACLAccess); len(acl) == 0 {
 			t.Fatal("workspace was closed while the turn was running")
 		}
 		s.chatMu.Lock()
 		delete(s.chatBusy, key)
 		s.chatMu.Unlock()
-		rec := <-done
+		var rec *httptest.ResponseRecorder
+		for rec == nil {
+			select {
+			case ticks <- time.Now():
+			case rec = <-done:
+			}
+		}
 		if rec.Code != http.StatusOK {
 			t.Fatalf("delete status = %d %s", rec.Code, rec.Body.String())
 		}
@@ -141,6 +156,35 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Logf("deleted conversation's uid %d, next conversation got %d", uid, reused)
+	})
+
+	t.Run("a turn that does not stop by the deadline keeps the conversation", func(t *testing.T) {
+		c, uid, dirs := newConversation(t, "turn does not stop")
+		key := s.convBusyKey(c.ID)
+		s.chatMu.Lock()
+		s.chatBusy[key] = true
+		s.chatMu.Unlock()
+		t.Cleanup(func() {
+			s.chatMu.Lock()
+			delete(s.chatBusy, key)
+			s.chatMu.Unlock()
+		})
+		// 마감이 이미 지났으면 박자를 기다리지 않고 바로 거부한다. 일괄 삭제가 마감 하나를 나눠 쓰는 것이 이 때문에 성립한다.
+		s.stopTicker = func() (<-chan time.Time, func()) { return nil, func() {} }
+		t.Cleanup(func() { s.stopTicker = newStopTicker })
+		_, err := s.closeConversationWorkspace(c.ID, time.Now().Add(-time.Second))
+		if !errors.Is(err, errTurnDidNotStop) {
+			t.Fatalf("close error = %v, want errTurnDidNotStop", err)
+		}
+		if got, want := workspaceCloseMessage("대화 작업 공간", err), "실행 중인 차례가 멈추지 않았습니다. 잠시 뒤 다시 지우세요"; got != want {
+			t.Fatalf("message = %q, want %q", got, want)
+		}
+		if acl := readACLOf(t, dirs[0], agent.ACLAccess); len(acl) == 0 {
+			t.Fatal("workspace was closed although the turn did not stop")
+		}
+		if !uidAssigned(t, uid) {
+			t.Fatalf("uid %d was returned although the turn did not stop", uid)
+		}
 	})
 
 	t.Run("keeps the conversation and its uid when the workspace cannot be closed", func(t *testing.T) {

@@ -325,7 +325,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 	})
 	t.Run("a deleted conversation's workspace is closed to its uid", func(t *testing.T) {
 		// 대화를 지우면 uid가 풀로 돌아가 다른 작업·세션이 다시 받는다. 지우기 전에 닫으므로 같은 uid로도 들어가지 못한다.
-		srv := &Server{m: &Manager{dir: dataDir}, sandbox: sb, chatBusy: map[string]bool{}}
+		srv := &Server{m: &Manager{dir: dataDir}, sandbox: sb, chatBusy: map[string]bool{}, stopTicker: newStopTicker}
 		const conversationID = 77
 		dir := filepath.Join(dataDir, "sessions", srv.convBusyKey(conversationID))
 		if err := os.Mkdir(dir, 0o700); err != nil {
@@ -336,7 +336,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		}
 		convCtx := &actool.ToolContext{WorkingDir: dir, Env: envA}
 		assertFirstLine(t, runTool(t, bash, convCtx, map[string]any{"command": "echo CONVERSATION-SECRET > s.txt && echo written"}), "written")
-		release, err := srv.closeConversationWorkspace(conversationID)
+		release, err := srv.closeConversationWorkspace(conversationID, time.Now().Add(conversationStopWait))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -346,6 +346,34 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		t.Logf("uid %d after the conversation's workspace was closed:\n%s", uidA, out)
 		if strings.Count(out, "Permission denied") < 3 || strings.Contains(out, "CONVERSATION-SECRET") {
 			t.Fatalf("the returned uid still reaches the deleted conversation's workspace: %q", out)
+		}
+	})
+	t.Run("a task deleted without its files is closed to its uid", func(t *testing.T) {
+		// 파일을 남기고 작업을 지우면(화면의 기본값) uid가 풀로 돌아가 다른 작업·세션이 다시 받는다. 지우기 전에
+		// tasks/<id>를 닫으므로 같은 uid로도 지운 작업의 작업 공간·첨부·큰 출력에 들어가지 못한다.
+		srv := &Server{m: &Manager{dir: dataDir}, sandbox: sb}
+		const deletedTask = 78
+		taskDir := filepath.Join(dataDir, "tasks", strconv.Itoa(deletedTask))
+		ws := filepath.Join(taskDir, "work")
+		// 실행이 거는 것과 같게 tasks/<id>는 읽기, work는 읽기·쓰기로 연다(agent.ensureRunDir).
+		for dir, access := range map[string]agent.WorkspaceAccess{taskDir: agent.WorkspaceRead, ws: agent.WorkspaceWrite} {
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := agent.ShareDir(dir, uidA, access); err != nil {
+				t.Fatal(err)
+			}
+		}
+		taskCtx := &actool.ToolContext{WorkingDir: ws, Env: envA}
+		assertFirstLine(t, runTool(t, bash, taskCtx, map[string]any{"command": "echo TASK-SECRET > notes.md && echo written"}), "written")
+		if err := srv.closeTaskWorkspace(strconv.Itoa(deletedTask)); err != nil {
+			t.Fatal(err)
+		}
+		probe := fmt.Sprintf("id -u; ls %[1]s; ls %[2]s; cat %[2]s/notes.md; touch %[2]s/x; echo done", shellQuote(taskDir), shellQuote(ws))
+		out := runTool(t, bash, &actool.ToolContext{WorkingDir: dataDir, Env: envA}, map[string]any{"command": probe})
+		t.Logf("uid %d after the deleted task's workspace was closed:\n%s", uidA, out)
+		if strings.Count(out, "Permission denied") < 4 || strings.Contains(out, "TASK-SECRET") {
+			t.Fatalf("the returned uid still reaches the deleted task's workspace: %q", out)
 		}
 	})
 	t.Run("runs of different tasks cannot reach each other's processes", func(t *testing.T) {

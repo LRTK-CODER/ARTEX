@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -158,13 +159,19 @@ func (s *Server) pgDeleteTask(w http.ResponseWriter, r *http.Request) {
 	drainCtx, cancelDrain := context.WithTimeout(r.Context(), taskDeleteDrainTimeout)
 	defer cancelDrain()
 	if err := s.waitTaskQuiescent(drainCtx, id); err != nil {
-		writeErr(w, http.StatusConflict, "작업에 실행 중인 에이전트가 있어 삭제를 취소했습니다")
+		writeErr(w, http.StatusConflict, "실행 중인 에이전트가 멈추지 않았습니다. 잠시 뒤 다시 지우세요")
 		return
 	}
 
 	if err := s.drainTaskSideQuestions(drainCtx, id); err != nil {
 		writeErr(w, http.StatusConflict, err.Error())
 		return
+	}
+	if !opts.DeleteFiles {
+		if err := s.closeTaskWorkspace(id); err != nil {
+			writeErr(w, http.StatusConflict, workspaceCloseMessage("작업 공간", err))
+			return
+		}
 	}
 	result, err := s.m.DeleteTask(id, opts)
 	if err != nil {
@@ -192,6 +199,23 @@ func (s *Server) pgDeleteTask(w http.ResponseWriter, r *http.Request) {
 	s.taskAgentMu.Unlock()
 	deleted = true
 	writeJSON(w, 200, result)
+}
+
+// closeTaskWorkspace 는 uid 분리를 켰을 때 파일을 남기고 작업을 지우기 전에 tasks/<id>를 서버 전용으로 닫는다(#182).
+// 작업을 지우면 그 uid가 풀로 돌아가 다른 작업·세션에 다시 할당되는데, 닫지 않으면 새 주인이 지운 작업의 작업 공간·
+// 첨부·큰 출력을 읽고 쓴다. tasks/<id> 하나만 닫으면 그 아래 전체에 닿지 못한다. 호출자는 실행이 모두 끝난 뒤
+// (waitTaskQuiescent) 부르고, 닫지 못하면 작업을 지우지 않는다. 그러면 uid도 돌아가지 않는다. 지우기가 뒤에서
+// 실패해 작업이 남아도 다음 실행이 작업 공간을 다시 연다(agent.ensureRunDir). 파일을 지울 때는 서버 전용
+// 임시 자리로 옮기므로 부르지 않는다. 꺼져 있거나 디렉터리가 없으면 아무것도 하지 않는다.
+func (s *Server) closeTaskWorkspace(id string) error {
+	if s.sandbox == nil {
+		return nil
+	}
+	err := agent.ShareDir(filepath.Join(s.m.dir, "tasks", id), 0, agent.WorkspaceServerOnly)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func writeCommittedTaskDelete(w http.ResponseWriter, result DeleteTaskResult, err error) {

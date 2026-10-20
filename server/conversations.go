@@ -218,9 +218,9 @@ func (s *Server) pgDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cancelConversation(c.ID)
 	s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == c.ID })
-	release, err := s.closeConversationWorkspace(c.ID)
+	release, err := s.closeConversationWorkspace(c.ID, time.Now().Add(conversationStopWait))
 	if err != nil {
-		writeErr(w, http.StatusConflict, "대화 작업 공간을 닫지 못해 지우지 않았습니다: "+err.Error())
+		writeErr(w, http.StatusConflict, workspaceCloseMessage("대화 작업 공간", err))
 		return
 	}
 	defer release()
@@ -232,21 +232,39 @@ func (s *Server) pgDeleteConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 // 대화를 지울 때 돌고 있는 차례가 끝나기를 기다리는 상한과 확인 간격이다. 멈춤 요청 뒤 norma는 도구 호출을 끊고
-// 차례를 끝내며 그 차례의 백그라운드 명령·셸을 죽인다. 보통 1초 안에 끝난다.
+// 차례를 끝내며 그 차례의 백그라운드 명령·셸을 죽인다. 보통 1초 안에 끝난다. 일괄 삭제도 전체에 이 상한 하나를 둔다.
 const (
 	conversationStopWait = 30 * time.Second
 	conversationStopPoll = 50 * time.Millisecond
 )
 
+// errTurnDidNotStop 은 대화를 지우려고 기다렸지만 돌고 있는 차례가 상한 안에 끝나지 않았다는 뜻이다.
+// 사용자가 다시 지우면 되는 경우라 따로 가려 한국어 안내로 보인다(workspaceCloseMessage).
+var errTurnDidNotStop = errors.New("the running turn did not stop in time")
+
+// workspaceCloseMessage 는 작업 공간을 닫지 못해 지우지 않았을 때(409) 사용자에게 보일 문구다. workspace는
+// "대화 작업 공간"이나 "작업 공간"이다.
+func workspaceCloseMessage(workspace string, err error) string {
+	if errors.Is(err, errTurnDidNotStop) {
+		return "실행 중인 차례가 멈추지 않았습니다. 잠시 뒤 다시 지우세요"
+	}
+	return workspace + "을 닫지 못해 지우지 않았습니다: " + err.Error()
+}
+
+func newStopTicker() (<-chan time.Time, func()) {
+	t := time.NewTicker(conversationStopPoll)
+	return t.C, t.Stop
+}
+
 // closeConversationWorkspace 는 uid 분리를 켰을 때 대화 id를 지우기 전에 그 작업 공간(sessions/conv-<id>,
 // sessions/cmd-output/conv-<id>)을 서버 전용으로 닫는다(#182). 대화를 지우면 그 uid가 풀로 돌아가 다른 작업·세션에
 // 다시 할당되는데, 디렉터리는 남는다(지우기는 #179). 닫지 않으면 새 주인이 지운 대화의 작업 공간을 읽는다.
 //
-// 돌고 있는 차례가 있으면(호출자가 멈춤을 요청했다) 끝나기를 기다린 뒤 닫는다. 차례가 끝나야 그 uid로 도는 명령이
-// 없다. 닫은 뒤에는 대화를 지울 때까지 새 차례가 시작하지 못하게 바쁨 표시를 잡아 두고, 돌려주는 release로 놓는다.
-// 닫지 못하면(기다리다 시간이 다 됨, 링크가 놓임 등) 오류다. 호출자는 대화를 지우지 않으므로 uid도 돌아가지 않는다.
-// 꺼져 있으면 아무것도 하지 않는다.
-func (s *Server) closeConversationWorkspace(id int64) (func(), error) {
+// 돌고 있는 차례가 있으면(호출자가 멈춤을 요청했다) deadline까지 끝나기를 기다린 뒤 닫는다. 차례가 끝나야 그 uid로
+// 도는 명령이 없다. 닫은 뒤에는 대화를 지울 때까지 새 차례가 시작하지 못하게 바쁨 표시를 잡아 두고, 돌려주는 release로
+// 놓는다. 닫지 못하면(시간이 다 됨이면 errTurnDidNotStop, 링크가 놓임 등) 오류다. 호출자는 대화를 지우지 않으므로 uid도
+// 돌아가지 않는다. 꺼져 있으면 아무것도 하지 않는다.
+func (s *Server) closeConversationWorkspace(id int64, deadline time.Time) (func(), error) {
 	if s.sandbox == nil {
 		return func() {}, nil
 	}
@@ -256,9 +274,8 @@ func (s *Server) closeConversationWorkspace(id int64) (func(), error) {
 		delete(s.chatBusy, key)
 		s.chatMu.Unlock()
 	}
-	tick := time.NewTicker(conversationStopPoll)
-	defer tick.Stop()
-	deadline := time.Now().Add(conversationStopWait)
+	ticks, stop := s.stopTicker()
+	defer stop()
 	for {
 		s.chatMu.Lock()
 		busy := s.chatBusy[key]
@@ -270,9 +287,9 @@ func (s *Server) closeConversationWorkspace(id int64) (func(), error) {
 			break
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("the running turn did not stop within %s", conversationStopWait)
+			return nil, errTurnDidNotStop
 		}
-		<-tick.C
+		<-ticks
 	}
 	sessions := filepath.Join(s.m.dir, "sessions")
 	for _, dir := range []string{filepath.Join(sessions, key), filepath.Join(sessions, agent.ToolOutputDirName, key)} {
@@ -338,10 +355,12 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == id })
 	}
 	// 작업 공간을 닫지 못한 대화는 지우지 않는다(closeConversationWorkspace). 그 uid가 풀로 돌아가지 않는다.
+	// 기다림 상한은 대화마다가 아니라 일괄 삭제 전체에 하나다. 멈추지 않는 차례가 여럿이어도 요청이 상한을 넘지 않는다.
 	closeErrs := map[int64]error{}
 	closed := make([]int64, 0, len(ids))
+	deadline := time.Now().Add(conversationStopWait)
 	for _, id := range ids {
-		release, err := s.closeConversationWorkspace(id)
+		release, err := s.closeConversationWorkspace(id, deadline)
 		if err != nil {
 			closeErrs[id] = err
 			continue
@@ -367,7 +386,7 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		item := conversationDeleteItem{ID: id, OK: ok}
 		switch {
 		case closeErrs[id] != nil:
-			item.Error = "대화 작업 공간을 닫지 못해 지우지 않았습니다: " + closeErrs[id].Error()
+			item.Error = workspaceCloseMessage("대화 작업 공간", closeErrs[id])
 		case !ok:
 			item.Error = "conversation not found"
 		}
