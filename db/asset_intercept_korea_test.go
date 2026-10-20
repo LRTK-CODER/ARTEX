@@ -14,10 +14,11 @@ type assetRuleRow struct {
 const (
 	assetSeedV1Flag = "asset_intercept_default_rules_v1"
 	assetSeedV2Flag = "asset_intercept_default_rules_v2_korea"
+	assetSeedV3Flag = "asset_intercept_default_rules_v3_suffix"
 )
 
-// wantDefaultAssetRules 는 새 설치와 이전을 마친 기존 설치가 가질 내장 규칙이다(#191 이슈 표).
-var wantDefaultAssetRules = []assetRuleRow{
+// v2DefaultAssetRules 는 v2(#191) 이전까지 마친 설치가 가진 내장 규칙이다(접미사 일치 이전 전).
+var v2DefaultAssetRules = []assetRuleRow{
 	{"fuzzy_domain", ".gov", "[내장] 미국 정부 웹사이트 (.gov)", true, true},
 	{"fuzzy_domain", ".edu", "[내장] 미국 교육기관 웹사이트 (.edu)", true, true},
 	{"fuzzy_domain", ".go.kr", "[내장] 한국 정부기관 웹사이트 (.go.kr)", true, true},
@@ -32,6 +33,23 @@ var wantDefaultAssetRules = []assetRuleRow{
 	{"fuzzy_domain", ".korea.kr", "[내장] 대한민국 정부 포털 하위 도메인 (.korea.kr)", true, true},
 	{"exact_domain", "gov.kr", "[내장] 정부24 (gov.kr)", true, true},
 	{"fuzzy_domain", ".gov.kr", "[내장] 정부24 하위 도메인 (.gov.kr)", true, true},
+}
+
+// wantDefaultAssetRules 는 새 설치와 이전을 모두 마친 기존 설치가 가질 내장 규칙이다(#191 이슈 표를 #193이
+// 접미사 일치로 옮긴 것).
+var wantDefaultAssetRules = []assetRuleRow{
+	{"suffix_domain", ".gov", "[내장] 미국 정부 웹사이트 (.gov)", true, true},
+	{"suffix_domain", ".edu", "[내장] 미국 교육기관 웹사이트 (.edu)", true, true},
+	{"suffix_domain", ".go.kr", "[내장] 한국 정부기관 웹사이트 (.go.kr)", true, true},
+	{"suffix_domain", ".mil.kr", "[내장] 한국 국방기관 웹사이트 (.mil.kr)", true, true},
+	{"suffix_domain", ".ac.kr", "[내장] 한국 대학 웹사이트 (.ac.kr)", true, true},
+	{"suffix_domain", ".hs.kr", "[내장] 한국 고등학교·교육청 웹사이트 (.hs.kr)", true, true},
+	{"suffix_domain", ".ms.kr", "[내장] 한국 중학교·교육청 웹사이트 (.ms.kr)", true, true},
+	{"suffix_domain", ".es.kr", "[내장] 한국 초등학교·교육청 웹사이트 (.es.kr)", true, true},
+	{"suffix_domain", ".sc.kr", "[내장] 한국 교육·훈련기관 웹사이트 (.sc.kr)", true, true},
+	{"suffix_domain", ".kg.kr", "[내장] 한국 유치원·교육청 웹사이트 (.kg.kr)", true, true},
+	{"suffix_domain", "korea.kr", "[내장] 대한민국 정부 포털과 하위 도메인 (korea.kr)", true, true},
+	{"suffix_domain", "gov.kr", "[내장] 정부24와 하위 도메인 (gov.kr)", true, true},
 }
 
 // v1SeedRows 는 #191 전의 v1 seed(번역 뒤 한국어 메모)가 남긴 행이다.
@@ -69,7 +87,8 @@ func isolateAssetRules(t *testing.T, d *DB) {
 		t.Fatal(err)
 	}
 	savedFlags := map[string]string{}
-	for _, k := range []string{assetSeedV1Flag, assetSeedV2Flag} {
+	assetSeedFlags := []string{assetSeedV1Flag, assetSeedV2Flag, assetSeedV3Flag}
+	for _, k := range assetSeedFlags {
 		if v, ok, err := d.GetSetting(k); err != nil {
 			t.Fatal(err)
 		} else if ok {
@@ -77,14 +96,18 @@ func isolateAssetRules(t *testing.T, d *DB) {
 		}
 	}
 	t.Cleanup(func() {
-		d.Exec(`DELETE FROM asset_intercept_rules`)
+		if _, err := d.Exec(`DELETE FROM asset_intercept_rules`); err != nil {
+			t.Errorf("자산 차단 규칙 비우기: %v", err)
+		}
 		for _, r := range saved {
 			if _, err := d.Exec(`INSERT INTO asset_intercept_rules(id, kind, pattern, note, enabled, builtin) VALUES ($1,$2,$3,$4,$5,$6)`,
 				r.id, r.kind, r.pattern, r.note, r.isEnabled, r.builtin); err != nil {
 				t.Errorf("자산 차단 규칙 복원: %v", err)
 			}
 		}
-		d.Exec(`DELETE FROM settings WHERE key IN ($1, $2)`, assetSeedV1Flag, assetSeedV2Flag)
+		if _, err := d.Exec(`DELETE FROM settings WHERE key = ANY($1)`, assetSeedFlags); err != nil {
+			t.Errorf("seed 플래그 비우기: %v", err)
+		}
 		for k, v := range savedFlags {
 			if err := d.SetSetting(k, v); err != nil {
 				t.Errorf("설정 %s 복원: %v", k, err)
@@ -94,7 +117,7 @@ func isolateAssetRules(t *testing.T, d *DB) {
 	if _, err := d.Exec(`DELETE FROM asset_intercept_rules`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Exec(`DELETE FROM settings WHERE key IN ($1, $2)`, assetSeedV1Flag, assetSeedV2Flag); err != nil {
+	if _, err := d.Exec(`DELETE FROM settings WHERE key = ANY($1)`, assetSeedFlags); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -204,14 +227,14 @@ func TestAssetInterceptKoreaMigration(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			want: sortedAssetRules(append(withoutPattern(wantDefaultAssetRules, "fuzzy_domain", ".go.kr"), userGoKr)),
+			want: sortedAssetRules(append(withoutPattern(wantDefaultAssetRules, "suffix_domain", ".go.kr"), userGoKr)),
 		},
 		{
 			// 트랜잭션 밖에서 일부만 반영된 상태(다른 버전이 남긴 것 등)에서도 중복 없이 마무리되는지 본다.
 			name: "일부만 반영된 뒤 다시 시도",
 			setup: func(t *testing.T, d *DB) {
 				partial := withoutPattern(v1SeedRows(true), "fuzzy_domain", ".gov.cn")
-				partial = append(partial, wantDefaultAssetRules[2], wantDefaultAssetRules[10])
+				partial = append(partial, v2DefaultAssetRules[2], v2DefaultAssetRules[10])
 				insertAssetRules(t, d, partial)
 				if err := d.SetSetting(assetSeedV1Flag, "done"); err != nil {
 					t.Fatal(err)
@@ -246,7 +269,7 @@ func TestAssetInterceptKoreaMigrationKeepsDeletedBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopen(t)
-	want := sortedAssetRules(withoutPattern(wantDefaultAssetRules, "fuzzy_domain", ".ac.kr"))
+	want := sortedAssetRules(withoutPattern(wantDefaultAssetRules, "suffix_domain", ".ac.kr"))
 	if got := listAssetRules(t, d); !slices.Equal(got, want) {
 		t.Fatalf("지운 뒤 다시 시작한 규칙\n got  %v\n want %v", got, want)
 	}
@@ -268,8 +291,8 @@ func TestAssetInterceptUSNoteMigration(t *testing.T) {
 	reopen(t)
 	got := listAssetRules(t, d)
 	want := sortedAssetRules(append(slices.Clone(wantDefaultAssetRules[2:]),
-		assetRuleRow{"fuzzy_domain", ".gov", "[내장] 미국 정부 웹사이트 (.gov)", true, true},
-		assetRuleRow{"fuzzy_domain", ".edu", "[내장] 미국 교육기관 웹사이트 (.edu)", false, true},
+		assetRuleRow{"suffix_domain", ".gov", "[내장] 미국 정부 웹사이트 (.gov)", true, true},
+		assetRuleRow{"suffix_domain", ".edu", "[내장] 미국 교육기관 웹사이트 (.edu)", false, true},
 		assetRuleRow{"exact_domain", "a.gov", "고친 메모", true, true},
 		assetRuleRow{"exact_domain", "b.gov", "[내장] 정부 웹사이트 (.gov)", true, false},
 	))
@@ -294,8 +317,12 @@ BEGIN RAISE EXCEPTION 'test-issue-191 injected failure'; END $$ LANGUAGE plpgsql
 		t.Fatal(err)
 	}
 	dropTrigger := func() {
-		d.Exec(`DROP TRIGGER IF EXISTS test_issue_191_fail ON asset_intercept_rules`)
-		d.Exec(`DROP FUNCTION IF EXISTS test_issue_191_fail_insert()`)
+		if _, err := d.Exec(`DROP TRIGGER IF EXISTS test_issue_191_fail ON asset_intercept_rules`); err != nil {
+			t.Errorf("시험 트리거 지우기: %v", err)
+		}
+		if _, err := d.Exec(`DROP FUNCTION IF EXISTS test_issue_191_fail_insert()`); err != nil {
+			t.Errorf("시험 함수 지우기: %v", err)
+		}
 	}
 	t.Cleanup(dropTrigger)
 	if _, err := d.Exec(`

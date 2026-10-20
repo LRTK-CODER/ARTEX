@@ -1265,9 +1265,10 @@ ALTER TABLE side_question_requests ADD COLUMN IF NOT EXISTS context_info JSONB N
 -- §K 명령 차단(intercept_rules)과 별개다: intercept_rules 는 도구 이름/입력 텍스트에 맞추고,
 -- 이 표는 "대상 자산"에 맞춘다. 도메인·IP·URL 의 정확히 일치/부분 일치와 CIDR 대역이다.
 -- 규칙만 저장하고, 실제 일치·차단 로직은 다른 곳에 있다.
--- kind 일곱 가지:
+-- kind 여덟 가지:
 --   exact_domain / exact_ip / exact_url  —— 정확히 일치
 --   fuzzy_domain / fuzzy_ip / fuzzy_url  —— 부분 일치
+--   suffix_domain                        —— 도메인 자체와 하위 도메인(레이블 경계를 지키는 접미사 일치)
 --   cidr                                 —— CIDR 대역
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS asset_intercept_rules (
@@ -1276,7 +1277,7 @@ CREATE TABLE IF NOT EXISTS asset_intercept_rules (
     kind        TEXT NOT NULL CHECK (kind IN (
                     'exact_domain', 'exact_ip', 'exact_url',
                     'fuzzy_domain', 'fuzzy_ip', 'fuzzy_url',
-                    'cidr')),
+                    'suffix_domain', 'cidr')),
     pattern     TEXT NOT NULL,
     note        TEXT NOT NULL DEFAULT '',
     builtin     BOOLEAN NOT NULL DEFAULT false,
@@ -1284,6 +1285,12 @@ CREATE TABLE IF NOT EXISTS asset_intercept_rules (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_asset_intercept_enabled ON asset_intercept_rules(enabled);
+-- 기존 DB의 kind 제약에 suffix_domain(#193)을 더한다. CREATE TABLE IF NOT EXISTS는 제약을 바꾸지 않는다.
+ALTER TABLE asset_intercept_rules DROP CONSTRAINT IF EXISTS asset_intercept_rules_kind_check;
+ALTER TABLE asset_intercept_rules ADD CONSTRAINT asset_intercept_rules_kind_check CHECK (kind IN (
+    'exact_domain', 'exact_ip', 'exact_url',
+    'fuzzy_domain', 'fuzzy_ip', 'fuzzy_url',
+    'suffix_domain', 'cidr'));
 DROP TRIGGER IF EXISTS trg_asset_intercept_rules_upd ON asset_intercept_rules;
 CREATE TRIGGER trg_asset_intercept_rules_upd BEFORE UPDATE ON asset_intercept_rules
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -1304,7 +1311,7 @@ CREATE TABLE IF NOT EXISTS task_intercept_rules (
     kind        TEXT NOT NULL CHECK (kind IN (
                     'exact_domain', 'exact_ip', 'exact_url',
                     'fuzzy_domain', 'fuzzy_ip', 'fuzzy_url',
-                    'cidr')),
+                    'suffix_domain', 'cidr')),
     pattern     TEXT NOT NULL,
     note        TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1313,6 +1320,11 @@ CREATE TABLE IF NOT EXISTS task_intercept_rules (
 CREATE INDEX IF NOT EXISTS idx_task_intercept_task ON task_intercept_rules(task_id);
 -- 이전 DB 에 열을 채운다(이 표를 action 열 없이 먼저 만든 적이 있다). 열 추가에 IF NOT EXISTS 를 붙인다.
 ALTER TABLE task_intercept_rules ADD COLUMN IF NOT EXISTS action TEXT NOT NULL DEFAULT 'block';
+ALTER TABLE task_intercept_rules DROP CONSTRAINT IF EXISTS task_intercept_rules_kind_check;
+ALTER TABLE task_intercept_rules ADD CONSTRAINT task_intercept_rules_kind_check CHECK (kind IN (
+    'exact_domain', 'exact_ip', 'exact_url',
+    'fuzzy_domain', 'fuzzy_ip', 'fuzzy_url',
+    'suffix_domain', 'cidr'));
 DROP TRIGGER IF EXISTS trg_task_intercept_rules_upd ON task_intercept_rules;
 CREATE TRIGGER trg_task_intercept_rules_upd BEFORE UPDATE ON task_intercept_rules
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

@@ -262,6 +262,9 @@ ON CONFLICT (agent_id, var_name) DO UPDATE
 	if err := d.migrateAssetInterceptRulesToKorea(); err != nil {
 		return fmt.Errorf("자산 차단 규칙 한국 도메인 이전: %w", err)
 	}
+	if err := d.migrateAssetInterceptRulesToSuffix(); err != nil {
+		return fmt.Errorf("자산 차단 내장 규칙 접미사 일치 이전: %w", err)
+	}
 	if err := d.migrateBuiltinRuleTexts(); err != nil {
 		return fmt.Errorf("migrate builtin rule texts: %w", err)
 	}

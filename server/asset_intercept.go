@@ -11,8 +11,8 @@ import (
 
 // --- asset intercept rule CRUD ---
 //
-// Global asset blocklist: exact/fuzzy domain·ip·url + CIDR. This layer only
-// persists rules; the actual match/enforcement logic lives elsewhere.
+// 전역 자산 차단 목록: 도메인·IP·URL의 정확히 일치/부분 일치, 도메인 접미사 일치, CIDR 대역.
+// 이 계층은 규칙 저장만 맡고, 일치 판정은 db/asset_intercept_match.go에 있다.
 
 func (s *Server) assetInterceptListRules(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
@@ -129,10 +129,9 @@ type assetInterceptRuleReq struct {
 	Note    string `json:"note"`
 }
 
-// validateAssetInterceptRuleReq normalizes and validates a rule. It trims the
-// pattern and, for the strictly-formatted kinds (exact_ip / cidr), rejects
-// malformed values; fuzzy kinds and domain/url patterns are left as free text
-// (the enforcement layer decides how to interpret them).
+// validateAssetInterceptRuleReq 는 규칙을 정규화하고 검사한다. pattern 앞뒤 공백을 지우고, 형식이 정해진
+// kind(exact_ip·cidr)는 잘못된 값을 거부한다. suffix_domain은 점을 떼고 남는 도메인이 없으면 거부한다.
+// 부분 일치 kind와 도메인·URL pattern은 자유 문자열로 둔다(해석은 일치 판정 계층이 한다).
 func validateAssetInterceptRuleReq(req *assetInterceptRuleReq) error {
 	req.Pattern = strings.TrimSpace(req.Pattern)
 	if req.Pattern == "" {
@@ -140,7 +139,11 @@ func validateAssetInterceptRuleReq(req *assetInterceptRuleReq) error {
 	}
 	switch req.Kind {
 	case "exact_domain", "exact_url", "fuzzy_domain", "fuzzy_ip", "fuzzy_url":
-		// free-form, no format check
+		// 자유 문자열이라 형식을 검사하지 않는다
+	case "suffix_domain":
+		if db.NormalizeSuffixDomain(req.Pattern) == "" {
+			return fmt.Errorf("suffix_domain에 도메인이 없습니다(예: go.kr): %s", req.Pattern)
+		}
 	case "exact_ip":
 		if net.ParseIP(req.Pattern) == nil {
 			return fmt.Errorf("exact_ip에 잘못된 IP 주소: %s", req.Pattern)

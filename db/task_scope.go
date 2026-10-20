@@ -212,7 +212,7 @@ func (s *AssetStore) AddAgentScope(taskID int64, kind, value, reason, source str
 		}
 		ts.Value = parsed.Value
 	default:
-		return ts, fmt.Errorf("지원하지 않는 kind: %s(company/root_domain/subdomain/ip/cidr/icp/keyword)", kind)
+		return ts, fmt.Errorf("지원하지 않는 kind: %s(company/root_domain/subdomain/ip/cidr/keyword)", kind)
 	}
 	if err := s.upsertTaskScope(ts); err != nil {
 		return ts, err
