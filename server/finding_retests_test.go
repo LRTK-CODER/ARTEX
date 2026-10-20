@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/norma/llm"
@@ -36,7 +37,7 @@ func (p retestProvider) Stream(context.Context, llm.CompletionRequest) iter.Seq2
 
 func newRetestServer(t *testing.T) (*Server, int64) {
 	t.Helper()
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skip("test postgres not configured")
 	}

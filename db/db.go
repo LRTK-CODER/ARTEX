@@ -81,11 +81,10 @@ func coordinateWithSchemaMigration(tx *sql.Tx) error {
 	return nil
 }
 
-// DSN resolves the PostgreSQL connection string and reports where it came from.
-// Precedence: env ARTEX_PG_DSN > config file (config.json). There is no
-// built-in default — it errors if neither source is configured.
-func DSN() (dsn, source string, err error) {
-	return config.PostgresDSN()
+// DSN 은 PostgreSQL 연결 문자열과 그 출처를 돌려준다.
+// 우선순위: 시작할 때 읽어 둔 env의 ARTEX_PG_DSN > 설정 파일(config.json). 기본값은 없어서 둘 다 없으면 오류다.
+func DSN(env config.SecretEnv) (dsn, source string, err error) {
+	return config.PostgresDSN(env)
 }
 
 // DB wraps the shared *sql.DB. PG handles its own connection pool + concurrency

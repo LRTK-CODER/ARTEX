@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -14,7 +15,7 @@ import (
 // 함수가 끝날 때 먼저 닫혀, 뒤에 도는 t.Cleanup의 데이터 정리가 닫힌 연결에서 실패한다.
 func testDB(t *testing.T) *db.DB {
 	t.Helper()
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("no database config (%v)", err)
 	}

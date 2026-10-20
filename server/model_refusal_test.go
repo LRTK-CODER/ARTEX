@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -112,7 +113,7 @@ func TestGoalDecompositionRefusalFailsTask(t *testing.T) {
 		stream bool
 	}{{"stream", true}, {"complete", false}} {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := NewManager(t.TempDir(), "")
+			m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 			if err != nil {
 				t.Skipf("postgres unavailable (%v) - skipping", err)
 			}
@@ -143,7 +144,7 @@ func TestGoalDecompositionRefusalFailsTask(t *testing.T) {
 }
 
 func TestPlannerRefusalFailsTaskWithoutFurtherCalls(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}
@@ -205,7 +206,7 @@ func TestPlannerRefusalFailsTaskWithoutFurtherCalls(t *testing.T) {
 
 // 마감 뒤 최종 계획 회차에서 거절되면 작업은 timeout이 아니라 failed로 남아야 한다.
 func TestFinalPlannerRoundRefusalFailsTask(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}

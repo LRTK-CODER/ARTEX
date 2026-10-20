@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -13,7 +14,7 @@ import (
 // 사용자가 한국어·영어로 고친 값과 연결·사용 여부는 그대로이며, 두 번 돌려도 같음을 확인한다(#145).
 func TestRefreshHanToolDefaults(t *testing.T) {
 	skipWithoutPostgres(t)
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres not configured: %v", err)
 	}

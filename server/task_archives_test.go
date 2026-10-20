@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Autumn-27/artex/config"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestTaskArchiveAPIQueueListAndLimits(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}

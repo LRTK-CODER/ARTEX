@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -12,7 +13,7 @@ import (
 // 이어서 syncBrowserMCPProxy가 현재 프록시를 다시 붙인다(#85).
 func TestNewManagerMigratesLegacyBrowserMCPAndKeepsProxy(t *testing.T) {
 	const proxy = "http://127.0.0.1:9"
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("no database config (%v)", err)
 	}
@@ -49,7 +50,7 @@ func TestNewManagerMigratesLegacyBrowserMCPAndKeepsProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}

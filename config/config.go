@@ -126,16 +126,14 @@ func SkillDir() string {
 	return d
 }
 
-// PostgresDSN resolves the connection string with precedence:
+// PostgresDSN 은 연결 문자열을 다음 우선순위로 정한다.
 //
-//	env ARTEX_PG_DSN  >  config file (database.dsn, or assembled from fields)
+//	env ARTEX_PG_DSN(시작할 때 TakeSecretEnv로 읽어 둔 env)  >  설정 파일(database.dsn, 또는 분리 필드로 조립)
 //
-// There is NO built-in fallback: when neither source supplies a database config,
-// it returns an error naming the config path it inspected, so startup fails loudly
-// instead of silently connecting to a wrong default. source describes where the
-// DSN came from (for startup logging).
-func PostgresDSN() (dsn, source string, err error) {
-	if v := strings.TrimSpace(os.Getenv("ARTEX_PG_DSN")); v != "" {
+// 기본값은 없다. 어느 쪽에도 DB 설정이 없으면 살펴본 설정 파일 경로를 담은 오류를 올려,
+// 엉뚱한 기본 DB에 조용히 붙지 않고 시작이 실패하게 한다. source는 DSN의 출처다(시작 로그용).
+func PostgresDSN(env SecretEnv) (dsn, source string, err error) {
+	if v := strings.TrimSpace(env.Get(PostgresDSNEnv)); v != "" {
 		return v, "환경 변수 ARTEX_PG_DSN", nil
 	}
 	db := Load().Database

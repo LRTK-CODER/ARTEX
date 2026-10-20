@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/sidequestion"
 	"github.com/Autumn-27/norma/harness"
@@ -140,7 +141,7 @@ type sideHTTPFixture struct {
 
 func newSideHTTPFixture(t *testing.T) *sideHTTPFixture {
 	t.Helper()
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}

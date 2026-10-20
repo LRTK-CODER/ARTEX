@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -11,7 +12,7 @@ import (
 // to the actual configuration state: nothing configured vs. configured-but-not-
 // activated must read differently so the user knows what to do.
 func TestChatUnavailableReasonDistinguishesStates(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
@@ -60,7 +61,7 @@ func TestChatUnavailableReasonDistinguishesStates(t *testing.T) {
 // 고른 대화는 전역 프로필이 하나도 활성이 아니어도 채팅 에이전트를 얻어야 한다. 그래야 보내기 전
 // 검사가 'LLM 설정 안 됨' 오류로 거부하지 않는다.
 func TestResolveChatAgentHonoursConversationProfile(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
