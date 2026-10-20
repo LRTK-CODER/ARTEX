@@ -64,6 +64,9 @@ const sandboxCheckTimeout = 10 * time.Second
 // 작업 생성 전 첨부). 데이터 디렉터리의 나머지(트래픽 저장소 등)는 에이전트 그룹에 쓰기를 주지 않는다.
 var sharedWorkspaceDirs = []string{"tasks", "sessions", "drafts"}
 
+// aclSetter 는 연 파일에 ACL을 쓰는 함수다(agent.SetACL). 자기 검사의 실패 경로를 시험하려고 인자로 받는다.
+type aclSetter func(f *os.File, kind agent.ACLKind, acl agent.ACL) error
+
 // ErrAgentSandboxUnsupported 는 Linux가 아닌 시스템에서 기능을 켰을 때 올린다.
 var ErrAgentSandboxUnsupported = errors.New("agent uid separation is supported only on Linux")
 
@@ -89,9 +92,9 @@ type AgentSandbox struct {
 //
 // 켜져 있으면 다음을 하고, 하나라도 실패하면 원인을 담은 오류를 올린다(조용히 끄지 않는다).
 // 도우미 자기 검사, 서버의 CAP_KILL 켜기(다른 uid가 된 자식을 시간 초과·TaskStop에서 죽이려면 필요하다),
-// 작업 공간을 에이전트 그룹의 setgid 디렉터리로 맞추기, umask 002, 셸 대체 디렉터리 확인(없으면 만들기),
-// 서버 PATH를 셸 대체 디렉터리 하나로 바꾸기, 그 PATH로 bash를 실행해 에이전트 uid가 나오는지 확인, 프로세스
-// 환경에서 공용 uid·gid 지우기(clearAgentIdentityEnv).
+// 데이터 디렉터리가 POSIX ACL을 지원하는지 확인(checkWorkspaceACL), 작업 공간을 에이전트 그룹의 setgid 디렉터리로
+// 맞추기, umask 002, 셸 대체 디렉터리 확인(없으면 만들기), 서버 PATH를 셸 대체 디렉터리 하나로 바꾸기, 그 PATH로
+// bash를 실행해 에이전트 uid가 나오는지 확인, 프로세스 환경에서 공용 uid·gid 지우기(clearAgentIdentityEnv).
 //
 // 프로세스 환경(PATH)과 umask를 바꾸므로 에이전트가 자식 프로세스를 띄우기 전, 시작할 때 한 번만 부른다.
 func EnableAgentSandbox(ctx context.Context, cfg AgentSandboxConfig) (*AgentSandbox, error) {
@@ -116,6 +119,9 @@ func EnableAgentSandbox(ctx context.Context, cfg AgentSandboxConfig) (*AgentSand
 		return nil, err
 	}
 	if err := enableKillCapability(); err != nil {
+		return nil, err
+	}
+	if err := checkWorkspaceACL(cfg.DataDir, uid, agent.SetACL); err != nil {
 		return nil, err
 	}
 	if err := prepareSharedWorkspace(cfg.DataDir, gid); err != nil {

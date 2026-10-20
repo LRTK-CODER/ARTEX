@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"unsafe"
 
@@ -110,6 +111,67 @@ func shareRuleFor(top string, depth int, name string, isDir, readOnly bool) (sha
 		return ruleWorkspaceDir, false
 	}
 	return ruleWorkspaceFile, false
+}
+
+// aclCheckDirPrefix 는 ACL 자기 검사가 데이터 디렉터리에 잠깐 만드는 디렉터리 이름 앞부분이다.
+const aclCheckDirPrefix = ".acl-check-"
+
+// checkWorkspaceACL 은 데이터 디렉터리가 작업 공간을 나누는 데 필요한 POSIX ACL을 지원하는지 본다(#182). 데이터
+// 디렉터리 안에 빈 디렉터리를 만들어 에이전트 uid 항목이 든 접근 ACL과 기본 ACL을 setACL로 쓰고, 다시 읽어 같은지
+// 확인한 뒤 지운다. 지원하지 않거나(일부 NFS·FUSE), uid를 받지 않거나(사용자 이름공간에 없는 uid), 쓴 것과 다르게
+// 남으면 원인을 담은 오류다. 조용히 넘어가면 작업 공간이 작업마다 나뉘지 않은 채 돈다.
+func checkWorkspaceACL(dataDir string, uid int, setACL aclSetter) error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
+	dir, err := os.MkdirTemp(dataDir, aclCheckDirPrefix)
+	if err != nil {
+		return fmt.Errorf("create the ACL check directory in %s: %w", dataDir, err)
+	}
+	defer func() {
+		if err := os.Remove(dir); err != nil {
+			log.Printf("[sandbox] ACL 자기 검사 디렉터리를 지우지 못했다: %v", err)
+		}
+	}()
+	f, err := os.Open(dir)
+	if err != nil {
+		return fmt.Errorf("open the ACL check directory: %w", err)
+	}
+	defer f.Close()
+	// 순서는 커널 순서다. 읽은 값과 그대로 비교한다.
+	want := agent.ACL{
+		{Tag: agent.ACLUserOwner, Perm: agent.ACLRead | agent.ACLWrite | agent.ACLExecute},
+		{Tag: agent.ACLNamedUser, ID: uint32(uid), Perm: agent.ACLRead | agent.ACLWrite | agent.ACLExecute},
+		{Tag: agent.ACLGroupOwner},
+		{Tag: agent.ACLMask, Perm: agent.ACLRead | agent.ACLWrite | agent.ACLExecute},
+		{Tag: agent.ACLOther},
+	}
+	for _, kind := range []agent.ACLKind{agent.ACLAccess, agent.ACLDefault} {
+		if err := setACL(f, kind, want); err != nil {
+			return workspaceACLError(dataDir, uid, err)
+		}
+		got, err := agent.GetACL(f, kind)
+		if err != nil {
+			return workspaceACLError(dataDir, uid, err)
+		}
+		if !slices.Equal(got, want) {
+			return fmt.Errorf("the data directory %s did not keep the POSIX ACL written for agent uid separation (%s: wrote %v, read back %v)", dataDir, kind, want, got)
+		}
+	}
+	return nil
+}
+
+// workspaceACLError 는 ACL 자기 검사 실패를 사용자가 고칠 수 있는 문장으로 바꾼다.
+func workspaceACLError(dataDir string, uid int, err error) error {
+	switch {
+	case errors.Is(err, syscall.ENOTSUP):
+		return fmt.Errorf("the data directory %s does not support POSIX ACLs, which agent uid separation needs to give each task's workspace only to its own agent uid; put the data directory on a file system with ACL support such as ext4, xfs, btrfs or tmpfs (some NFS, FUSE and network file systems lack it): %w", dataDir, err)
+	case errors.Is(err, agent.ErrNoACL):
+		return fmt.Errorf("the data directory %s accepted a POSIX ACL but did not keep it; use a file system with ACL support such as ext4, xfs, btrfs or tmpfs: %w", dataDir, err)
+	case errors.Is(err, syscall.EINVAL):
+		return fmt.Errorf("the data directory %s rejected a POSIX ACL entry for uid %d (is the uid mapped in this user namespace?): %w", dataDir, uid, err)
+	}
+	return fmt.Errorf("write a POSIX ACL in the data directory %s: %w", dataDir, err)
 }
 
 // prepareSharedWorkspace 는 작업 공간을 에이전트 그룹(gid)과 함께 쓰도록 그룹과 권한을 맞춘다(규칙은 shareRuleFor).
