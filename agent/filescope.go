@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -46,6 +47,10 @@ type FileScope struct {
 	ShareWritesWithGroup bool
 	// dataDir 는 서버 데이터 디렉터리다. 이 아래의 허용 디렉터리는 경로 중간에 링크가 끼어 있으면 허용하지 않는다(roots).
 	dataDir string
+	// ownTaskID·ownSession 은 이 실행의 작업 ID와 세션 이름이다(없으면 0, 빈 값). 허용 디렉터리 안이라도 다른 실행의
+	// HOME·TMPDIR(commanddirs.go)는 거부한다(isOtherRunCommandDir).
+	ownTaskID  int64
+	ownSession string
 	// shared 는 에이전트 uid 분리(#165)를 켰을 때의 허용 경로다. 켜면 작업 공간 배치가 달라진다(sharedRunDirs).
 	// 켰는지는 AugmentTools가 도구 모음을 정할 때 알게 되므로 두 표를 함께 싣고 거기서 고른다(forSharing).
 	shared *FileScope
@@ -87,10 +92,15 @@ type fileScopeInput struct {
 //	conversation  sessions/<sid>, 임시          tasks, drafts
 //
 // uid 분리를 켜면(#165, sharedRunDirs) task의 쓰기는 tasks/<tid>/work이고 tasks/<tid>는 읽기만이다(첨부, 의도
-// 디렉터리, 큰 출력). conversation은 자기 큰 출력 위치(sessions/cmd-output/<sid>)를 읽기에 더한다. intent는 같다
-// (자기 큰 출력 tasks/<tid>/cmd-output/i<iid>는 tasks/<tid> 안이다).
+// 디렉터리, 큰 출력). conversation은 자기 큰 출력 위치(sessions/cmd-output/<sid>)를 읽기에 더한다. intent의 작업
+// 디렉터리는 같다(자기 큰 출력 tasks/<tid>/cmd-output/i<iid>는 tasks/<tid> 안이다). 켜면 모든 역할에서 공용 임시
+// 디렉터리를 빼고 그 작업·세션의 TMPDIR(commanddirs.go)를 쓰기로 둔다(#178). 공용 임시 디렉터리는 서버 uid로 다른
+// 작업과 서버의 임시 파일에 닿는 길이다.
 //
 // 공통으로 AugmentTools가 보이는 스킬 디렉터리를 읽기에 더한다.
+// 허용 디렉터리 안이라도 다른 실행의 HOME·TMPDIR(tasks/<다른 tid>/home|tmp, sessions/home|tmp/<다른 sid>)는 거부한다.
+// HOME에는 ssh 키·자격 증명이 들어갈 수 있어서, 대화형이 tasks 전체를 읽거나 상속 작업이 원본 작업을 읽어도
+// 그 작업의 HOME·TMPDIR로 새면 안 된다.
 // 읽기 허용의 이유: 작업 생성 전 첨부는 drafts/<id>/uploads에 남고 그 절대 경로가 작업 설명에 실린다.
 // 작업 첨부는 tasks/<tid>/uploads라 worker 자기 디렉터리 밖이다. 상속 작업과 발견 사항의 단계 출력에는
 // tasks/<원본>/i<iid>/cmd-output 같은 큰 출력 저장 경로가 실린다. reporter·retester·auto는 여러 작업의
@@ -103,42 +113,41 @@ func fileScopeFor(role fileRole, in fileScopeInput) FileScope {
 	for _, id := range in.SourceTaskIDs {
 		sources = append(sources, runDirPath(in.DataDir, id, 0))
 	}
+	var off, on FileScope
 	switch role {
 	case fileRoleTask:
 		taskDir := runDirPath(in.DataDir, in.TaskID, 0)
-		return FileScope{
-			Writable: []string{taskDir, tmp},
-			Readable: append([]string{drafts}, sources...),
-			dataDir:  in.DataDir,
-			shared: &FileScope{
-				Writable: []string{sharedRunDirs(in.DataDir, in.TaskID, 0).work, tmp},
-				Readable: append([]string{taskDir, drafts}, sources...),
-				dataDir:  in.DataDir,
-			},
+		off = FileScope{Writable: []string{taskDir, tmp}, Readable: append([]string{drafts}, sources...)}
+		on = FileScope{
+			Writable: []string{sharedRunDirs(in.DataDir, in.TaskID, 0).work, taskCommandDirs(in.DataDir, in.TaskID).tmp},
+			Readable: append([]string{taskDir, drafts}, sources...),
 		}
 	case fileRoleIntent:
-		s := FileScope{
-			Writable: []string{runDirPath(in.DataDir, in.TaskID, in.IntentID), tmp},
-			Readable: append([]string{runDirPath(in.DataDir, in.TaskID, 0), drafts}, sources...),
-			dataDir:  in.DataDir,
+		readable := append([]string{runDirPath(in.DataDir, in.TaskID, 0), drafts}, sources...)
+		off = FileScope{Writable: []string{runDirPath(in.DataDir, in.TaskID, in.IntentID), tmp}, Readable: readable}
+		on = FileScope{
+			Writable: []string{runDirPath(in.DataDir, in.TaskID, in.IntentID), taskCommandDirs(in.DataDir, in.TaskID).tmp},
+			Readable: readable,
 		}
-		shared := s
-		s.shared = &shared
-		return s
 	case fileRoleConversation:
 		tasks := filepath.Join(in.DataDir, "tasks")
-		return FileScope{
-			Writable: []string{in.SessionDir, tmp},
-			Readable: []string{tasks, drafts},
-			dataDir:  in.DataDir,
-			shared: &FileScope{
-				Writable: []string{in.SessionDir, tmp},
-				Readable: []string{tasks, drafts, sharedSessionDirs(in.SessionDir).toolOutput},
-				dataDir:  in.DataDir,
-			},
+		off = FileScope{Writable: []string{in.SessionDir, tmp}, Readable: []string{tasks, drafts}}
+		on = FileScope{
+			Writable: []string{in.SessionDir, sessionCommandDirs(in.SessionDir).tmp},
+			Readable: []string{tasks, drafts, sharedSessionDirs(in.SessionDir).toolOutput},
 		}
+	default:
+		return FileScope{}
 	}
-	return FileScope{}
+	ownSession := ""
+	if in.SessionDir != "" {
+		ownSession = filepath.Base(in.SessionDir)
+	}
+	for _, s := range []*FileScope{&off, &on} {
+		s.dataDir, s.ownTaskID, s.ownSession = in.DataDir, in.TaskID, ownSession
+	}
+	off.shared = &on
+	return off
 }
 
 // sourceTaskIDs 는 작업의 직접 상속 원본 작업 ID를 돌려준다. 읽지 못하면 원본 디렉터리를 허용하지
@@ -489,10 +498,48 @@ func realPath(p string) (string, error) {
 // 명령이 다른 uid로 돌면(#165) 에이전트는 작업 공간(tasks/<tid>/i<iid> 등)을 키 디렉터리를 가리키는 링크로
 // 바꿔 둘 수 있다. 허용 디렉터리를 그 링크대로 풀면 서버 uid로 도는 파일 도구가 허용 목록 밖을 읽는다.
 func (s FileScope) allows(target string, isWrite bool) bool {
+	if s.isOtherRunCommandDir(target) {
+		return false
+	}
 	for _, root := range s.roots(isWrite) {
 		if isWithin(root, target) {
 			return true
 		}
+	}
+	return false
+}
+
+// isOtherRunCommandDir 는 실제 경로 target이 이 실행이 아닌 작업·세션의 HOME·TMPDIR(commanddirs.go) 안인지 본다.
+// 이름 비교는 대소문자를 가리지 않는다. 대소문자를 가리지 않는 파일 시스템(macOS 기본)에서 "HOME"으로 빠져나가지 못하게 한다.
+func (s FileScope) isOtherRunCommandDir(target string) bool {
+	if s.dataDir == "" {
+		return false
+	}
+	// 데이터 디렉터리를 풀지 못하면 roots가 그 아래 허용 디렉터리를 모두 버리므로 여기서 거부하지 않아도 닿지 않는다.
+	abs, err := filepath.Abs(s.dataDir)
+	if err != nil {
+		return false
+	}
+	data, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(data, target)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 3 {
+		return false
+	}
+	isCommandDir := func(name string) bool {
+		return strings.EqualFold(name, CommandHomeDirName) || strings.EqualFold(name, CommandTmpDirName)
+	}
+	switch {
+	case strings.EqualFold(parts[0], "tasks") && isCommandDir(parts[2]):
+		return parts[1] != strconv.FormatInt(s.ownTaskID, 10) || s.ownTaskID <= 0
+	case strings.EqualFold(parts[0], "sessions") && isCommandDir(parts[1]):
+		return parts[2] != s.ownSession || s.ownSession == ""
 	}
 	return false
 }

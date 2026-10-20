@@ -29,9 +29,9 @@ const (
 // 사용자가 처음 준 값은 런타임이 이미 덮어써 되살릴 수 없다.
 const goTracebackEnv = "GOTRACEBACK"
 
-// agentUmask 는 에이전트가 만든 파일·디렉터리에 그룹 쓰기를 남긴다. 작업 공간은 서버와 에이전트가 함께 속한
-// 그룹의 setgid 디렉터리라서, 서버가 에이전트의 결과를 읽고 고치고 지울 수 있어야 한다.
-const agentUmask = 0o002
+// agentUmask 는 에이전트가 만든 파일·디렉터리에서 other 권한을 뺀다(#178). 작업 공간·HOME·TMPDIR는 기본 ACL이 있어
+// umask를 쓰지 않고(서버 uid 항목으로 서버가 읽고 지운다), 그 밖(공용 /tmp 등)에 만든 것은 다른 작업 uid가 읽지 못한다.
+const agentUmask = 0o007
 
 type capHeader struct {
 	version uint32
@@ -80,10 +80,20 @@ func run(args []string) error {
 			return fmt.Errorf("unset %s: %w", name, err)
 		}
 	}
-	// HOME이 서버 사용자의 홈(0700)이면 에이전트 uid는 쓰지 못해 npm·playwright 캐시가 실패한다. 에이전트
-	// 사용자의 홈이 passwd에 있으면 그것으로 바꾼다. 없으면 그대로 둔다(셸은 그래도 돈다).
-	if u, err := user.LookupId(strconv.Itoa(id.uid)); err == nil && u.HomeDir != "" {
-		if err := os.Setenv("HOME", u.HomeDir); err != nil {
+	home, err := commandHome(os.Getenv(homeEnv), func() string {
+		if u, err := user.LookupId(strconv.Itoa(id.uid)); err == nil {
+			return u.HomeDir
+		}
+		return "" // passwd 항목이 없으면 HOME을 그대로 둔다(셸은 그래도 돈다)
+	})
+	if err != nil {
+		return err
+	}
+	if err := os.Unsetenv(homeEnv); err != nil {
+		return fmt.Errorf("unset %s: %w", homeEnv, err)
+	}
+	if home != "" {
+		if err := os.Setenv("HOME", home); err != nil {
 			return fmt.Errorf("set HOME: %w", err)
 		}
 	}

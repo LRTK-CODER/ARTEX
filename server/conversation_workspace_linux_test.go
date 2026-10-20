@@ -17,7 +17,8 @@ import (
 )
 
 // TestDeleteConversationClosesWorkspaceBeforeReturningUID 는 uid 분리를 켰을 때 대화를 지우면 그 작업 공간
-// (sessions/conv-<id>, sessions/cmd-output/conv-<id>)을 서버 전용으로 닫은 뒤에 uid를 풀로 돌려주는지 본다(#182).
+// (sessions/conv-<id>, sessions/cmd-output/conv-<id>, 명령의 HOME·TMPDIR sessions/home·tmp/conv-<id>)을 서버 전용으로
+// 닫은 뒤에 uid를 풀로 돌려주는지 본다(#182, #178).
 // 닫지 않으면 같은 uid를 다시 받은 작업·세션이 지운 대화의 작업 공간을 읽는다. 닫지 못하면 대화를 지우지 않아 uid도
 // 돌아가지 않는다. 돌고 있는 차례가 있으면 끝난 뒤에 닫는다.
 func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
@@ -68,6 +69,10 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		if _, err := agent.EnsureCommandDirs(m.dir, agent.RunInfo{SessionID: key}, uid); err != nil {
+			t.Fatal(err)
+		}
+		dirs = append(dirs, filepath.Join(sessions, agent.CommandHomeDirName, key), filepath.Join(sessions, agent.CommandTmpDirName, key))
 		return c, uid, dirs
 	}
 	deleteConversation := func(t *testing.T, id int64) *httptest.ResponseRecorder {

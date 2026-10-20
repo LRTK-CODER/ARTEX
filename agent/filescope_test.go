@@ -236,6 +236,10 @@ func TestSharedModeDropsDirectoryTools(t *testing.T) {
 func TestFileScopeForRoles(t *testing.T) {
 	data := filepath.Join(string(filepath.Separator), "srv", "artex")
 	tmp := os.TempDir()
+	tmpReal, err := filepath.EvalSymlinks(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
 	task := func(id string) string { return filepath.Join(data, "tasks", id) }
 	drafts := filepath.Join(data, "drafts")
 	task7 := fileScopeInput{DataDir: data, TaskID: 7, SourceTaskIDs: []int64{3}}
@@ -255,14 +259,15 @@ func TestFileScopeForRoles(t *testing.T) {
 		{"conversation", fileRoleConversation, conv9, false,
 			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), tmp}, Readable: []string{filepath.Join(data, "tasks"), drafts}}},
 		{"unknown role", fileRole("other"), fileScopeInput{DataDir: data}, false, FileScope{}},
-		// 켜면 planner·mainagent는 tasks/<tid>/work에 쓰고 tasks/<tid>(첨부·의도·큰 출력)는 읽기만 한다.
+		// 켜면 planner·mainagent는 tasks/<tid>/work에 쓰고 tasks/<tid>(첨부·의도·큰 출력)는 읽기만 한다. 공용 임시
+		// 디렉터리 대신 그 작업·세션의 TMPDIR(#178)에 쓴다.
 		{"planner and mainagent shared", fileRoleTask, task7, true,
-			FileScope{Writable: []string{filepath.Join(task("7"), "work"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
+			FileScope{Writable: []string{filepath.Join(task("7"), "work"), filepath.Join(task("7"), "tmp")}, Readable: []string{task("7"), drafts, task("3")}}},
 		{"worker shared", fileRoleIntent, intent42, true,
-			FileScope{Writable: []string{filepath.Join(task("7"), "i42"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
+			FileScope{Writable: []string{filepath.Join(task("7"), "i42"), filepath.Join(task("7"), "tmp")}, Readable: []string{task("7"), drafts, task("3")}}},
 		// 켜면 대화의 큰 출력은 sessions/cmd-output/<sid>라 읽기에 더한다.
 		{"conversation shared", fileRoleConversation, conv9, true,
-			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), tmp}, Readable: []string{filepath.Join(data, "tasks"), drafts, filepath.Join(data, "sessions", "cmd-output", "conv-9")}}},
+			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), filepath.Join(data, "sessions", "tmp", "conv-9")}, Readable: []string{filepath.Join(data, "tasks"), drafts, filepath.Join(data, "sessions", "cmd-output", "conv-9")}}},
 		{"unknown role shared", fileRole("other"), fileScopeInput{DataDir: data}, true, FileScope{}},
 	}
 	for _, tc := range cases {
@@ -274,8 +279,83 @@ func TestFileScopeForRoles(t *testing.T) {
 			if strings.Join(got.Writable, "|") != strings.Join(tc.want.Writable, "|") || strings.Join(got.Readable, "|") != strings.Join(tc.want.Readable, "|") {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
+			// 켜면 공용 임시 디렉터리는 읽기로도 닿지 않는다(#178). 끄면 지금처럼 쓴다(검사가 헛돌지 않는지도 본다).
+			tmpFile := filepath.Join(tmpReal, "x")
+			if allowed := got.allows(tmpFile, false); tc.share && allowed {
+				t.Fatalf("shared scope %+v allows the system temp directory %s", got, tmpReal)
+			} else if !tc.share && len(tc.want.Writable) > 0 && !got.allows(tmpFile, true) {
+				t.Fatalf("unshared scope %+v does not allow writing the system temp directory %s", got, tmpReal)
+			}
 		})
 	}
+}
+
+// TestFileScopeForKeepsCommandDirsPrivate 는 대화형이 tasks 전체를 읽고 상속 작업이 원본 작업을 읽어도, 다른 작업·세션의
+// HOME·TMPDIR(ssh 키·자격 증명이 들 수 있다)는 파일 도구로 읽지 못하고 자기 것과 원본의 작업 산출물은 읽는지 본다.
+func TestFileScopeForKeepsCommandDirsPrivate(t *testing.T) {
+	data, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := func(elems ...string) string { return filepath.Join(append([]string{data}, elems...)...) }
+	files := map[string]string{
+		"source home key":       path("tasks", "3", "home", ".ssh", "id_ed25519"),
+		"source tmp":            path("tasks", "3", "tmp", "x"),
+		"source artifact":       path("tasks", "3", "i5", "cmd-output", "out.txt"),
+		"source upload":         path("tasks", "3", "uploads", "a.txt"),
+		"own home":              path("tasks", "7", "home", ".gitconfig"),
+		"own tmp":               path("tasks", "7", "tmp", "y"),
+		"other session home":    path("sessions", "home", "conv-8", ".netrc"),
+		"other session tmp":     path("sessions", "tmp", "conv-8", "z"),
+		"own session tmp":       path("sessions", "tmp", "conv-9", "w"),
+		"source home uppercase": path("tasks", "3", "HOME", "k"),
+	}
+	for _, f := range files {
+		mustMkdirWrite(t, f)
+	}
+	for _, d := range []string{path("tasks", "7", "work"), path("tasks", "7", "i42"), path("sessions", "conv-9"), path("sessions", "cmd-output", "conv-9"), path("drafts")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	task7 := fileScopeInput{DataDir: data, TaskID: 7, SourceTaskIDs: []int64{3}}
+	intent42 := fileScopeInput{DataDir: data, TaskID: 7, IntentID: 42, SourceTaskIDs: []int64{3}}
+	conv9 := fileScopeInput{DataDir: data, SessionDir: path("sessions", "conv-9")}
+	cases := []struct {
+		name    string
+		role    fileRole
+		in      fileScopeInput
+		allowed []string // 읽기를 허용할 files 키. 나머지는 거부한다
+	}{
+		{"planner and mainagent", fileRoleTask, task7, []string{"source artifact", "source upload", "own home", "own tmp"}},
+		{"worker", fileRoleIntent, intent42, []string{"source artifact", "source upload", "own home", "own tmp"}},
+		{"conversation", fileRoleConversation, conv9, []string{"source artifact", "source upload", "own session tmp"}},
+	}
+	for _, tc := range cases {
+		for _, share := range []bool{false, true} {
+			scope := fileScopeFor(tc.role, tc.in).forSharing(share)
+			for key, f := range files {
+				if !share && key == "own session tmp" {
+					continue // 끈 상태의 대화형은 세션 TMPDIR 대신 공용 임시 디렉터리를 쓴다
+				}
+				want := false
+				for _, k := range tc.allowed {
+					want = want || k == key
+				}
+				if got := scope.allows(f, false); got != want {
+					t.Errorf("%s (shared=%v): read %s (%s) allowed = %v, want %v", tc.name, share, key, f, got, want)
+				}
+			}
+		}
+	}
+}
+
+func mustMkdirWrite(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, path, "x")
 }
 
 // TestFileToolsRejectDotDotAfterDirLink 는 작업 공간 안 디렉터리 링크 뒤에 ".."를 둔 절대 경로가 밖으로

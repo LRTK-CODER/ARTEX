@@ -98,6 +98,9 @@ func TestApplyWorkspaceACL(t *testing.T) {
 	writeFileWithMode(t, filepath.Join(task, "uploads", "a.txt"), 0o664)
 	mkdirWithMode(t, filepath.Join(task, "cmd-output", "i3"), 0o777)
 	writeFileWithMode(t, filepath.Join(task, "cmd-output", "i3", "output-1-1.txt"), 0o666)
+	mkdirWithMode(t, filepath.Join(task, "home"), 0o700)
+	mkdirWithMode(t, filepath.Join(task, "tmp"), 0o700)
+	writeFileWithMode(t, filepath.Join(task, "tmp", "scratch"), 0o600)
 	if err := os.Chmod(task, fs.ModeSetgid|fs.ModeSticky|0o775); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +124,11 @@ func TestApplyWorkspaceACL(t *testing.T) {
 	writeFileWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-1", "out.txt"), 0o666)
 	mkdirWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-5"), 0o777)
 	mkdirWithMode(t, filepath.Join(realData, "sessions", "conv-5"), 0o775)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "home"), 0o777)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tmp"), 0o777)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "home", "conv-1"), 0o700)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tmp", "conv-1"), 0o700)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tmp", "conv-5"), 0o700)
 	mkdirWithMode(t, filepath.Join(realData, "sessions", "tool-test-1"), 0o770)
 	mkdirWithMode(t, filepath.Join(realData, "drafts", "d1", "uploads"), 0o777)
 	writeFileWithMode(t, filepath.Join(realData, "traffic.db"), 0o644)
@@ -167,6 +175,9 @@ func TestApplyWorkspaceACL(t *testing.T) {
 		{rel: "tasks/7/cmd-output", mode: 0o750, access: readDir, def: readDir},
 		{rel: "tasks/7/cmd-output/i3", mode: 0o750, access: readDir, def: readDir},
 		{rel: "tasks/7/cmd-output/i3/output-1-1.txt", mode: 0o640, access: agentACL(rw, taskUID, r)},
+		{rel: "tasks/7/home", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/tmp", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/tmp/scratch", mode: 0o660, access: agentACL(rw, taskUID, rw)},
 		{rel: "sessions/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
 		{rel: "sessions/conv-1/uploads", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
 		{rel: "sessions/conv-1/uploads/f.txt", mode: 0o660, access: agentACL(rw, convUID, rw)},
@@ -174,6 +185,11 @@ func TestApplyWorkspaceACL(t *testing.T) {
 		{rel: "sessions/cmd-output/conv-1", mode: 0o750, access: agentACL(rwx, convUID, rx), def: agentACL(rwx, convUID, rx)},
 		{rel: "sessions/cmd-output/conv-1/out.txt", mode: 0o640, access: agentACL(rw, convUID, r)},
 		{rel: "sessions/cmd-output/conv-5", mode: 0o700},
+		{rel: "sessions/home", mode: 0o711},
+		{rel: "sessions/home/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
+		{rel: "sessions/tmp", mode: 0o711},
+		{rel: "sessions/tmp/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
+		{rel: "sessions/tmp/conv-5", mode: 0o700},
 		{rel: "sessions/conv-5", mode: 0o700},
 		{rel: "sessions/tool-test-1", mode: 0o700},
 	}

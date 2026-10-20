@@ -158,11 +158,12 @@ func prepareWorkspaceRoots(dataDir string) error {
 // 때 한 번 돈다. 실행 때 ensureRunDir·ensureSessionDir는 작업 공간 디렉터리만 맞추므로, 그 안에 이미 있는 서버 소유
 // 파일(파일 도구가 쓴 것, 예전 배치에서 공용 그룹으로 쓰던 것)과, 할당이 없는(지운 대화 등) 디렉터리는 여기서 맞춘다.
 //
-//	tasks/<tid>(할당 있음)                     작업 uid 읽기. work·i<iid>와 그 안은 읽기·쓰기, 나머지(uploads,
-//	                                           cmd-output 등)와 그 안은 읽기
+//	tasks/<tid>(할당 있음)                     작업 uid 읽기. work·i<iid>·home·tmp와 그 안은 읽기·쓰기, 나머지
+//	                                           (uploads, cmd-output 등)와 그 안은 읽기
 //	sessions/conv-<id>(할당 있음)              세션 uid 읽기·쓰기(그 안 포함)
-//	sessions/cmd-output                        모든 uid가 지나가기만(agent.EnsureContainerDir)
+//	sessions/cmd-output·home·tmp               모든 uid가 지나가기만(agent.EnsureContainerDir)
 //	sessions/cmd-output/conv-<id>(할당 있음)   세션 uid 읽기(그 안 포함)
+//	sessions/home·tmp/conv-<id>(할당 있음)     세션 uid 읽기·쓰기(그 안 포함). 명령의 HOME·TMPDIR(#178)
 //	그 밖(할당 없음, 모르는 이름, 시험 작업 공간)  서버 전용. 안으로 들어가지 않는다
 //
 // 에이전트는 작업 공간 안의 항목을 언제든 링크로 바꿀 수 있어 경로를 다시 풀지 않는다. 각 항목을 부모 디렉터리의 파일
@@ -185,13 +186,13 @@ func applyWorkspaceACL(dataDir string, owners workspaceOwners) error {
 			if top == "tasks" {
 				return shareTaskUnit(f, info, owners.taskUID(name))
 			}
-			if name == agent.ToolOutputDirName && info.IsDir() {
-				// sessions/cmd-output은 모든 세션이 지나가는 공유 디렉터리다. sessions/는 에이전트가 쓰지 못해 경로로 다뤄도 된다.
+			if access, ok := sessionSideDirs[name]; ok && info.IsDir() {
+				// sessions/cmd-output·home·tmp는 모든 세션이 지나가는 공유 디렉터리다. sessions/는 에이전트가 쓰지 못해 경로로 다뤄도 된다.
 				if err := agent.EnsureContainerDir(filepath.Join(dataDir, top, name)); err != nil {
 					return err
 				}
-				return eachEntry(f, func(out *os.File, outInfo fs.FileInfo, sid string) error {
-					return shareUnit(out, outInfo, owners.sessionUID(sid), agent.WorkspaceRead)
+				return eachEntry(f, func(unit *os.File, unitInfo fs.FileInfo, sid string) error {
+					return shareUnit(unit, unitInfo, owners.sessionUID(sid), access)
 				})
 			}
 			return shareUnit(f, info, owners.sessionUID(name), agent.WorkspaceWrite)
@@ -202,6 +203,14 @@ func applyWorkspaceACL(dataDir string, owners workspaceOwners) error {
 		}
 	}
 	return nil
+}
+
+// sessionSideDirs 는 sessions/ 아래에서 세션마다 하위 디렉터리(<이름>/conv-<id>)를 두는 공유 디렉터리와, 그 세션
+// uid가 하위 디렉터리에서 갖는 권한이다. 큰 출력은 서버만 쓰고, 명령의 HOME·TMPDIR는 세션 uid가 쓴다.
+var sessionSideDirs = map[string]agent.WorkspaceAccess{
+	agent.ToolOutputDirName:  agent.WorkspaceRead,
+	agent.CommandHomeDirName: agent.WorkspaceWrite,
+	agent.CommandTmpDirName:  agent.WorkspaceWrite,
 }
 
 // shareTaskUnit 은 tasks/<tid>를 맞춘다. 할당이 없으면 서버 전용으로 닫고 안으로 들어가지 않는다.
