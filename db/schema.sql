@@ -1007,6 +1007,18 @@ CREATE INDEX IF NOT EXISTS idx_conv_act ON conversation_activities(conversation_
 CREATE INDEX IF NOT EXISTS idx_conv_act_tool_call ON conversation_activities(conversation_id, tool_use_id, id)
   WHERE kind IN ('tool_use', 'tool_result');
 
+-- 에이전트 uid 할당(#166). 에이전트 uid 분리를 켰을 때 작업·대화형 세션마다 uid 풀(20001~21024)에서
+-- 겹치지 않는 uid 하나를 준다. gid는 uid와 같은 값이다. 행은 작업·대화를 지울 때 함께 지워져(ON DELETE CASCADE)
+-- uid가 풀로 돌아간다. 보관·복원은 tasks 행을 지우지 않으므로 그동안 같은 uid를 유지한다(복원한 파일의 소유
+-- uid가 그대로 남아서다). 범위는 db.AgentUIDPoolFirst·AgentUIDPoolSize와 같아야 한다.
+CREATE TABLE IF NOT EXISTS agent_uids (
+    uid             INTEGER PRIMARY KEY CHECK (uid BETWEEN 20001 AND 21024),
+    task_id         BIGINT UNIQUE REFERENCES tasks(id) ON DELETE CASCADE,
+    conversation_id BIGINT UNIQUE REFERENCES conversations(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((task_id IS NULL) <> (conversation_id IS NULL))
+);
+
 -- =====================================================================
 -- J. Agent 트리거
 -- =====================================================================

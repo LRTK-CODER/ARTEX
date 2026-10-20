@@ -552,6 +552,13 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	if a, err := pg.GetAgentByKey(c.AgentKey); err == nil && a != nil {
 		webSearch = a.WebSearch
 	}
+	// 대화형 세션은 세션마다 uid를 받는다(#166). 받지 못하면 기다리지 않고 이 차례를 원인과 함께 실패시킨다.
+	if _, err := s.sandbox.ConversationUID(ctx, pg, c.ID); err != nil {
+		finishReason = agentUIDUnavailableMessage + " " + err.Error()
+		_, _ = pg.AppendConvActivity(c.ID, db.Activity{Worker: c.AgentKey, Kind: "text", IsError: true,
+			Summary: "(오류: " + agentUIDUnavailableMessage + " 쓰지 않는 작업이나 대화를 지운 뒤 다시 시도하세요)", Detail: err.Error()})
+		return
+	}
 	sessionID := s.convBusyKey(c.ID) // "conv-<id>" transcript session
 	emit := func(rec db.Activity) {
 		if _, err := pg.AppendConvActivity(c.ID, rec); err != nil {

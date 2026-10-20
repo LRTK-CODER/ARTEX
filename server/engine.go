@@ -93,6 +93,7 @@ func retryableWorkerModelError(reason harness.TerminalReason, err error) bool {
 // but idle until an LLM is set.
 type Engine struct {
 	m        *Manager
+	sandbox  *AgentSandbox // 에이전트 uid 분리 설정(#165). nil이면 꺼져 있다
 	debounce time.Duration
 
 	bc *Broadcaster // live activity pub/sub (SSE)
@@ -748,6 +749,9 @@ func (e *Engine) ReadyFor(t *Task) bool {
 // but no-op until an LLM is configured (so a task created while idle picks up
 // automatically once LLM is set from the UI).
 func (e *Engine) Run(ctx context.Context, t *Task) {
+	if !e.reserveAgentUID(ctx, t) {
+		return
+	}
 	workers := e.m.Workers()
 	e.deleteMu.RLock()
 	if e.IsDeleting(t.ID) {
