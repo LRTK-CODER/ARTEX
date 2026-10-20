@@ -2,7 +2,7 @@ package db
 
 import "fmt"
 
-// builtinTextMigration 은 #108 이전에 seed한 중국어 값(legacy)과 지금 seed하는 한국어 값(current)의 쌍이다.
+// builtinTextMigration 은 이전에 seed한 값(legacy, #108 전의 중국어 값 등)과 지금 seed하는 한국어 값(current)의 쌍이다.
 type builtinTextMigration struct{ legacy, current string }
 
 // 명령 차단 규칙과 자산 차단 규칙의 seed는 설정 플래그로 한 번만 돌아, 기존 설치에는 중국어 행이
@@ -53,11 +53,13 @@ var legacyInterceptRuleMessages = []builtinTextMigration{
 	{"禁止调用删除类接口（/delete /remove /unlink /erase 等），不论使用哪种 HTTP 方法——多数应用的删除接口用 GET/POST 就能触发，同样会真实删除目标数据", "삭제 계열 API(/delete /remove /unlink /erase 등) 호출을 금지합니다. HTTP 메서드와 관계없이 막습니다. 대부분의 애플리케이션은 GET/POST로도 삭제 API가 동작해 대상 데이터를 실제로 삭제합니다"},
 }
 
+// .gov.cn·.edu.cn 내장 행은 migrateAssetInterceptRulesToKorea가 지우므로 여기 두지 않는다.
+// .gov·.edu는 미국 기관 메모(#191)로 바뀌었다. 번역 전 중국어 값과 번역 뒤 한국어 값을 모두 새 메모로 바꾼다.
 var legacyAssetInterceptRuleNotes = []builtinTextMigration{
-	{"[内置] 政府网站 (.gov)", "[내장] 정부 웹사이트 (.gov)"},
-	{"[内置] 政府网站 (.gov.cn)", "[내장] 정부 웹사이트 (.gov.cn)"},
-	{"[内置] 教育网站 (.edu)", "[내장] 교육 웹사이트 (.edu)"},
-	{"[内置] 教育网站 (.edu.cn)", "[내장] 교육 웹사이트 (.edu.cn)"},
+	{"[内置] 政府网站 (.gov)", "[내장] 미국 정부 웹사이트 (.gov)"},
+	{"[내장] 정부 웹사이트 (.gov)", "[내장] 미국 정부 웹사이트 (.gov)"},
+	{"[内置] 教育网站 (.edu)", "[내장] 미국 교육기관 웹사이트 (.edu)"},
+	{"[내장] 교육 웹사이트 (.edu)", "[내장] 미국 교육기관 웹사이트 (.edu)"},
 }
 
 // migrateBuiltinRuleTexts 는 기존 설치의 내장 차단 규칙 이름·메시지·메모를 한국어로 바꾼다.
