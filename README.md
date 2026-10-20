@@ -365,7 +365,8 @@ WantedBy=multi-user.target
 서버는 시작할 때 `CAP_KILL`을 effective로만 남기고 ambient·inheritable을 비운다. 그래서 서버가 감싸지 않고 띄우는 자식(ripgrep 등)은 `CAP_KILL`을 물려받지 않는다. 도우미는 cap을 모두 버리므로 에이전트로 새지 않는다.
 
 한계:
-- 파일 도구(Read/Write/Edit/MultiEdit)는 여전히 서버 uid로 돈다. 작업 공간 경로 제한과 위의 열기 방식이 막는다. 켜면 LS·Glob·Grep 도구 대신 셸 명령을 쓴다.
+- 파일 도구(Read/Write/Edit/MultiEdit)는 여전히 서버 uid로 돈다. 작업 공간 경로 제한과 위의 열기 방식이 막는다. 켜면 LS·Glob·Grep 도구 대신 셸 명령을 쓴다. 대화형 역할이 모든 작업을, 상속 작업이 원본 작업을 읽어도 다른 작업·세션의 HOME·TMPDIR(`tasks/<id>/home`·`tmp`, `sessions/home`·`tmp/<id>`)는 파일 도구로 읽지 못한다(#178).
+- 에이전트 명령은 서버 프로세스의 환경 변수를 물려받는다. 서버를 `XDG_CONFIG_HOME`·`XDG_CACHE_HOME`·`XDG_DATA_HOME`을 둔 채 띄우면 git·pip 같은 도구가 HOME 대신 서버 사용자 디렉터리를 보고 쓰지 못해 실패한다(그 디렉터리에 닿지는 못한다). systemd 단위와 셸에서 이 변수를 두지 않고 띄운다. Docker 이미지에는 없다.
 - #182 이전(공용 그룹 배치, #175)에 켜서 쓰던 작업 공간에서 공용 uid(20000)가 만든 파일·디렉터리는 서버에 `CAP_CHOWN`이 없어 소유자와 ACL을 바꾸지 못한다. 새 작업 uid는 other 권한으로 그 파일을 읽기만 하고(공용 uid의 umask 002로 만든 것은 other 읽기가 있다) 고치거나 그 디렉터리에 새로 만들지 못한다. 다른 작업 uid는 작업 공간 디렉터리(서버 소유, ACL)에서 막혀 닿지 못한다. 그 파일을 고쳐야 하면 에이전트가 새 이름으로 복사해 쓴다.
 - 에이전트가 자기 파일의 권한을 바꾸면(`chmod 600`, `setfacl`) 서버가 그 파일을 읽지 못할 수 있다. 보관·삭제에서의 처리는 #179다.
 - HOME·TMPDIR와 작업 공간에서 만든 ssh 개인 키는 `chmod 600` 해야 ssh가 받는다. 기본 ACL이 있는 디렉터리에서는 커널이 umask를 쓰지 않고 만들 때 준 모드로 mask를 정해, `ssh-keygen`이 만든 키가 0640이 되고 ssh가 "bad permissions"로 거부한다(#178).
