@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	pgdb "github.com/Autumn-27/artex/db"
 	"github.com/klauspost/compress/zstd"
@@ -565,46 +566,7 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		return 0, 0, "", err
 	}
 	tarWriter := tar.NewWriter(encoder)
-	walkErr := filepath.WalkDir(payloadDir, func(current string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		relative, err := filepath.Rel(payloadDir, current)
-		if err != nil || relative == "." {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			// 보관 형식은 처음부터 끝까지 일반 파일과 디렉터리만 지원한다(풀 때 다른 유형은 바로 오류다).
-			// 그래서 심볼릭 링크는 복원할 수 없다. 패키지 전체를 실패시키지 않고 건너뛴다. 링크 대상을
-			// 읽지 않고(lstat, 디렉터리 트리 밖으로 나가지 않는다) symlink 항목도 쓰지 않는다. 링크가
-			// 트리 안을 가리키면 대상 파일 자체는 따로 순회해 보관한다.
-			log.Printf("[task-archive] 심볼릭 링크 건너뜀(보관 미지원, 다른 파일에는 영향 없음): %s", current)
-			return nil
-		}
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		header.Name = filepath.ToSlash(relative)
-		if err := tarWriter.WriteHeader(header); err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		originalSize += info.Size()
-		input, err := os.Open(current)
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(tarWriter, input)
-		closeErr := input.Close()
-		return errors.Join(copyErr, closeErr)
-	})
+	walkErr := writeArchivePayload(tarWriter, payloadDir, &originalSize)
 	if walkErr != nil {
 		_ = tarWriter.Close()
 		_ = encoder.Close()
@@ -637,6 +599,77 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 	}
 	committed = true
 	return originalSize, compressedSize, checksum, nil
+}
+
+// writeArchivePayload 는 payloadDir 아래의 디렉터리와 일반 파일을 tar로 쓰고, 쓴 파일 크기의 합을 originalSize에
+// 더한다. payloadDir 는 os.Root로 열어 그 안에서만 읽는다(#176). 걷기(lstat)와 열기 사이에 에이전트가 파일을
+// 링크로 바꿔도 payload 밖은 열지 않는다. 연 파일이 걷기에서 본 파일과 같은 일반 파일인지(os.SameFile) 다시 보고
+// 아니면 오류로 끝내므로 파일을 payload 안의 다른 파일을 가리키는 링크로 바꿔도 그 내용이 엉뚱한 이름으로 들어가지
+// 않는다. 디렉터리는 이 확인을 하지 않는다. 걷기는 디렉터리를 경로로 다시 열어 읽으므로, 디렉터리를 payload 안의 다른
+// 디렉터리를 가리키는 링크로 바꾸면 그 디렉터리 내용이 바꾼 이름 아래에도 들어갈 수 있다. payload는 한 작업의
+// 자료라 그 작업 밖의 내용이 들어가지는 않는다.
+//
+// 보관 형식은 처음부터 끝까지 일반 파일과 디렉터리만 지원한다(풀 때 다른 유형은 바로 오류다). 그래서 심볼릭 링크,
+// FIFO, 장치 같은 항목은 패키지 전체를 실패시키지 않고 건너뛴다. 링크 대상은 읽지 않고 symlink 항목도 쓰지 않는다.
+// 링크가 트리 안을 가리키면 대상 파일 자체는 따로 순회해 보관한다.
+func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize *int64) error {
+	root, err := os.OpenRoot(payloadDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return fs.WalkDir(root.FS(), ".", func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if current == "." {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			log.Printf("[task-archive] 일반 파일이 아닌 항목 건너뜀(보관 미지원, 다른 파일에는 영향 없음): %s", filepath.Join(payloadDir, filepath.FromSlash(current)))
+			return nil
+		}
+		if info.IsDir() {
+			header, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return err
+			}
+			header.Name = current
+			return tarWriter.WriteHeader(header)
+		}
+		// FIFO로 바꿔치기돼도 열기에서 멈추지 않게 O_NONBLOCK으로 연다. 일반 파일에는 영향이 없다.
+		input, err := root.OpenFile(filepath.FromSlash(current), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			return err
+		}
+		defer input.Close()
+		opened, err := input.Stat()
+		if err != nil {
+			return err
+		}
+		if !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+			// 건너뛰면 그 파일이 빠진 채 보관이 끝나고 원본이 지워진다. 실패시켜 보관 작업이 되돌리고 다시 하게 한다.
+			return fmt.Errorf("archive payload entry changed while packaging: %s", current)
+		}
+		header, err := tar.FileInfoHeader(opened, "")
+		if err != nil {
+			return err
+		}
+		header.Name = current
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return err
+		}
+		// 연 뒤 파일이 커져도 헤더에 적은 크기만 쓴다(넘치면 tar 쓰기가 실패한다).
+		if _, err := io.CopyN(tarWriter, input, header.Size); err != nil {
+			return err
+		}
+		*originalSize += header.Size
+		return nil
+	})
 }
 
 func extractTaskArchivePackage(path, expectedSHA, destination string) error {

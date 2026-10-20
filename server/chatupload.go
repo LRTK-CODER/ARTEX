@@ -79,19 +79,29 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.engine.decInflight(id)
 	}
-	// 에이전트가 작업 디렉터리 안에 심볼릭 링크를 만들 수 있으므로 만들기·쓰기는 작업 공간 루트의 os.Root 로만 한다(#97).
-	root, err := s.wsOpenRoot()
+	// 에이전트가 작업 디렉터리 안에 심볼릭 링크를 만들 수 있으므로 만들기·쓰기는 그 작업 단위(tasks/<id> 등)의
+	// os.Root 로만 한다(#97, #176). 데이터 디렉터리 전체를 루트로 두면 링크를 따라 다른 작업·세션에 쓰게 된다.
+	root, err := s.wsOpenRoot(filepath.Join(sub, id), true)
+	if errors.Is(err, errWorkspaceUnitLink) {
+		writeErr(w, http.StatusConflict, "업로드할 작업 디렉터리가 심볼릭 링크라서 저장하지 않습니다")
+		return
+	}
 	if err != nil {
-		writeErr(w, 500, err.Error())
+		writeErr(w, 500, "업로드 디렉터리를 만들지 못했습니다: "+err.Error())
 		return
 	}
 	defer root.Close()
-	rel := filepath.Join(sub, id, "uploads")
+	const rel = "uploads"
+	if info, err := root.Lstat(rel); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		// 같은 단위 안을 가리키는 링크라도 따라가지 않는다. 첨부는 늘 uploads/ 자체에 둔다.
+		writeErr(w, http.StatusConflict, "업로드 디렉터리가 심볼릭 링크라서 저장하지 않습니다")
+		return
+	}
 	if err := root.MkdirAll(rel, 0o755); err != nil {
 		writeErr(w, 500, "업로드 디렉터리를 만들지 못했습니다: "+err.Error())
 		return
 	}
-	dir := filepath.Join(s.m.dir, rel)
+	dir := filepath.Join(s.m.dir, sub, id, rel)
 	r.Body = http.MaxBytesReader(w, r.Body, maxChatUpload)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeErr(w, 400, "업로드를 파싱하지 못했거나 크기 제한을 넘었습니다: "+err.Error())
@@ -122,7 +132,8 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 // 고른 이름을 돌려준다. 같은 이름을 다시 올려도 앞 첨부를 덮어쓰지 않는다.
 // O_EXCL로 만들므로 이름 고르기와 만들기 사이에 경쟁이 없고, 그 이름에 링크(끊긴 링크 포함)가 있으면
 // 따라가지 않고 이미 있는 이름으로 본다.
-func createUniqueUpload(root *os.Root, dir, name string) (*os.File, string, error) {
+// perm은 umask를 거치기 전 권한이다.
+func createUniqueUpload(root *os.Root, dir, name string, perm os.FileMode) (*os.File, string, error) {
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
 	for i := 0; ; i++ {
@@ -130,7 +141,7 @@ func createUniqueUpload(root *os.Root, dir, name string) (*os.File, string, erro
 		if i > 0 {
 			cand = fmt.Sprintf("%s-%d%s", stem, i, ext)
 		}
-		f, err := root.OpenFile(filepath.Join(dir, cand), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		f, err := root.OpenFile(filepath.Join(dir, cand), os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 		if err == nil {
 			return f, cand, nil
 		}
@@ -188,7 +199,8 @@ func saveUniqueUpload(root *os.Root, dir string, hdr *multipart.FileHeader, name
 		return "", err
 	}
 	defer src.Close()
-	out, base, err := createUniqueUpload(root, dir, name)
+	// 첨부(uploads/)는 에이전트가 읽기만 하는 곳이라(#165) 그룹 쓰기를 주지 않는다.
+	out, base, err := createUniqueUpload(root, dir, name, 0o666)
 	if err != nil {
 		return "", err
 	}

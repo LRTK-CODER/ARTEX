@@ -12,16 +12,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Autumn-27/artex/agent"
 )
 
-// Workspace file manager — browse / view / edit / download / upload / delete the
-// shared work dir (s.m.dir), where all agents write their artifacts. All routes sit
-// behind requireAuth (see Handler()).
+// 작업 공간 파일 관리자다. 에이전트가 산출물을 쓰는 데이터 디렉터리(s.m.dir)를 둘러보고, 보고, 고치고,
+// 내려받고, 올리고, 지운다. 모든 경로는 requireAuth 뒤에 있다(Handler()).
 // 에이전트가 작업 공간에 만든 심볼릭 링크는 신뢰하지 않는다. 경로는 wsResolve가 링크를 푼 실제 경로로
-// 판정하고, 실제 파일 연산은 요청마다 연 작업 공간 루트의 os.Root 로만 한다. 판정 뒤 링크를 바꿔도
-// os.Root가 커널 수준에서 루트 밖으로 나가는 경로를 막는다.
+// 판정하고, 실제 파일 연산은 요청마다 연 작업 단위(wsUnit) 루트의 os.Root 로만 한다. 판정 뒤 링크를 바꿔도
+// os.Root가 커널 수준에서 단위 밖으로 나가는 경로를 막는다.
 //
 // 하드 링크는 막지 못한다. 서버 사용자 소유의 밖 파일을 같은 파일 시스템 안에서 작업 공간으로 하드 링크하면
 // 경로 판정과 os.Root 모두 그 파일을 작업 공간 안의 정상 파일로 보므로 읽고 덮어쓸 수 있다. 링크 수(Nlink)로
@@ -33,18 +35,120 @@ const (
 	maxWorkspaceUpload = 512 << 20 // 512 MiB per upload request
 )
 
+// wsUnitParents 는 에이전트가 쓰는 작업 단위 디렉터리(tasks/<tid>, sessions/<sid>, drafts/<id>)를 담는 최상위
+// 디렉터리와, 그 아래 단위 이름이 서버가 만드는 형식인지 보는 함수다. 이 단위 안의 경로를 다루는 요청은 그 단위
+// 디렉터리를 루트로 연다(#176). 데이터 디렉터리 전체를 루트로 열면, 에이전트가 자기 작업 공간에 만든 링크를 따라
+// 다른 작업·세션 파일이나 대화 기록(transcripts)을 보여 주거나 덮어쓰게 된다. 링크가 같은 단위 안을 가리키면 그대로
+// 따라간다.
+//
+// 단위 디렉터리와 그 부모(tasks/, sessions/, drafts/)는 에이전트가 바꾸지 못한다. 에이전트 uid 분리(#165)를 켜면
+// 커널 권한이 막고, 끄면 에이전트가 서버와 같은 uid라 Bash로도 같은 파일에 닿는다. 그래서 단위 디렉터리를 연 뒤에는
+// os.Root가 그 안에 묶는다.
+var wsUnitParents = map[string]func(name string) bool{
+	"tasks":    isCanonicalPositiveID,
+	"sessions": isSessionUnitName,
+	"drafts":   safeChatID.MatchString, // 첨부 업로드(chatUpload)가 받는 id 형식이다
+}
+
+// isCanonicalPositiveID 는 name이 앞에 0이 없는 양의 십진수(작업 id)인지 본다.
+func isCanonicalPositiveID(name string) bool {
+	id, err := strconv.ParseInt(name, 10, 64)
+	return err == nil && id > 0 && strconv.FormatInt(id, 10) == name
+}
+
+// isSessionUnitName 은 name이 sessions/ 아래에 서버가 만드는 이름(대화 세션 conv-<id>, 큰 출력 cmd-output)인지 본다.
+func isSessionUnitName(name string) bool {
+	if name == agent.ToolOutputDirName {
+		return true
+	}
+	id, ok := strings.CutPrefix(name, "conv-")
+	return ok && isCanonicalPositiveID(id)
+}
+
 // wsPath 는 작업 공간 안으로 판정한 경로다.
 type wsPath struct {
 	// abs 는 링크를 풀기 전 절대 경로다. 응답의 상대 경로(wsRel)가 사용자가 본 이름을 유지하게 한다.
 	abs string
-	// name 은 링크를 푼 실제 경로의 루트 기준 상대 이름이다. os.Root 메서드에 넘긴다.
+	// unit 은 요청을 가둘 작업 단위 디렉터리의 데이터 디렉터리 기준 상대 경로다. 비면 데이터 디렉터리 전체다.
+	unit string
+	// name 은 링크를 푼 실제 경로의 단위 루트 기준 상대 이름이다. os.Root 메서드에 넘긴다.
 	// os.Root는 절대 경로 링크를 따라가지 않으므로, 안을 가리키는 절대 링크도 풀어 둔 이름으로 연다.
 	name string
 }
 
-// wsOpenRoot 는 작업 공간 루트를 os.Root로 연다. 요청마다 열어 닫으므로 작업 디렉터리가 바뀌어도 따라간다.
-func (s *Server) wsOpenRoot() (*os.Root, error) {
-	return os.OpenRoot(filepath.Clean(s.m.dir))
+// wsUnit 은 abs가 작업 단위 디렉터리 안(단위 자신은 빼고)이면 그 단위의 상대 경로를, 아니면 ""를 돌려준다.
+// 링크를 풀지 않은 글자 그대로의 경로로 정한다. 사용자가 고른 위치가 어느 단위인지가 기준이어서다.
+//
+// 단위는 첫 요소가 wsUnitParents의 이름과 글자 그대로 같고 둘째 요소가 그 형식에 맞을 때만 정한다. 첫 요소가 단위
+// 부모와 글자는 다른데 같은 디렉터리일 수 있으면(대소문자, 유니코드 대소문자 접기, 정규화) ok=false다. 대소문자를
+// 무시하는 파일 시스템(macOS, Docker Desktop의 바인드 마운트)에서 TASKS/1/...이 tasks/1/...과 같은 파일을 가리키는데
+// 단위 밖으로 보면 데이터 디렉터리 전체 루트로 열려 링크를 따라가기 때문이다. 단위 부모 아래 둘째 요소가 형식에
+// 맞지 않아도 ok=false다.
+func (s *Server) wsUnit(abs string) (string, bool) {
+	data := filepath.Clean(s.m.dir)
+	rel, err := filepath.Rel(data, abs)
+	if err != nil {
+		return "", false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	isUnitName, isUnitParent := wsUnitParents[parts[0]]
+	if !isUnitParent {
+		return "", !s.aliasesUnitParent(parts[0])
+	}
+	if len(parts) < 3 {
+		return "", true
+	}
+	if !isUnitName(parts[1]) {
+		return "", false
+	}
+	return filepath.Join(parts[0], parts[1]), true
+}
+
+// aliasesUnitParent 는 데이터 디렉터리 바로 아래 이름 name이 글자는 달라도 단위 부모 디렉터리를 가리킬 수 있는지 본다.
+// 대소문자 접기로 같은 이름이거나, 둘 다 있고 같은 파일이면 그렇다. 파일 시스템마다 같게 보는 이름 규칙(대소문자,
+// 유니코드 정규화)이 달라 글자 비교만으로는 다 알 수 없으므로 실제 파일도 견준다.
+func (s *Server) aliasesUnitParent(name string) bool {
+	data := filepath.Clean(s.m.dir)
+	info, statErr := os.Stat(filepath.Join(data, name))
+	for parent := range wsUnitParents {
+		if strings.EqualFold(name, parent) {
+			return true
+		}
+		if statErr != nil {
+			continue
+		}
+		if parentInfo, err := os.Stat(filepath.Join(data, parent)); err == nil && os.SameFile(info, parentInfo) {
+			return true
+		}
+	}
+	return false
+}
+
+// errWorkspaceUnitLink 는 작업 단위 디렉터리 자체가 심볼릭 링크라 열지 않았다는 뜻이다. 서버 오류가 아니라 요청 거부다.
+var errWorkspaceUnitLink = errors.New("작업 단위 디렉터리가 심볼릭 링크입니다")
+
+// wsOpenRoot 는 작업 단위 unit(비면 데이터 디렉터리 전체)을 os.Root로 연다. 요청마다 열어 닫으므로 작업
+// 디렉터리가 바뀌어도 따라간다. create면 없는 단위 디렉터리를 만든다(쓰기·새 디렉터리·업로드).
+// 단위 디렉터리 자체가 링크이면 열지 않는다.
+func (s *Server) wsOpenRoot(unit string, create bool) (*os.Root, error) {
+	data, err := os.OpenRoot(filepath.Clean(s.m.dir))
+	if err != nil || unit == "" {
+		return data, err
+	}
+	defer data.Close()
+	if create {
+		if err := data.MkdirAll(unit, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	info, err := data.Lstat(unit)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s: %w", unit, errWorkspaceUnitLink)
+	}
+	return data.OpenRoot(unit)
 }
 
 // wsAbs 는 사용자가 준 상대 경로를 작업 공간 아래 절대 경로로 바꾼다. ".."는 루트에 묶어 접는다.
@@ -56,23 +160,37 @@ func (s *Server) wsAbs(rel string) string {
 	return filepath.Clean(filepath.Join(base, clean))
 }
 
-// wsResolve 는 사용자가 준 상대 경로를 판정한다. 작업 공간 밖이면 ok=false다.
-// 심볼릭 링크는 풀어서 실제 경로가 작업 공간(역시 링크를 푼 루트) 안일 때만 허용한다.
-// 이 판정은 오류 응답을 가르는 용도다. 판정과 열기 사이의 경쟁은 열기를 os.Root로 해서 막는다.
+// wsResolve 는 사용자가 준 상대 경로를 판정한다. 작업 단위(wsUnit) 밖이면 ok=false다.
+// 심볼릭 링크는 풀어서 실제 경로가 단위 디렉터리(역시 링크를 푼 경로) 안일 때만 허용한다.
+// 이 판정은 오류 응답을 가르는 용도다. 판정과 열기 사이의 경쟁은 열기를 단위의 os.Root로 해서 막는다.
 func (s *Server) wsResolve(rel string) (wsPath, bool) {
 	abs := s.wsAbs(rel)
-	name, ok := s.wsRootName(abs)
+	unit, ok := s.wsUnit(abs)
 	if !ok {
 		return wsPath{}, false
 	}
-	return wsPath{abs: abs, name: name}, true
+	name, ok := s.wsRootName(unit, abs)
+	if !ok {
+		return wsPath{}, false
+	}
+	return wsPath{abs: abs, unit: unit, name: name}, true
 }
 
-// wsRootName 은 abs의 링크를 푼 실제 경로가 작업 공간 안이면 루트 기준 상대 이름을 돌려준다. 루트 자신은 "."다.
-func (s *Server) wsRootName(abs string) (string, bool) {
-	realBase, err := filepath.EvalSymlinks(filepath.Clean(s.m.dir))
+// wsRootName 은 abs의 링크를 푼 실제 경로가 작업 단위 unit 안이면 단위 루트 기준 상대 이름을 돌려준다.
+// 단위 자신은 "."다. 단위 디렉터리 자체가 링크이면(데이터 디렉터리를 푼 경로 뒤에 링크가 끼면) 거부한다.
+// 아직 없는 단위는 만들 자리로 보고 판정한다.
+func (s *Server) wsRootName(unit, abs string) (string, bool) {
+	realData, err := filepath.EvalSymlinks(filepath.Clean(s.m.dir))
 	if err != nil {
 		return "", false
+	}
+	realBase := realData
+	if unit != "" {
+		resolvedUnit, err := evalWorkspacePath(filepath.Join(filepath.Clean(s.m.dir), unit))
+		if err != nil || resolvedUnit != filepath.Join(realData, unit) {
+			return "", false
+		}
+		realBase = resolvedUnit
 	}
 	resolved, err := evalWorkspacePath(abs)
 	if err != nil {
@@ -127,15 +245,23 @@ type wsEntry struct {
 	MTime int64  `json:"mtime"` // unix millis
 }
 
-// wsOpen 은 경로를 판정하고 작업 공간 루트를 연다. 실패하면 응답을 쓰고 ok=false를 돌려준다.
-// ok=true이면 호출자가 root를 닫는다.
-func (s *Server) wsOpen(w http.ResponseWriter, rel string) (*os.Root, wsPath, bool) {
+// wsOpen 은 경로를 판정하고 그 경로의 작업 단위 루트를 연다. 실패하면 응답을 쓰고 ok=false를 돌려준다.
+// ok=true이면 호출자가 root를 닫는다. create는 wsOpenRoot와 같다. 만들지 않는 요청에서 단위가 없으면 404다.
+func (s *Server) wsOpen(w http.ResponseWriter, rel string, create bool) (*os.Root, wsPath, bool) {
 	p, ok := s.wsResolve(rel)
 	if !ok {
 		writeErr(w, 400, "잘못된 경로입니다")
 		return nil, wsPath{}, false
 	}
-	root, err := s.wsOpenRoot()
+	root, err := s.wsOpenRoot(p.unit, create)
+	if errors.Is(err, fs.ErrNotExist) {
+		writeErr(w, 404, "경로가 없습니다")
+		return nil, wsPath{}, false
+	}
+	if errors.Is(err, errWorkspaceUnitLink) {
+		writeErr(w, 400, "잘못된 경로입니다")
+		return nil, wsPath{}, false
+	}
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return nil, wsPath{}, false
@@ -145,7 +271,7 @@ func (s *Server) wsOpen(w http.ResponseWriter, rel string) (*os.Root, wsPath, bo
 
 // GET /api/workspace/list?path=<rel>
 func (s *Server) wsList(w http.ResponseWriter, r *http.Request) {
-	root, p, ok := s.wsOpen(w, r.URL.Query().Get("path"))
+	root, p, ok := s.wsOpen(w, r.URL.Query().Get("path"), false)
 	if !ok {
 		return
 	}
@@ -198,7 +324,7 @@ func (s *Server) wsList(w http.ResponseWriter, r *http.Request) {
 // GET /api/workspace/read?path=<rel> — inline text for view/edit. Binary or oversize
 // files return {binary:true}/{too_large:true} with no content (use download instead).
 func (s *Server) wsRead(w http.ResponseWriter, r *http.Request) {
-	root, p, ok := s.wsOpen(w, r.URL.Query().Get("path"))
+	root, p, ok := s.wsOpen(w, r.URL.Query().Get("path"), false)
 	if !ok {
 		return
 	}
@@ -249,7 +375,7 @@ func (s *Server) wsWrite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "잘못된 경로입니다")
 		return
 	}
-	root, p, ok := s.wsOpen(w, req.Path)
+	root, p, ok := s.wsOpen(w, req.Path, true)
 	if !ok {
 		return
 	}
@@ -262,7 +388,7 @@ func (s *Server) wsWrite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if err := root.WriteFile(p.name, []byte(req.Content), 0o644); err != nil {
+	if err := root.WriteFile(p.name, []byte(req.Content), 0o666); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
@@ -282,7 +408,7 @@ func (s *Server) wsMkdir(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "잘못된 경로입니다")
 		return
 	}
-	root, p, ok := s.wsOpen(w, req.Path)
+	root, p, ok := s.wsOpen(w, req.Path, true)
 	if !ok {
 		return
 	}
@@ -305,13 +431,27 @@ func (s *Server) wsDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "작업 공간 루트 디렉터리는 삭제할 수 없습니다")
 		return
 	}
-	root, err := s.wsOpenRoot()
+	unit, ok := s.wsUnit(abs)
+	if !ok {
+		writeErr(w, 400, "잘못된 경로입니다")
+		return
+	}
+	root, err := s.wsOpenRoot(unit, false)
+	if errors.Is(err, fs.ErrNotExist) {
+		writeErr(w, 404, "경로가 없습니다")
+		return
+	}
+	if errors.Is(err, errWorkspaceUnitLink) {
+		writeErr(w, 400, "잘못된 경로입니다")
+		return
+	}
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	defer root.Close()
-	if parentName, ok := s.wsRootName(filepath.Dir(abs)); ok {
+	// 단위 안의 경로는 단위보다 깊으므로(wsUnit) 부모도 같은 단위 안이다.
+	if parentName, ok := s.wsRootName(unit, filepath.Dir(abs)); ok {
 		linkName := filepath.Join(parentName, filepath.Base(abs))
 		if fi, err := root.Lstat(linkName); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 			if err := root.Remove(linkName); err != nil {
@@ -340,7 +480,7 @@ func (s *Server) wsDelete(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/workspace/download?path=<rel> — stream a file as an attachment.
 func (s *Server) wsDownload(w http.ResponseWriter, r *http.Request) {
-	root, p, ok := s.wsOpen(w, r.URL.Query().Get("path"))
+	root, p, ok := s.wsOpen(w, r.URL.Query().Get("path"), false)
 	if !ok {
 		return
 	}
@@ -364,7 +504,7 @@ func (s *Server) wsDownload(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/workspace/upload?path=<dir> — multipart form field "file" (one or more).
 func (s *Server) wsUpload(w http.ResponseWriter, r *http.Request) {
-	root, dir, ok := s.wsOpen(w, r.URL.Query().Get("path"))
+	root, dir, ok := s.wsOpen(w, r.URL.Query().Get("path"), false)
 	if !ok {
 		return
 	}
@@ -389,11 +529,7 @@ func (s *Server) wsUpload(w http.ResponseWriter, r *http.Request) {
 		if name == "" || name == "." || name == ".." {
 			continue
 		}
-		dest, okd := s.wsResolve(filepath.Join(s.wsRel(dir.abs), name))
-		if !okd {
-			continue
-		}
-		if err := saveUploadInRoot(root, hdr, dest.name); err != nil {
+		if err := saveUploadInRoot(root, hdr, filepath.Join(dir.name, name)); err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}
@@ -402,22 +538,31 @@ func (s *Server) wsUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"uploaded": saved})
 }
 
-// saveUploadInRoot 는 올린 파일을 root 안의 name에 쓴다. 닫기 오류도 돌려준다(늦게 비워지는 쓰기 실패).
+// saveUploadInRoot 는 올린 파일을 root 안의 name에 쓴다. 같은 디렉터리의 새 임시 파일에 다 쓴 뒤 name으로
+// 이름을 바꾼다. name에 이미 링크가 있으면 링크가 가리키는 파일을 덮어쓰지 않고 링크를 일반 파일로 바꾼다
+// (rename은 마지막 요소의 링크를 따라가지 않는다). name이 디렉터리면 실패한다.
 func saveUploadInRoot(root *os.Root, hdr *multipart.FileHeader, name string) error {
 	src, err := hdr.Open()
 	if err != nil {
 		return err
 	}
 	defer src.Close()
-	out, err := root.Create(name)
+	// 권한은 umask에 맡긴다. 에이전트 uid 분리(#165)를 켜면 서버 umask가 002라 0664가 되어, 사용자가 올린 파일을
+	// 에이전트가 그 자리에서 고칠 수 있다. 같은 작업 디렉터리에 에이전트·서버가 만드는 다른 파일과 같다.
+	out, tmp, err := createUniqueUpload(root, filepath.Dir(name), "."+filepath.Base(name)+".upload", 0o666)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, src); err != nil {
-		_ = out.Close() // 복사 오류가 원인이므로 닫기 오류는 덮어쓰지 않는다
+	_, copyErr := io.Copy(out, src)
+	if err := errors.Join(copyErr, out.Close()); err != nil {
+		_ = root.Remove(filepath.Join(filepath.Dir(name), tmp)) // 쓰다 만 임시 파일이다. 지우지 못해도 원래 오류가 원인이다
 		return err
 	}
-	return out.Close()
+	if err := root.Rename(filepath.Join(filepath.Dir(name), tmp), name); err != nil {
+		_ = root.Remove(filepath.Join(filepath.Dir(name), tmp)) // 위와 같다
+		return err
+	}
+	return nil
 }
 
 // sanitizeFilename strips characters unsafe for a Content-Disposition filename token.
