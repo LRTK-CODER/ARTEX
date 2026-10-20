@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -431,6 +432,14 @@ func (d *DB) GetTask(id int64) (*Task, error) {
 		return nil, err
 	}
 	return t, nil
+}
+
+// TaskRowExists 는 작업 행이 있는지 돌려준다. GetTask와 달리 보관한 작업(행은 남고 deleted_at만 찍힌 것)도 있다고
+// 본다. 시작 때 작업 삭제의 임시 자리를 지워도 되는지(행이 정말 지워졌는지) 볼 때 쓴다(#179).
+func (d *DB) TaskRowExists(ctx context.Context, id int64) (bool, error) {
+	var exists bool
+	err := d.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM tasks WHERE id=$1)`, id).Scan(&exists)
+	return exists, err
 }
 
 // SetPaused persists a task's paused flag.

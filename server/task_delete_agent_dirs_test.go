@@ -146,8 +146,9 @@ func TestDeleteTaskClearsAgentDirsBeforeReturningUID(t *testing.T) {
 	})
 }
 
-// TestRecoverTaskDeleteStages 는 시작할 때 작업 삭제의 임시 자리에 남은 것 가운데, 작업이 DB에서 지워진 것만 지우는지
-// 본다. 작업이 남아 있으면(DB 삭제 전에 멈춤) 그 파일은 아직 지우지 않은 작업의 것이라 둔다.
+// TestRecoverTaskDeleteStages 는 시작할 때 작업 삭제의 임시 자리에 남은 것 가운데, 작업 행이 DB에서 지워진 것만
+// 지우는지 본다. 작업 행이 남아 있으면(DB 삭제 전에 멈춤. 그 뒤 보관해 deleted_at만 찍힌 작업 포함) 그 파일은 아직
+// 지우지 않은 작업의 것이라 둔다. 임시 자리나 그 안의 링크는 링크만 지우고 대상은 따라가지 않는다.
 func TestRecoverTaskDeleteStages(t *testing.T) {
 	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
@@ -155,29 +156,73 @@ func TestRecoverTaskDeleteStages(t *testing.T) {
 	}
 	t.Cleanup(func() { m.Close() })
 	live, _ := newAgentUIDTestTask(t, m, "still registered")
+	archived, archivedID := newAgentUIDTestTask(t, m, "archived")
+	// 보관은 행을 남기고 deleted_at만 찍는다(db.task_archives_restore).
+	if _, err := m.PG().Exec(`UPDATE tasks SET deleted_at=now() WHERE id=$1`, archivedID); err != nil {
+		t.Fatal(err)
+	}
 	gone, goneID := newAgentUIDTestTask(t, m, "deleted")
 	if err := m.PG().DeleteTask(goneID); err != nil {
 		t.Fatal(err)
 	}
 	parent := filepath.Join(m.dir, taskDeleteStagingDir)
 	stages := map[string]bool{ // 이름 → 남아야 하는가
-		"task-" + live.ID + "-111": true,
-		"task-" + gone.ID + "-222": false,
-		"task-007-333":             true, // 작업 id 모양이 아니다
-		"other":                    true,
+		"task-" + live.ID + "-111":     true,
+		"task-" + archived.ID + "-444": true,
+		"task-" + gone.ID + "-222":     false,
+		"task-007-333":                 true, // 작업 id 모양이 아니다
+		"other":                        true,
 	}
 	for name := range stages {
 		if err := os.MkdirAll(filepath.Join(parent, name, "0-"+name, "work"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := recoverTaskDeleteStages(m.dir, m.PG()); err != nil {
+
+	// 링크: 지운 작업의 임시 자리 안에서 밖(살아 있는 작업의 파일, 데이터 디렉터리 밖)을 가리키는 링크와, 임시 자리 자체가
+	// 링크인 것. 지울 때 링크만 지우고 대상은 그대로여야 한다.
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "keep")
+	if err := os.WriteFile(outsideFile, []byte("KEEP-OUT"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	liveWork := filepath.Join(m.dir, "tasks", live.ID, "work")
+	if err := os.MkdirAll(liveWork, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	liveFile := filepath.Join(liveWork, "keep")
+	if err := os.WriteFile(liveFile, []byte("KEEP-LIVE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	goneWork := filepath.Join(parent, "task-"+gone.ID+"-222", "0-task-"+gone.ID+"-222", "work")
+	for name, target := range map[string]string{"to-live": liveWork, "to-outside": outside, "to-file": outsideFile} {
+		if err := os.Symlink(target, filepath.Join(goneWork, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkStages := map[string]string{ // 임시 자리 이름 → 가리키는 곳
+		"task-" + gone.ID + "-555": liveWork,
+		"task-" + gone.ID + "-666": outside,
+	}
+	for name, target := range linkStages {
+		if err := os.Symlink(target, filepath.Join(parent, name)); err != nil {
+			t.Fatal(err)
+		}
+		stages[name] = false
+	}
+
+	if err := recoverTaskDeleteStages(context.Background(), m.dir, m.PG()); err != nil {
 		t.Fatal(err)
 	}
 	for name, wantKept := range stages {
 		_, err := os.Lstat(filepath.Join(parent, name))
 		if kept := err == nil; kept != wantKept {
 			t.Errorf("%s kept = %v (%v), want %v", name, kept, err, wantKept)
+		}
+	}
+	for path, want := range map[string]string{liveFile: "KEEP-LIVE", outsideFile: "KEEP-OUT"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Errorf("link target %s = %q, %v; want %q", path, got, err, want)
 		}
 	}
 }

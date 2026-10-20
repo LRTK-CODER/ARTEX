@@ -260,7 +260,7 @@ func skippedArchiveWarning(skipped skippedEntries) string {
 	for i, name := range skipped.names {
 		quoted[i] = strconv.Quote(name)
 	}
-	warning := fmt.Sprintf("서버가 읽을 수 없는 항목 %d개를 보관하지 못했습니다(에이전트가 권한을 바꾼 파일·디렉터리, 복원해도 없습니다): %s",
+	warning := fmt.Sprintf("서버가 읽을 수 없는 항목 %d개를 보관하지 못했습니다(에이전트가 권한을 바꾼 파일·디렉터리. 파일은 복원해도 없고, 디렉터리는 빈 채로 복원됩니다): %s",
 		skipped.count, strings.Join(quoted, ", "))
 	if rest := skipped.count - len(skipped.names); rest > 0 {
 		warning += fmt.Sprintf(" 외 %d개", rest)

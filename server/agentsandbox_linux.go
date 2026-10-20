@@ -504,16 +504,42 @@ const oPath = 0x200000
 // O_PATH fd이고 이름은 root 기준 경로다. visit이 돌아오면 walkAgentOwnedDirs가 닫는다.
 type agentDirVisitor func(uid int, dirs []*os.File)
 
-// isAgentOwnedDir 는 RemoveAll이 쓰는 walkAgentOwnedDirs의 판단이다. 서버 uid 소유가 아니면 에이전트(다른 uid) 소유다.
-func isAgentOwnedDir(st *syscall.Stat_t) bool {
-	return int(st.Uid) != os.Getuid()
+// dirOwner 는 지우기 걷기(walkAgentOwnedDirs)가 디렉터리를 어떻게 다룰지 정하는 소유자 갈래다.
+type dirOwner int
+
+const (
+	dirOwnedByServer dirOwner = iota // 서버 uid 소유. 안으로 내려간다
+	dirOwnedByAgent                  // 도우미가 될 수 있는 uid 소유. 그 uid로 비운다
+	dirOwnedByOther                  // 그 밖(root 등). 건드리지 않고 호출자가 서버 uid로 지운다
+)
+
+// 도우미가 될 수 있는 uid의 범위다(cmd/artex-sandbox/policy.go의 minAgentID·maxAgentID와 같아야 한다). 이 밖의 uid로
+// 도우미를 띄우면 도우미가 거부한다.
+const (
+	helperMinUID = 20000
+	helperMaxUID = 29999
+)
+
+// agentDirOwner 는 RemoveAll·clearAgentOwned가 쓰는 walkAgentOwnedDirs의 판단이다. 서버 uid가 아니어도 도우미 허용
+// 범위 밖(운영자가 root로 넣은 파일, 바인드 마운트의 다른 사용자 파일)이면 에이전트가 만든 것이 아니므로 도우미에 넘기지
+// 않는다. 넘기면 도우미가 거부해 작업 삭제가 통째로 막힌다. 이런 디렉터리는 예전처럼 서버 uid로 지우고, 지우지 못하면
+// 호출자가 알린다(작업 삭제는 커밋 뒤 cleanup_warning).
+func agentDirOwner(st *syscall.Stat_t) dirOwner {
+	switch uid := int(st.Uid); {
+	case uid == os.Getuid():
+		return dirOwnedByServer
+	case uid >= helperMinUID && uid <= helperMaxUID:
+		return dirOwnedByAgent
+	default:
+		return dirOwnedByOther
+	}
 }
 
 // removeAgentOwned 는 path 아래의 에이전트 소유 디렉터리를 소유 uid마다 도우미로 비운다(clearAgentOwned). 도우미가 보고한
 // 오류는 모아 돌려주고, 걷기 오류는 따로 돌려준다.
 func (s *AgentSandbox) removeAgentOwned(ctx context.Context, path string) ([]error, error) {
 	var helperErrs []error
-	err := walkAgentOwnedDirs(path, isAgentOwnedDir, func(uid int, dirs []*os.File) {
+	err := walkAgentOwnedDirs(path, agentDirOwner, func(uid int, dirs []*os.File) {
 		if err := s.removeAsOwner(ctx, uid, dirs); err != nil {
 			helperErrs = append(helperErrs, err)
 		}
@@ -521,9 +547,10 @@ func (s *AgentSandbox) removeAgentOwned(ctx context.Context, path string) ([]err
 	return helperErrs, err
 }
 
-// walkAgentOwnedDirs 는 root 아래에서 에이전트 소유(isAgentOwned)인 디렉터리 가운데 가장 위의 것들을, 바로 위 서버
-// 소유 디렉터리마다 소유 uid별로 묶어(한 번에 agentRemoveBatch개까지) visit에 넘긴다(AgentSandbox.clearAgentOwned).
-// 에이전트 소유 디렉터리 안으로는 들어가지 않는다(그 안은 소유 uid가 지운다).
+// walkAgentOwnedDirs 는 root 아래에서 에이전트 소유(owner가 dirOwnedByAgent)인 디렉터리 가운데 가장 위의 것들을, 바로
+// 위 서버 소유 디렉터리마다 소유 uid별로 묶어(한 번에 agentRemoveBatch개까지) visit에 넘긴다(AgentSandbox.clearAgentOwned).
+// 에이전트 소유 디렉터리 안으로는 들어가지 않는다(그 안은 소유 uid가 지운다). 그 밖 소유(dirOwnedByOther) 디렉터리는
+// 넘기지도 내려가지도 않는다.
 //
 // 경로를 다시 풀지 않는다(#179). root를 링크를 따라가지 않고 연 뒤, 항목마다 부모 fd 기준으로 O_PATH|O_NOFOLLOW로
 // 열고 그 fd를 fstat해 소유자와 유형을 본다. 서버 소유 디렉터리는 그 fd에서 다시 열어(openat ".") 내려가고, 에이전트
@@ -531,17 +558,17 @@ func (s *AgentSandbox) removeAgentOwned(ctx context.Context, path string) ([]err
 // 디렉터리로 바뀌어도 root 밖으로 내려가거나 밖을 넘기지 않고, 링크는 건너뛴다. 열기 전에 사라진 항목은 건너뛴다.
 // 남은 것은 호출자가 다시 지울 때 오류로 보인다. 같은 디렉터리의 이름은 정렬한 순서로 보고, 묶음이 차지 않으면
 // 서버 소유 하위 디렉터리를 모두 걸은 뒤에 그 디렉터리의 묶음을 visit에 넘긴다.
-func walkAgentOwnedDirs(root string, isAgentOwned func(*syscall.Stat_t) bool, visit agentDirVisitor) error {
+func walkAgentOwnedDirs(root string, owner func(*syscall.Stat_t) dirOwner, visit agentDirVisitor) error {
 	fd, err := syscall.Open(root, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return &fs.PathError{Op: "open", Path: root, Err: err}
 	}
 	dir := os.NewFile(uintptr(fd), root)
 	defer dir.Close()
-	return walkAgentOwnedIn(dir, isAgentOwned, visit)
+	return walkAgentOwnedIn(dir, owner, visit)
 }
 
-func walkAgentOwnedIn(dir *os.File, isAgentOwned func(*syscall.Stat_t) bool, visit agentDirVisitor) error {
+func walkAgentOwnedIn(dir *os.File, owner func(*syscall.Stat_t) dirOwner, visit agentDirVisitor) error {
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", dir.Name(), err)
@@ -586,7 +613,11 @@ func walkAgentOwnedIn(dir *os.File, isAgentOwned func(*syscall.Stat_t) bool, vis
 			}
 			continue // 파일·링크는 서버가 부모에서 지운다
 		}
-		if isAgentOwned(&st) {
+		switch owner(&st) {
+		case dirOwnedByOther:
+			syscall.Close(pathFD)
+			continue
+		case dirOwnedByAgent:
 			uid := int(st.Uid)
 			if _, seen := dirsByUID[uid]; !seen {
 				uids = append(uids, uid)
@@ -605,7 +636,7 @@ func walkAgentOwnedIn(dir *os.File, isAgentOwned func(*syscall.Stat_t) bool, vis
 			return fmt.Errorf("open %s: %w", path, err)
 		}
 		child := os.NewFile(uintptr(childFD), path)
-		err = walkAgentOwnedIn(child, isAgentOwned, visit)
+		err = walkAgentOwnedIn(child, owner, visit)
 		child.Close()
 		if err != nil {
 			return err

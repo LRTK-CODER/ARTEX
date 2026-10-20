@@ -12,11 +12,55 @@ import (
 	"testing"
 )
 
-// agentMarkMode 는 단위 테스트에서 "에이전트 소유"를 표시하는 디렉터리 모드다. 테스트는 root가 아니라 다른 uid 소유
-// 디렉터리를 만들 수 없어, 소유자 대신 모드로 가른다. 서버 소유 디렉터리는 0755로 만든다.
-const agentMarkMode = 0o711
+// agentMarkMode·otherMarkMode 는 단위 테스트에서 "에이전트 소유"와 "그 밖 소유(root 등)"를 표시하는 디렉터리 모드다.
+// 테스트는 root가 아니라 다른 uid 소유 디렉터리를 만들 수 없어, 소유자 대신 모드로 가른다. 서버 소유 디렉터리는 0755로
+// 만든다. 실제 uid로 가르는 판단은 TestAgentDirOwner가 본다.
+const (
+	agentMarkMode = 0o711
+	otherMarkMode = 0o751
+)
 
-func isAgentMarked(st *syscall.Stat_t) bool { return st.Mode&0o777 == agentMarkMode }
+func isAgentMarked(st *syscall.Stat_t) dirOwner {
+	switch st.Mode & 0o777 {
+	case agentMarkMode:
+		return dirOwnedByAgent
+	case otherMarkMode:
+		return dirOwnedByOther
+	default:
+		return dirOwnedByServer
+	}
+}
+
+// TestAgentDirOwner 는 지우기 걷기가 도우미에 넘기는 디렉터리를 도우미 허용 범위(20000-29999) 안 uid 소유로 한정하는지
+// 본다(#179). 범위 밖(root 등) 소유를 넘기면 도우미가 거부해 파일을 지우는 작업 삭제가 409로 막힌다. 그런 디렉터리는
+// 서버 uid로 지우게 남긴다.
+func TestAgentDirOwner(t *testing.T) {
+	server := os.Getuid()
+	cases := []struct {
+		name string
+		uid  int
+		want dirOwner
+	}{
+		{"server", server, dirOwnedByServer},
+		{"root", 0, dirOwnedByOther},
+		{"below the helper range", helperMinUID - 1, dirOwnedByOther},
+		{"shared agent uid", helperMinUID, dirOwnedByAgent},
+		{"pool uid", 20001, dirOwnedByAgent},
+		{"top of the helper range", helperMaxUID, dirOwnedByAgent},
+		{"above the helper range", helperMaxUID + 1, dirOwnedByOther},
+		{"nobody", 65534, dirOwnedByOther},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.uid == server && tc.want != dirOwnedByServer {
+				t.Skipf("the test runs as uid %d", server)
+			}
+			if got := agentDirOwner(&syscall.Stat_t{Uid: uint32(tc.uid)}); got != tc.want {
+				t.Fatalf("agentDirOwner(uid %d) = %d, want %d", tc.uid, got, tc.want)
+			}
+		})
+	}
+}
 
 // visitedPaths 는 walkAgentOwnedDirs가 visit에 넘긴 디렉터리들의 root 기준 경로다.
 func visitedPaths(root string, dirs []*os.File) []string {
@@ -38,7 +82,7 @@ func mkdirMode(t *testing.T, path string, mode os.FileMode) {
 }
 
 // TestWalkAgentOwnedDirs 는 지우기 걷기가 서버 소유 디렉터리로만 내려가고, 에이전트 소유 디렉터리는 안으로 들어가지
-// 않고 바로 위 디렉터리마다 묶어 넘기며, 링크는 따라가지 않는지 본다(#179).
+// 않고 바로 위 디렉터리마다 묶어 넘기며, 그 밖 소유 디렉터리와 링크는 건너뛰는지 본다(#179).
 func TestWalkAgentOwnedDirs(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "stage")
 	mkdirMode(t, filepath.Join(root, "a", "agent1", "inner"), 0o755)
@@ -46,6 +90,9 @@ func TestWalkAgentOwnedDirs(t *testing.T) {
 	mkdirMode(t, filepath.Join(root, "a", "agent2"), agentMarkMode)
 	mkdirMode(t, filepath.Join(root, "b", "deep", "agent3"), agentMarkMode)
 	mkdirMode(t, filepath.Join(root, "top"), agentMarkMode)
+	// 그 밖 소유 디렉터리는 넘기지도, 안으로 내려가지도 않는다(안의 에이전트 디렉터리도 넘기지 않는다).
+	mkdirMode(t, filepath.Join(root, "rootdir", "agent4"), agentMarkMode)
+	mkdirMode(t, filepath.Join(root, "rootdir"), otherMarkMode)
 	outside := filepath.Join(t.TempDir(), "outside")
 	mkdirMode(t, filepath.Join(outside, "victim"), agentMarkMode)
 	if err := os.WriteFile(filepath.Join(root, "a", "file"), []byte("x"), 0o644); err != nil {

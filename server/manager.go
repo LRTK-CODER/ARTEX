@@ -1648,11 +1648,12 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 const taskDeleteStagingDir = ".delete-staging"
 
 // recoverTaskDeleteStages 는 시작할 때 작업 삭제의 임시 자리(.delete-staging/task-<id>-*)에 남은 것을 지운다. 커밋 뒤
-// 마무리(taskFileDeleteStage.commit)가 실패했거나 그 사이 서버가 멈추면 남는다. 작업이 DB에 남아 있으면(DB 삭제 전에
-// 멈춘 경우) 지우지 않고 기록만 남긴다. 그 파일은 아직 지우지 않은 작업의 것이다. 서버 uid로만 지운다. 에이전트가 권한을
+// 마무리(taskFileDeleteStage.commit)가 실패했거나 그 사이 서버가 멈추면 남는다. 작업 행이 DB에 남아 있으면(DB 삭제
+// 전에 멈춘 경우. 그 뒤 보관해 deleted_at이 찍힌 작업도 포함) 지우지 않고 기록만 남긴다. 그 파일은 아직 지우지 않은
+// 작업의 것이다. 서버 uid로만 지운다. 에이전트가 권한을
 // 바꾼 디렉터리는 DB 삭제 전에 비우므로(DeleteTask) 보통 남지 않는다. 지운 작업의 uid는 이미 다른 작업에 할당됐을 수
 // 있어 그 uid로 도우미를 띄우지 않는다.
-func recoverTaskDeleteStages(dataDir string, pg *pgdb.DB) error {
+func recoverTaskDeleteStages(ctx context.Context, dataDir string, pg *pgdb.DB) error {
 	parent := filepath.Join(dataDir, taskDeleteStagingDir)
 	entries, err := os.ReadDir(parent)
 	if os.IsNotExist(err) {
@@ -1669,13 +1670,13 @@ func recoverTaskDeleteStages(dataDir string, pg *pgdb.DB) error {
 			continue
 		}
 		id, _ := strconv.ParseInt(idText, 10, 64) // isCanonicalPositiveID가 확인했다
-		task, err := pg.GetTask(id)
+		exists, err := pg.TaskRowExists(ctx, id)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("look up task %d for %s: %w", id, entry.Name(), err))
 			continue
 		}
 		path := filepath.Join(parent, entry.Name())
-		if task != nil {
+		if exists {
 			log.Printf("[task-delete] 작업 %d가 아직 있어 삭제 임시 자리 %s를 지우지 않았다(삭제 도중 멈춘 것이다. 파일은 그 안에 있다)", id, path)
 			continue
 		}

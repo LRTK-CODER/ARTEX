@@ -288,7 +288,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	s.restoreTaskRuntimes()
 	go s.reconcileConcurrency()
 	if m.pg != nil {
-		if err := recoverTaskDeleteStages(m.dir, m.pg); err != nil {
+		if err := recoverTaskDeleteStages(ctx, m.dir, m.pg); err != nil {
 			log.Printf("[task-delete] 지운 작업의 임시 자리를 다 지우지 못했다: %v", err)
 		}
 	}

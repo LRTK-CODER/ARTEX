@@ -461,7 +461,7 @@ func (s *AgentSandbox) RemoveAll(ctx context.Context, path string) error {
 // clearAgentOwned 는 path 아래의 에이전트 소유 디렉터리를 소유 uid마다 도우미로 그 uid가 되어 비운다(#179). uid 분리를
 // 켜면 에이전트 uid 소유의 디렉터리가 있을 수 있고, 에이전트가 그 권한을 바꾸면(chmod 000, setfacl) 서버는 안을 비우지
 // 못한다. 서버에는 CAP_DAC_OVERRIDE·CAP_FOWNER가 없다. 빈 디렉터리와 서버가 지울 수 있는 나머지는 남기므로 호출자가
-// os.RemoveAll로 마저 지운다. 도우미는 늘 하던 대로 허용 범위 밖의 uid(0, 서버 uid 등)를 거부한다.
+// os.RemoveAll로 마저 지운다. 도우미 허용 범위 밖 uid(root 등) 소유 디렉터리는 넘기지 않고 남긴다(agentDirOwner).
 //
 // 걷기는 path부터 링크를 따라가지 않고 fd 기준으로 내려가고(walkAgentOwnedDirs), 도우미에는 경로 대신 걷기가 연 그
 // 디렉터리 fd를 넘긴다. 호출자는 그 작업 uid의 프로세스를 먼저 끝내고(StopProcesses), uid를 돌려주기 전에 부른다.
