@@ -75,8 +75,9 @@ type shareRule struct {
 }
 
 // 작업 공간 공유 규칙. 에이전트 그룹 쓰기는 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>/work,
-// tasks/<tid>/i<iid>)와 그 안에만 준다. 그 위(데이터 디렉터리, tasks/·sessions/·drafts/, tasks/<tid>)와 drafts·큰 출력
-// 디렉터리(cmd-output) 아래는 에이전트 그룹이 읽고 지나가기만 한다. 작업 공간의 부모에 쓰기가 있으면 에이전트가
+// tasks/<tid>/i<iid>)와 그 안에만 준다. 그 위(데이터 디렉터리, tasks/·sessions/·drafts/, tasks/<tid>)와 drafts, 큰 출력
+// 디렉터리(cmd-output), tasks/<tid> 아래의 다른 디렉터리(첨부 uploads, 끈 상태에서 planner가 만든 디렉터리) 아래는
+// 에이전트 그룹이 읽고 지나가기만 한다. 작업 공간의 부모에 쓰기가 있으면 에이전트가
 // 서버 소유 작업 공간을 옮기고 그 자리에 링크를 둘 수 있다. 배치는 agent의 sharedRunDirs가 정본이다.
 var (
 	ruleDataDir       = shareRule{add: 0o010, remove: 0o062}                 // 그룹 통과만. 나머지 항목(트래픽 저장소 등)을 지키려고 그룹 읽기·쓰기를 뺀다
@@ -90,11 +91,12 @@ var (
 // shareRuleFor 는 공유 디렉터리 top(tasks·sessions·drafts) 아래 depth 깊이(바로 아래가 1) 항목 name의 규칙과,
 // 그 아래가 에이전트 읽기 전용 영역인지를 돌려준다. readOnly는 위에서 이미 읽기 전용 영역에 들어왔는지다.
 func shareRuleFor(top string, depth int, name string, isDir, readOnly bool) (shareRule, bool) {
-	isToolOutput := isDir && name == agent.ToolOutputDirName && ((top == "tasks" && depth == 2) || (top == "sessions" && depth == 1))
-	readOnly = readOnly || top == "drafts" || isToolOutput
+	isSessionToolOutput := top == "sessions" && depth == 1 && isDir && name == agent.ToolOutputDirName
+	isTaskNonWorkspace := top == "tasks" && depth == 2 && isDir && !agent.IsTaskWorkspaceName(name)
+	readOnly = readOnly || top == "drafts" || isSessionToolOutput || isTaskNonWorkspace
 	switch {
 	case readOnly || (depth == 1 && !isDir):
-		// drafts는 작업 생성 전 첨부, cmd-output은 서버가 쓰는 큰 출력이라 에이전트는 읽기만 한다. tasks/·sessions/
+		// drafts와 uploads는 사용자 첨부, cmd-output은 서버가 쓰는 큰 출력이라 에이전트는 읽기만 한다. tasks/·sessions/
 		// 바로 아래 파일도 작업 공간 밖이다.
 		if isDir {
 			return ruleContainer, readOnly

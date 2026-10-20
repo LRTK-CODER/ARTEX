@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,7 +16,8 @@ import (
 
 // TestPrepareSharedWorkspace 는 작업 공간 공유 규칙(shareRuleFor)대로 권한이 맞춰지는지 본다. 에이전트 그룹 쓰기는
 // 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>/work, tasks/<tid>/i<iid>)와 그 안에만 있고, 그 위(tasks/<tid> 포함)와
-// drafts·큰 출력 디렉터리(cmd-output)는 읽고 지나가기만 한다. 예전 배치의 tasks/<tid> sticky·그룹 쓰기는 빠진다.
+// drafts·큰 출력 디렉터리(cmd-output)·tasks/<tid> 아래 다른 디렉터리(uploads 등)는 읽고 지나가기만 한다. 끝에서 그룹
+// 쓰기가 있는 항목 전체(find -perm -g=w)가 허용 목록과 같은지도 본다. 예전 배치의 tasks/<tid> sticky·그룹 쓰기는 빠진다.
 // 작업 공간 밖을 가리키는 링크(파일·디렉터리)를 따라가지 않고,
 // 밖의 서버 파일을 하드 링크로 들여온 것도 바꾸지 않는다. 테스트 사용자는 다른 그룹으로 chown할 수 없을 수 있어
 // 자기 주 그룹을 에이전트 그룹으로 쓴다(그룹 변경 자체는 컨테이너 확인에서 본다).
@@ -31,6 +33,12 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "i3", "notes.md"), 0o644)
 	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "plan.md"), 0o664)
 	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "work"), 0o755)
+	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "uploads"), 0o775)
+	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "uploads", "a.txt"), 0o664)
+	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "scans", "deep"), 0o777)
+	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "scans", "deep", "s.txt"), 0o666)
+	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "i03"), 0o775)
+	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "conv-1", "cmd-output"), 0o755)
 	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3"), 0o777)
 	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3", "output-1-1.txt"), 0o666)
 	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "cmd-output", "conv-1"), 0o777)
@@ -82,6 +90,13 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 		{path: filepath.Join(dataDir, "tasks", "7", "work"), want: setgid | 0o775},
 		{path: filepath.Join(dataDir, "tasks", "7", "i3"), want: setgid | 0o775},
 		{path: filepath.Join(dataDir, "tasks", "7", "i3", "notes.md"), want: 0o664},
+		{path: filepath.Join(dataDir, "tasks", "7", "uploads"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "tasks", "7", "uploads", "a.txt"), want: 0o644},
+		{path: filepath.Join(dataDir, "tasks", "7", "scans"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "tasks", "7", "scans", "deep"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "tasks", "7", "scans", "deep", "s.txt"), want: 0o644},
+		{path: filepath.Join(dataDir, "tasks", "7", "i03"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "sessions", "conv-1", "cmd-output"), want: setgid | 0o775},
 		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3", "output-1-1.txt"), want: 0o644},
@@ -104,6 +119,39 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 		if got := info.Mode() & (fs.ModePerm | fs.ModeSetgid | fs.ModeSticky); got != tc.want {
 			t.Errorf("%s mode = %v, want %v", tc.path, got, tc.want)
 		}
+	}
+
+	// 링크 자체의 권한 비트는 뜻이 없으므로 뺀다.
+	var groupWritable []string
+	err := filepath.WalkDir(dataDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&fs.ModeSymlink == 0 && info.Mode().Perm()&0o020 != 0 {
+			rel, err := filepath.Rel(dataDir, path)
+			if err != nil {
+				return err
+			}
+			groupWritable = append(groupWritable, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantWritable := []string{
+		"sessions/conv-1",
+		"sessions/conv-1/cmd-output",
+		"tasks/7/i3",
+		"tasks/7/i3/notes.md",
+		"tasks/7/work",
+	}
+	if !slices.Equal(groupWritable, wantWritable) {
+		t.Errorf("group-writable entries = %q, want %q", groupWritable, wantWritable)
 	}
 }
 

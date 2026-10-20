@@ -313,6 +313,21 @@ const ToolOutputDirName = "cmd-output"
 // taskWorkName 은 uid 분리를 켰을 때 planner·mainagent의 작업 디렉터리 이름이다(tasks/<taskID> 아래).
 const taskWorkName = "work"
 
+// IsTaskWorkspaceName 은 name이 uid 분리를 켰을 때 tasks/<taskID> 바로 아래의 에이전트 작업 디렉터리 이름(work,
+// i<intentID>)인지 본다. server의 작업 공간 권한 규칙이 이 이름에만 에이전트 그룹 쓰기를 준다. runDirPath가
+// 만드는 모양(앞에 0이 없는 양수)만 받는다.
+func IsTaskWorkspaceName(name string) bool {
+	if name == taskWorkName {
+		return true
+	}
+	digits, ok := strings.CutPrefix(name, "i")
+	if !ok {
+		return false
+	}
+	id, err := strconv.ParseInt(digits, 10, 64)
+	return err == nil && id > 0 && strconv.FormatInt(id, 10) == digits
+}
+
 // sharedRunDirs 는 uid 분리를 켰을 때(#165)의 배치를 디렉터리를 만들지 않고 돌려준다.
 //
 //	tasks/<taskID>                      서버만 쓴다(에이전트 그룹은 읽고 지나가기만)
