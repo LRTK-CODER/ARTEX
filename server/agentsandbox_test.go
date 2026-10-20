@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Autumn-27/artex/agent"
 )
 
 // writeFakeHelper 는 도우미 대신 쓸 셸 스크립트를 만든다. 실제 도우미와 같은 방식으로 "check"에 답한다.
@@ -36,8 +38,12 @@ func TestEnableAgentSandboxOffByDefault(t *testing.T) {
 	}
 	// 꺼져 있으면 서버가 띄우는 명령과 환경을 바꾸지 않는다.
 	name, args := sb.Command("npx", []string{"-y", "pkg"})
-	if name != "npx" || !reflect.DeepEqual(args, []string{"-y", "pkg"}) || sb.Env() != nil || sb.SharesWorkspace() {
-		t.Fatalf("nil sandbox changed the command: %s %v env=%v", name, args, sb.Env())
+	if name != "npx" || !reflect.DeepEqual(args, []string{"-y", "pkg"}) || sb.Env(nil) != nil || sb.SharedEnv() != nil || sb.SharesWorkspace() {
+		t.Fatalf("nil sandbox changed the command: %s %v env=%v shared=%v", name, args, sb.Env(nil), sb.SharedEnv())
+	}
+	// 꺼져 있으면 실행에 uid를 붙이지 않고 오류도 없다(DB를 보지 않는다).
+	if env, err := sb.RunEnv(context.Background(), nil, agent.RunInfo{TaskID: 1}); env != nil || err != nil {
+		t.Fatalf("nil sandbox RunEnv = %v, %v, want nil, nil", env, err)
 	}
 }
 
@@ -135,11 +141,35 @@ func TestAgentSandboxWrapsCommand(t *testing.T) {
 	if name != "/app/artex-sandbox" || !reflect.DeepEqual(args, []string{"exec", "--", "npx", "-y", "@playwright/mcp"}) {
 		t.Fatalf("Command = %s %v", name, args)
 	}
-	// 사용자가 MCP 설정에 같은 이름을 적어도 서버 설정이 이긴다. 도우미가 범위를 다시 보지만 다른 uid를 고르게 두지 않는다.
-	env := stdioMCPEnv(map[string]string{"TOKEN": "t", AgentUIDEnv: "0"}, sb)
-	want := map[string]string{"TOKEN": "t", AgentUIDEnv: "20000", AgentGIDEnv: "20001", AgentPathEnv: "/usr/bin:/bin"}
-	if !reflect.DeepEqual(env, want) {
-		t.Fatalf("stdioMCPEnv = %v, want %v", env, want)
+	cases := []struct {
+		name     string
+		identity []string
+		want     map[string]string
+	}{
+		{
+			// 사용자가 MCP 설정에 같은 이름을 적어도 서버 값이 이긴다. 실행의 uid와 공용 gid가 들어간다(#177).
+			name:     "run uid",
+			identity: sb.identityEnv(20005),
+			want:     map[string]string{"TOKEN": "t", AgentUIDEnv: "20005", AgentGIDEnv: "20001", AgentPathEnv: "/usr/bin:/bin"},
+		},
+		{
+			name:     "shared uid",
+			identity: sb.SharedEnv(),
+			want:     map[string]string{"TOKEN": "t", AgentUIDEnv: "20000", AgentGIDEnv: "20001", AgentPathEnv: "/usr/bin:/bin"},
+		},
+		{
+			// 실행의 uid를 싣지 못하면 사용자가 적은 값도 지운다. 도우미가 uid가 없다며 거부한다(fail closed).
+			name: "no identity",
+			want: map[string]string{"TOKEN": "t", AgentPathEnv: "/usr/bin:/bin"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := stdioMCPEnv(map[string]string{"TOKEN": "t", AgentUIDEnv: "0"}, sb.Env(tc.identity))
+			if !reflect.DeepEqual(env, tc.want) {
+				t.Fatalf("stdioMCPEnv = %v, want %v", env, tc.want)
+			}
+		})
 	}
 	if got := stdioMCPEnv(map[string]string{"TOKEN": "t"}, nil); !reflect.DeepEqual(got, map[string]string{"TOKEN": "t"}) {
 		t.Fatalf("stdioMCPEnv(off) = %v", got)
@@ -176,5 +206,20 @@ func writeExecutable(t *testing.T, path string, perm os.FileMode) {
 	}
 	if err := os.Chmod(path, perm); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 켠 뒤에는 서버 프로세스 환경에 공용 uid·gid가 남지 않는다(#177). norma와 서버는 자식 환경을 os.Environ()에서
+// 시작하므로, 남아 있으면 실행의 uid를 싣지 못한 길이 공용 uid로 돈다. 지우면 도우미가 uid가 없다며 거부한다.
+func TestClearAgentIdentityEnv(t *testing.T) {
+	t.Setenv(AgentUIDEnv, "20000")
+	t.Setenv(AgentGIDEnv, "20000")
+	if err := clearAgentIdentityEnv(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{AgentUIDEnv, AgentGIDEnv} {
+		if value, ok := os.LookupEnv(name); ok {
+			t.Fatalf("%s=%q left in the server environment", name, value)
+		}
 	}
 }

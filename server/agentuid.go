@@ -13,19 +13,23 @@ import (
 // agentUIDUnavailableMessage 는 에이전트 uid를 받지 못했을 때 작업 활동·대화에 보이는 문장이다.
 const agentUIDUnavailableMessage = "에이전트 명령을 돌릴 uid를 받지 못했습니다."
 
-// agentUIDBlocksRun 은 uid를 받지 못한 오류가 실행을 막아야 하는지 가린다. 풀 고갈만 막는다(#166).
-// 고갈은 작업이나 대화를 지우기 전에는 풀리지 않으니 기다리지 않고 원인을 보여 준다. 그 밖의 오류(DB 연결이
-// 잠깐 끊김, 서버 종료로 ctx 취소)는 일시적이라 실행을 막지 않고 다음 실행에서 다시 받는다. 1단계에서는 uid를
-// 실행에 쓰지 않으므로 이렇게 해야 동작이 #175와 같다.
+// agentUIDRetryHint 는 uid를 받지 못한 원인에 맞춰 사용자가 할 일을 알려 준다. 풀 고갈은 작업이나 대화를 지우기
+// 전에는 풀리지 않는다. 그 밖의 오류(DB 연결이 잠깐 끊김, 서버 종료로 ctx 취소)는 다시 하면 받을 수 있다.
 //
-// TODO: #177 - uid로 명령을 돌리기 시작하면 일시 오류 때 uid 없이 돌 수 없다. 그때 이 경우의 처리를 다시 정한다.
-func agentUIDBlocksRun(err error) bool {
-	return errors.Is(err, db.ErrAgentUIDPoolExhausted)
+// 어느 경우든 uid 없이 실행하지 않는다(#177). 명령이 공용 uid나 서버 uid로 떨어져 다른 작업의 프로세스·자료에
+// 닿을 수 있어서다.
+func agentUIDRetryHint(err error) string {
+	if errors.Is(err, db.ErrAgentUIDPoolExhausted) {
+		return "쓰지 않는 작업이나 대화를 지운 뒤 다시 시도하세요"
+	}
+	return "잠시 뒤 다시 시도하세요"
 }
 
-// reserveAgentUID 는 uid 분리를 켰을 때 작업이 에이전트 명령을 돌리기 전에 작업 uid를 받아 둔다(#166).
-// 풀이 바닥났으면 기다리지 않고 작업을 원인과 함께 failed로 끝내고 false를 돌려준다. 그 밖의 오류는 로그만
-// 남기고 true다(agentUIDBlocksRun). 꺼져 있으면 늘 true다.
+// reserveAgentUID 는 uid 분리를 켰을 때 작업이 에이전트 명령을 돌리기 전에 작업 uid를 받아 둔다(#166). 받지 못하면
+// 작업 루프를 시작하지 않고 원인을 활동에 남긴 뒤 false를 돌려준다.
+//
+// 풀이 바닥났으면 기다리지 않고 작업을 failed로 끝낸다. 그 밖의 오류는 일시적이라 작업 상태를 바꾸지 않는다. 작업을
+// 다시 열거나 재개하면(Engine.Run) 다시 받는다. 꺼져 있으면 늘 true다.
 func (e *Engine) reserveAgentUID(ctx context.Context, t *Task) bool {
 	if e.sandbox == nil {
 		return true
@@ -37,9 +41,12 @@ func (e *Engine) reserveAgentUID(ctx context.Context, t *Task) bool {
 	if err == nil {
 		return true
 	}
-	if !agentUIDBlocksRun(err) {
-		log.Printf("[engine] task %s 에이전트 uid를 받지 못했으나 일시 오류로 보고 그대로 시작함(다음 실행에서 다시 받음): %v", t.ID, err)
-		return true
+	if !errors.Is(err, db.ErrAgentUIDPoolExhausted) {
+		log.Printf("[engine] task %s 에이전트 uid를 받지 못해 이번 실행을 멈춤(상태 유지, 다음 실행에서 다시 받음): %v", t.ID, err)
+		e.emitActivity(t, db.Activity{Worker: "system", Kind: "text", IsError: true,
+			Summary: agentUIDUnavailableMessage + " 이번 실행을 멈춥니다. 작업을 다시 열거나 재개하면 다시 받습니다",
+			Detail:  err.Error()})
+		return false
 	}
 	won, setErr := e.m.SetTaskStatusGuarded(t.ID, "failed")
 	switch {
@@ -48,7 +55,7 @@ func (e *Engine) reserveAgentUID(ctx context.Context, t *Task) bool {
 	case won:
 		log.Printf("[engine] task %s 에이전트 uid를 받지 못해 failed로 끝냄: %v", t.ID, err)
 		e.emitActivity(t, db.Activity{Worker: "system", Kind: "text", IsError: true,
-			Summary: agentUIDUnavailableMessage + " 작업을 실패로 끝냅니다. 쓰지 않는 작업이나 대화를 지운 뒤 다시 시작하세요",
+			Summary: agentUIDUnavailableMessage + " 작업을 실패로 끝냅니다. " + agentUIDRetryHint(err),
 			Detail:  err.Error()})
 		e.cancelExec(t.ID, agent.Causef("agent_uid_unavailable", "에이전트 uid를 받지 못해 작업이 실패로 끝남",
 			"%v", err))

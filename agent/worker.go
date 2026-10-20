@@ -500,6 +500,10 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// 쪽이라 단일 mandate가 없고, worker는 있다. [전역 태세 overview]만 시작 user 메시지에 남긴다 —
 	// 그것은 격하 가능하고 stale를 견디며 눌려도 무방하다.
 	// 이번 의도의 전용 작업 디렉터리 <workDir>/tasks/<taskID>/i<intentID> 는 엔진 쪽에서 먼저 만든다.
+	bashEnv, err := def.commandEnv(proxyEnv(w.proxyAddr, w.proxyCACert))
+	if err != nil {
+		return "", WriteCounts{}, err
+	}
 	dirs, err := ensureRunDir(w.workDir, taskID, intent.ID, def.ShareWritesWithGroup)
 	if err != nil {
 		return "", WriteCounts{}, err
@@ -566,7 +570,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		DeepSeekSearchModel:   w.webSearch.DeepSeekModel,
 		WebSearchProxy:        w.webSearch.Proxy,
 		// Bash 하위 명령의 HTTP는 기본으로 기록 프록시를 타고 그 CA를 신뢰한다(도구에 -x/-k가 필요 없다).
-		BashEnv:    proxyEnv(w.proxyAddr, w.proxyCACert),
+		BashEnv:    bashEnv,
 		WorkingDir: runDir,
 		MaxTurns:   w.maxTurns, // 0 = unlimited (configurable in agent management)
 		// 벽시계 예산. 회합 경계에서 판정하며 중간에 끊지 않는다. 0 = 제한 없음. 작업 단위 deadline이 있으면

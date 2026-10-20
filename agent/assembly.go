@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"slices"
 
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -27,6 +28,21 @@ type DeferredInfo struct {
 	// ShareWritesWithGroup 은 파일 도구가 쓴 파일에 그룹 쓰기를 더할지다. 에이전트 명령이 다른 uid로 돌 때(#165)
 	// 서버 uid로 도는 Write가 만든 파일을 에이전트가 그룹 권한으로 고칠 수 있게 한다.
 	ShareWritesWithGroup bool
+	// CommandEnv 는 이 실행의 에이전트 명령(Bash 동기·백그라운드, shell_open, 명령형·python 사용자 지정 도구)에 덧붙일
+	// 환경 변수(KEY=VALUE)다. uid 분리를 켜면 작업·세션에 할당한 uid·gid가 든다(#177).
+	CommandEnv []string
+	// CommandErr 는 uid 분리를 켰는데 이 실행의 uid를 받지 못한 원인이다. nil이 아니면 에이전트는 실행을 시작하지
+	// 않는다(commandEnv). uid 없이 돌면 명령이 공용 uid나 서버 uid로 떨어질 수 있어서다.
+	CommandErr error
+}
+
+// commandEnv 는 base(프록시 환경)에 CommandEnv를 붙인 BashEnv다. norma는 os.Environ() 뒤에 이 값을 붙이고 Go exec는
+// 같은 이름 중 마지막 값을 쓰므로, CommandEnv를 맨 뒤에 둬 uid·gid가 이기게 한다. CommandErr가 있으면 그것을 올린다.
+func (d DeferredInfo) commandEnv(base []string) ([]string, error) {
+	if d.CommandErr != nil {
+		return nil, d.CommandErr
+	}
+	return slices.Concat(base, d.CommandEnv), nil
 }
 
 // ToolAugment, if set, returns the EXTRA tools an agent should see beyond its

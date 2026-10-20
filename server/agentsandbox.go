@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -21,13 +22,15 @@ import (
 //
 // 서버와 에이전트 명령이 같은 uid면 프롬프트 주입을 당한 에이전트가 서버 키(<키 디렉터리>/oauth.key),
 // /proc/<서버 pid>/environ(DB DSN, API 키), 실행 파일 옆 업데이트 경로에 닿는다. 이 기능을 켜면 에이전트
-// 명령은 도우미(cmd/artex-sandbox)를 거쳐 설정한 uid·gid로 돈다.
+// 명령은 도우미(cmd/artex-sandbox)를 거쳐 그 작업·대화형 세션에 할당한 uid(#166 풀)와 공용 에이전트 gid로 돈다(#177).
+// 설정한 공용 uid(AgentUIDEnv)는 작업·세션에 속하지 않는 명령(설정 화면의 MCP 도구 목록, 사용자 지정 도구 시험)에만 쓴다.
 //
 //   - norma의 Bash(동기·백그라운드)·Monitor·shell_open·명령형 사용자 지정 도구: PATH에서 bash를 찾으므로 서버의
 //     PATH를 도우미를 가리키는 bash 링크 하나만 든 셸 대체 디렉터리로 바꾼다(norma는 고치지 않는다). 원래 PATH는
 //     AgentPathEnv로 넘기고 도우미가 권한을 버린 뒤 되돌린다. 셸 대체 링크가 없어지면 bash를 찾지 못해 명령이
 //     실패한다. 서버 uid의 진짜 bash로 넘어가는 길이 없다.
-//   - stdio MCP, 사용자 지정 python 도구: 서버가 직접 띄우므로 "도우미 exec -- <명령>"으로 감싼다.
+//     uid·gid는 실행마다 BashEnv(norma ToolContext.Env)로 넘긴다(RunEnv).
+//   - stdio MCP, 사용자 지정 python 도구: 서버가 직접 띄우므로 "도우미 exec -- <명령>"으로 감싸고 그 실행의 uid·gid를 넘긴다.
 //   - 파일 도구(Read/Write 등)는 서버 프로세스 안에서 서버 uid로 돈다. 경로 제한(agent/filescope.go)이 맡는다.
 //
 // 기능은 기본 꺼짐이다. AgentUIDEnv·AgentGIDEnv가 둘 다 비어 있으면 아무것도 바꾸지 않는다.
@@ -84,7 +87,8 @@ type AgentSandbox struct {
 // 켜져 있으면 다음을 하고, 하나라도 실패하면 원인을 담은 오류를 올린다(조용히 끄지 않는다).
 // 도우미 자기 검사, 서버의 CAP_KILL 켜기(다른 uid가 된 자식을 시간 초과·TaskStop에서 죽이려면 필요하다),
 // 작업 공간을 에이전트 그룹의 setgid 디렉터리로 맞추기, umask 002, 셸 대체 디렉터리 확인(없으면 만들기),
-// 서버 PATH를 셸 대체 디렉터리 하나로 바꾸기, 그 PATH로 bash를 실행해 에이전트 uid가 나오는지 확인.
+// 서버 PATH를 셸 대체 디렉터리 하나로 바꾸기, 그 PATH로 bash를 실행해 에이전트 uid가 나오는지 확인, 프로세스
+// 환경에서 공용 uid·gid 지우기(clearAgentIdentityEnv).
 //
 // 프로세스 환경(PATH)과 umask를 바꾸므로 에이전트가 자식 프로세스를 띄우기 전, 시작할 때 한 번만 부른다.
 func EnableAgentSandbox(ctx context.Context, cfg AgentSandboxConfig) (*AgentSandbox, error) {
@@ -126,6 +130,9 @@ func EnableAgentSandbox(ctx context.Context, cfg AgentSandboxConfig) (*AgentSand
 		return nil, err
 	}
 	if err := checkShellIdentity(ctx, uid); err != nil {
+		return nil, err
+	}
+	if err := clearAgentIdentityEnv(); err != nil {
 		return nil, err
 	}
 	return &AgentSandbox{helper: helper, uid: uid, gid: gid, shellDir: shellDir, agentPath: agentPath}, nil
@@ -223,6 +230,18 @@ func checkShellIdentity(ctx context.Context, uid int) error {
 	return nil
 }
 
+// clearAgentIdentityEnv 는 프로세스 환경에서 공용 uid·gid를 지운다(#177). norma와 서버는 자식 환경을 os.Environ()에
+// 실행의 값을 덧붙여 만든다. 남겨 두면 실행의 uid를 싣지 못한 길(배선 누락)이 공용 uid로 조용히 돈다. 지우면 도우미가
+// "ARTEX_AGENT_UID is not set"으로 거부한다(fail closed).
+func clearAgentIdentityEnv() error {
+	for _, name := range []string{AgentUIDEnv, AgentGIDEnv} {
+		if err := os.Unsetenv(name); err != nil {
+			return fmt.Errorf("unset %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // Command 는 서버가 직접 띄우는 에이전트 명령(stdio MCP, python 도구)을 도우미로 감싼다. 꺼져 있으면 그대로다.
 func (s *AgentSandbox) Command(name string, args []string) (string, []string) {
 	if s == nil {
@@ -231,12 +250,63 @@ func (s *AgentSandbox) Command(name string, args []string) (string, []string) {
 	return s.helper, append([]string{"exec", "--", name}, args...)
 }
 
-// Env 는 감싼 명령에 넘길 환경 변수다. 도우미는 이 값으로 대상 uid·gid와 PATH를 정한다. 꺼져 있으면 nil이다.
-func (s *AgentSandbox) Env() map[string]string {
+// Env 는 감싼 명령(stdio MCP, python 도구)에 넘길 환경 변수다. identity(RunEnv·SharedEnv의 KEY=VALUE)에 원래
+// PATH를 더한다. 도우미는 이 값으로 대상 uid·gid와 PATH를 정한다. identity가 비면 uid·gid가 없어 도우미가 거부한다.
+// 꺼져 있으면 nil이다.
+func (s *AgentSandbox) Env(identity []string) map[string]string {
 	if s == nil {
 		return nil
 	}
-	return map[string]string{AgentUIDEnv: strconv.Itoa(s.uid), AgentGIDEnv: strconv.Itoa(s.gid), AgentPathEnv: s.agentPath}
+	env := map[string]string{AgentPathEnv: s.agentPath}
+	for _, kv := range identity {
+		if name, value, ok := strings.Cut(kv, "="); ok {
+			env[name] = value
+		}
+	}
+	return env
+}
+
+// identityEnv 는 uid와 공용 에이전트 gid를 도우미가 읽는 환경 변수로 만든다. 작업 gid는 #182에서 나눈다.
+func (s *AgentSandbox) identityEnv(uid int) []string {
+	return []string{AgentUIDEnv + "=" + strconv.Itoa(uid), AgentGIDEnv + "=" + strconv.Itoa(s.gid)}
+}
+
+// SharedEnv 는 작업·대화형 세션에 속하지 않는 명령(설정 화면의 MCP 도구 목록, 사용자 지정 도구 시험)에 넘길 공용
+// uid·gid다. 꺼져 있으면 nil이다.
+func (s *AgentSandbox) SharedEnv() []string {
+	if s == nil {
+		return nil
+	}
+	return s.identityEnv(s.uid)
+}
+
+// errRunWithoutOwner 는 uid 분리를 켰는데 에이전트 실행이 작업에도 대화형 세션에도 속하지 않을 때 올린다.
+var errRunWithoutOwner = errors.New("the agent run belongs to no task or conversation")
+
+// RunEnv 는 에이전트 실행 ri의 명령에 넘길 uid·gid(KEY=VALUE)다(#177). 작업 실행은 작업 uid, 대화형 세션은 세션 uid를
+// 받는다. 받지 못하면(풀 고갈, DB 오류, 속한 곳 없음) 오류다. 호출자는 그 실행을 시작하지 않는다. 꺼져 있으면 nil, nil이다.
+func (s *AgentSandbox) RunEnv(ctx context.Context, pg *db.DB, ri agent.RunInfo) ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	var uid int
+	var err error
+	switch {
+	case ri.TaskID > 0:
+		uid, err = s.TaskUID(ctx, pg, ri.TaskID)
+	case ri.SessionID != "":
+		conversationID, ok := conversationIDFromSessionKey(ri.SessionID)
+		if !ok {
+			return nil, fmt.Errorf("session %q: %w", ri.SessionID, errRunWithoutOwner)
+		}
+		uid, err = s.ConversationUID(ctx, pg, conversationID)
+	default:
+		err = errRunWithoutOwner
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.identityEnv(uid), nil
 }
 
 // LookPath 는 에이전트 명령의 PATH(기능을 켜기 전의 PATH)에서 file을 찾는다. 켜면 서버 PATH에는 셸 대체만 있어
@@ -273,8 +343,6 @@ func (s *AgentSandbox) ShellDir() string {
 
 // TaskUID 는 켜져 있으면 작업의 에이전트 uid를 DB 풀에서 받는다(#166). 이미 받았으면 같은 값이다. 꺼져 있으면
 // 0, nil이다. 풀이 비면 db.ErrAgentUIDPoolExhausted를 올린다.
-//
-// TODO: #177 - 지금은 받기만 하고 명령은 여전히 공용 에이전트 uid(AgentUIDEnv)로 돈다.
 func (s *AgentSandbox) TaskUID(ctx context.Context, pg *db.DB, taskID int64) (int, error) {
 	if s == nil {
 		return 0, nil
