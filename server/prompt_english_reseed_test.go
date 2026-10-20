@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -43,7 +44,7 @@ func seedTestAgent(t *testing.T, pg *db.DB, key, body string) *db.Agent {
 // 바뀌고, 사용자가 고친 행은 그대로이며, 두 번 돌려도 같음을 확인한다(#102).
 func TestMigratePromptsToEnglish(t *testing.T) {
 	skipWithoutPostgres(t)
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres not configured: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -13,7 +14,7 @@ import (
 // 잡는다. 이 패키지 테스트의 db.Open이 스키마 DDL을 다시 적용하는데, 다른 패키지
 // 테스트와 겹치면 `go test ./...`에서 그쪽 질의와 교착(deadlock)이 난다.
 func TestMain(m *testing.M) {
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		os.Exit(m.Run())
 	}

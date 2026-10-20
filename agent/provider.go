@@ -15,7 +15,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -142,17 +141,20 @@ func compactionConfig(windowTokens int) *compaction.Config {
 	return &compaction.Config{ContextWindow: windowTokens}
 }
 
-// FromEnv resolves the LLM provider config:
+// FromEnv 는 환경 변수 값으로 LLM 제공자 설정을 정한다.
 //
-//	ARTEX_LLM_PROVIDER = anthropic|openai (default: inferred from keys)
-//	ARTEX_LLM_MODEL    = model id        (default: per provider)
-//	ARTEX_LLM_BASE_URL = endpoint        (optional)
-//	ARTEX_LLM_PROXY    = proxy URL        (optional; http/https/socks5)
-//	ANTHROPIC_API_KEY / OPENAI_API_KEY         = credentials
-func FromEnv() (Config, bool) {
-	prov := os.Getenv("ARTEX_LLM_PROVIDER")
-	anthKey := os.Getenv("ANTHROPIC_API_KEY")
-	oaiKey := os.Getenv("OPENAI_API_KEY")
+//	ARTEX_LLM_PROVIDER = anthropic|openai (기본: 키로 추정)
+//	ARTEX_LLM_MODEL    = 모델 id        (기본: 제공자별)
+//	ARTEX_LLM_BASE_URL = 엔드포인트        (선택)
+//	ARTEX_LLM_PROXY    = 프록시 URL        (선택, http/https/socks5)
+//	ANTHROPIC_API_KEY / OPENAI_API_KEY         = 자격 증명
+//
+// getenv는 변수 이름으로 값을 찾는다. 서버는 os.Getenv가 아니라 시작할 때 읽어 두고 환경에서 지운
+// 값(config.SecretEnv.Get)을 넘긴다. 환경에 남기면 에이전트 자식 프로세스가 키를 물려받는다.
+func FromEnv(getenv func(string) string) (Config, bool) {
+	prov := getenv("ARTEX_LLM_PROVIDER")
+	anthKey := getenv("ANTHROPIC_API_KEY")
+	oaiKey := getenv("OPENAI_API_KEY")
 
 	if prov == "" {
 		switch {
@@ -166,11 +168,11 @@ func FromEnv() (Config, bool) {
 	}
 
 	c := Config{
-		BaseURL: os.Getenv("ARTEX_LLM_BASE_URL"),
-		Model:   os.Getenv("ARTEX_LLM_MODEL"),
-		Proxy:   strings.TrimSpace(os.Getenv("ARTEX_LLM_PROXY")),
+		BaseURL: getenv("ARTEX_LLM_BASE_URL"),
+		Model:   getenv("ARTEX_LLM_MODEL"),
+		Proxy:   strings.TrimSpace(getenv("ARTEX_LLM_PROXY")),
 		// 기본은 스트리밍이다. ARTEX_LLM_STREAM=false/0/off로 명시해 끄면 비스트리밍을 탄다.
-		Stream: !isFalsy(os.Getenv("ARTEX_LLM_STREAM")),
+		Stream: !isFalsy(getenv("ARTEX_LLM_STREAM")),
 	}
 	switch prov {
 	case "openai":

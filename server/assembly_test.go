@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -26,7 +27,7 @@ func hasSkillTool(tools []actool.CoreTool) bool {
 // ToolAugment hook. Skills live on disk under skillDir; visibility is a per-agent
 // (agent × skill_name) row keyed by the skill's directory name.
 func TestAssembleVisibleSkill(t *testing.T) {
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("no database config (%v) — skipping", err)
 	}

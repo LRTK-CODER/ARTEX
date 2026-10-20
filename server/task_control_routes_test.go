@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/Autumn-27/artex/config"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,7 +9,7 @@ import (
 )
 
 func TestWorkerControlRoutes(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}

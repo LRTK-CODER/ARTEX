@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/Autumn-27/artex/config"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestApplySchemaRetriesOnlyDeadlocks(t *testing.T) {
 // nor a config file supplies one (DSN no longer has a built-in default).
 func testDSN(t *testing.T) string {
 	t.Helper()
-	dsn, _, err := DSN()
+	dsn, _, err := DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("no database config (%v) — skipping", err)
 	}

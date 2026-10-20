@@ -8,12 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Autumn-27/artex/config"
 	pgdb "github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/traffic"
 )
 
 func TestSeedAssociatesTargetAssetWithTask(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}
@@ -172,7 +173,7 @@ func TestStageTaskFilesRollbackReportsRestoreFailure(t *testing.T) {
 
 func TestManagerDeleteTaskRestoresFilesAndTrafficWhenPostgresDeleteFails(t *testing.T) {
 	dataDir := t.TempDir()
-	m, err := NewManager(dataDir, "")
+	m, err := NewManager(dataDir, "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}
