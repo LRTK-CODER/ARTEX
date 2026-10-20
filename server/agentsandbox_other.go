@@ -9,6 +9,8 @@ func enableKillCapability() error { return ErrAgentSandboxUnsupported }
 
 func setSharedUmask() {}
 
+func checkWorkspaceACL(string, int, aclSetter) error { return ErrAgentSandboxUnsupported }
+
 func prepareSharedWorkspace(string, int) error { return ErrAgentSandboxUnsupported }
 
 func installShellDir(string, string) (string, error) { return "", ErrAgentSandboxUnsupported }

@@ -3,14 +3,17 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/Autumn-27/artex/agent"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -379,5 +382,55 @@ func writeFileWithMode(t *testing.T, path string, perm fs.FileMode) {
 	}
 	if err := os.Chmod(path, perm); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestCheckWorkspaceACL 은 데이터 디렉터리 ACL 자기 검사(#182)를 본다. 지원하면 통과하고, ACL을 지원하지 않거나
+// (ENOTSUP), uid 항목을 거부하거나(EINVAL), 쓰기가 성공했다고 하고 남지 않으면 원인이 적힌 오류로 멈춘다. 어느
+// 경우든 검사 디렉터리를 남기지 않는다. 실패 경로는 파일 시스템을 바꿀 수 없어 쓰는 함수를 바꿔 낸다.
+func TestCheckWorkspaceACL(t *testing.T) {
+	const uid = 20000
+	failWith := func(errno syscall.Errno) aclSetter {
+		return func(*os.File, agent.ACLKind, agent.ACL) error { return errno }
+	}
+	cases := []struct {
+		name    string
+		setACL  aclSetter
+		wantIs  error
+		wantMsg string
+	}{
+		{name: "supported", setACL: agent.SetACL},
+		{name: "unsupported", setACL: failWith(syscall.EOPNOTSUPP), wantIs: syscall.ENOTSUP, wantMsg: "does not support POSIX ACLs"},
+		{name: "uid rejected", setACL: failWith(syscall.EINVAL), wantIs: syscall.EINVAL, wantMsg: "rejected a POSIX ACL entry for uid 20000"},
+		{name: "silently dropped", setACL: func(*os.File, agent.ACLKind, agent.ACL) error { return nil },
+			wantIs: agent.ErrNoACL, wantMsg: "did not keep it"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dataDir := filepath.Join(t.TempDir(), "data")
+			err := checkWorkspaceACL(dataDir, uid, tc.setACL)
+			if tc.wantIs == nil && errors.Is(err, syscall.ENOTSUP) {
+				t.Skipf("temp dir file system does not support POSIX ACLs: %v", err)
+			}
+			if tc.wantIs == nil {
+				if err != nil {
+					t.Fatalf("checkWorkspaceACL: %v", err)
+				}
+			} else {
+				if !errors.Is(err, tc.wantIs) {
+					t.Fatalf("err = %v, want it to wrap %v", err, tc.wantIs)
+				}
+				if !strings.Contains(err.Error(), tc.wantMsg) || !strings.Contains(err.Error(), dataDir) {
+					t.Fatalf("err = %q, want it to name %q and the data dir", err, tc.wantMsg)
+				}
+			}
+			entries, err := os.ReadDir(dataDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("data dir has %d leftover entries (first %q), want none", len(entries), entries[0].Name())
+			}
+		})
 	}
 }
