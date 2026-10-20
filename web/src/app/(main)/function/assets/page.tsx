@@ -421,7 +421,7 @@ export default function AssetsPage() {
         <TabsContent value="root_domain" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "도메인", "ICP 등록 번호", "소속 기업", ""]}
+            cols={["", "도메인", "소속 기업", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -438,7 +438,6 @@ export default function AssetsPage() {
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
                 </TableCell>
                 <TableCell className="font-mono text-xs font-medium">{a.domain}</TableCell>
-                <TableCell className="text-xs">{a.icp || "—"}</TableCell>
                 <TableCell className="text-xs">
                   {companyName(a.company_id) || <span className="text-muted-foreground">소속 없음</span>}
                 </TableCell>
@@ -551,7 +550,7 @@ export default function AssetsPage() {
         <TabsContent value="app" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "애플리케이션 이름", "Bundle ID", "분류", "ICP 등록 번호", ""]}
+            cols={["", "애플리케이션 이름", "Bundle ID", "분류", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -570,7 +569,6 @@ export default function AssetsPage() {
                 <TableCell className="text-xs font-medium">{a.app_name || "—"}</TableCell>
                 <TableCell className="font-mono text-xs">{a.bundle_id || "—"}</TableCell>
                 <TableCell className="text-xs">{a.category || "—"}</TableCell>
-                <TableCell className="text-xs">{a.app_icp || "—"}</TableCell>
                 <TableCell className="w-8 pl-0">
                   <Button
                     variant="ghost"
@@ -1107,8 +1105,7 @@ function EditScopeDialog({ company, onSaved }: { company: Company; onSaved: () =
         <DialogHeader>
           <DialogTitle>자산 범위 편집 · {company.name}</DialogTitle>
           <DialogDescription>
-            저장하면 기존 범위를 모두 바꿉니다. ICP 등록 번호는 정확히 일치하는 자산을 기업에 소속시키고, 기업 키워드는
-            에이전트 힌트로만 쓰입니다.
+            저장하면 기존 범위를 모두 바꿉니다. 기업 키워드는 에이전트 힌트로만 쓰입니다.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">
@@ -1191,8 +1188,7 @@ function AppendScopeDialog({ company, onSaved }: { company: Company; onSaved: ()
         <DialogHeader>
           <DialogTitle>자산 범위 추가 · {company.name}</DialogTitle>
           <DialogDescription>
-            새 범위를 기존 범위에 더합니다. ICP 등록 번호는 정확히 일치하는 자산을 기업에 소속시키고, 기업 키워드는
-            에이전트 힌트로만 쓰입니다.
+            새 범위를 기존 범위에 더합니다. 기업 키워드는 에이전트 힌트로만 쓰입니다.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className="py-2">

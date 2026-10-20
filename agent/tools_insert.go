@@ -81,7 +81,7 @@ type assetInputItem struct {
 
 	// ---- root_domain / subdomain ----
 	Domain      string   `json:"domain"`
-	ICP         string   `json:"icp"`
+	ICP         string   `json:"icp"` // 호환용. ICP 등록 번호는 한국 사용에서 쓰지 않아 도구 스키마에 싣지 않는다(#192)
 	RecordType  string   `json:"record_type"`
 	RecordValue []string `json:"record_value"`
 
@@ -95,7 +95,7 @@ type assetInputItem struct {
 	BundleID    string `json:"bundle_id"`
 	Category    string `json:"category"`
 	Description string `json:"description"`
-	AppICP      string `json:"app_icp"`
+	AppICP      string `json:"app_icp"`    // 호환용. 도구 스키마에 싣지 않는다(#192)
 	CompanyID   *int64 `json:"company_id"` // explicit company link (app only; others auto-attribute via scope)
 
 	// ---- service (http) ----
@@ -139,7 +139,6 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 					},
 					// root_domain / subdomain
 					"domain":      str("root domain or subdomain (required for root_domain/subdomain)"),
-					"icp":         str("ICP filing number (optional)"),
 					"record_type": str("DNS record type: A/AAAA/CNAME/MX, etc. (optional for subdomain)"),
 					"record_value": map[string]any{
 						"type":        "array",
@@ -166,7 +165,6 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 					"bundle_id":   str("Bundle ID (optional for the app type)"),
 					"category":    str("app category (optional)"),
 					"description": str("app description (optional)"),
-					"app_icp":     str("app ICP filing (optional)"),
 					"company_id":  intp("owning company id (optional for the app type; an app cannot be auto-attributed via scope and must be specified explicitly; the id is returned by add_company_scope)"),
 					// service (http)
 					"url":         str("full URL including protocol and port (required for an HTTP service; service_type is auto-set to http)"),
@@ -377,14 +375,14 @@ func (t *ToolSet) insertAssets() actool.CoreTool {
 func (t *ToolSet) addCompanyScope() actool.CoreTool {
 	return writeTool(
 		"add_company_scope",
-		"Add a domain/IP/CIDR/ICP filing/company keyword to a company's [asset scope] -- domains, networks, and ICP automatically claim matching assets, while a keyword only serves the agent as a scope hint.\n"+
+		"Add a domain/IP/CIDR/company keyword to a company's [asset scope] -- domains and networks automatically claim matching assets, while a keyword only serves the agent as a scope hint.\n"+
 			"Company name is unique: if company does not exist it is created, if it exists it is reused (only merging the scope in).\n"+
-			"scope: one per line, auto-detected by the system: root domain / URL / single IP / CIDR range / ICP filing / company keyword.\n"+
+			"scope: one per line, auto-detected by the system: root domain / URL / single IP / CIDR range / company keyword.\n"+
 			"Always provide reason explaining the attribution basis (whois/certificate/ASN, etc.).\n"+
 			"Guardrails: a bare TLD and an overly broad range are rejected (the IPv4 prefix must be /16-/32, the IPv6 prefix /32-/128); invalid lines are skipped and returned in errors.",
 		obj(map[string]any{
 			"company": str("company name (created if absent, reused if present; the name is unique)"),
-			"scope":   str("asset scope, one per line: domain / URL / IP / CIDR / ICP filing / company keyword"),
+			"scope":   str("asset scope, one per line: domain / URL / IP / CIDR / company keyword"),
 			"reason":  str("attribution basis (evidence/source); always fill it in"),
 			"logo":    str("company icon URL (optional; takes effect only when creating a company)"),
 		}, "company", "scope"),
@@ -432,14 +430,14 @@ func (t *ToolSet) addTaskScope() actool.CoreTool {
 	return writeTool(
 		"add_task_scope",
 		"Add a test scope to [this task] -- this is the task's authorized boundary and also the denominator of asset test coverage.\n"+
-			"kind supports: company (all assets under a company) / root_domain (the whole root domain, including all subdomains) / subdomain (a single exact subdomain) / ip / cidr / icp / keyword.\n"+
+			"kind supports: company (all assets under a company) / root_domain (the whole root domain, including all subdomains) / subdomain (a single exact subdomain) / ip / cidr / keyword.\n"+
 			"Note: hosts a worker encounters one by one are [automatically] added to the scope by the system (exact subdomain); this tool is for [proactively widening] -- bringing in a whole root domain/whole company, or adding a specified subdomain/IP.\n"+
-			"value: for company pass the company name or id (the company must already exist); for root_domain/subdomain pass a domain; for ip/cidr pass an IP or range; for icp/keyword pass a filing number or company keyword.\n"+
+			"value: for company pass the company name or id (the company must already exist); for root_domain/subdomain pass a domain; for ip/cidr pass an IP or range; for keyword pass a company keyword.\n"+
 			"Always provide reason explaining the basis (auditable). Use the entries array for several.",
 		obj(map[string]any{
-			"entries": map[string]any{"type": "array", "description": "batch: [{kind, value}]. kind in company/root_domain/subdomain/ip/cidr/icp/keyword.", "items": map[string]any{"type": "object"}},
-			"kind":    str("[single] company / root_domain / subdomain / ip / cidr / icp / keyword"),
-			"value":   str("[single] company name or id / domain / IP / CIDR / ICP / keyword"),
+			"entries": map[string]any{"type": "array", "description": "batch: [{kind, value}]. kind in company/root_domain/subdomain/ip/cidr/keyword.", "items": map[string]any{"type": "object"}},
+			"kind":    str("[single] company / root_domain / subdomain / ip / cidr / keyword"),
+			"value":   str("[single] company name or id / domain / IP / CIDR / keyword"),
 			"reason":  str("the basis for adding (for auditing); always fill it in"),
 		}),
 		func(_ context.Context, in json.RawMessage) (actool.Result, error) {
@@ -533,7 +531,7 @@ func (t *ToolSet) listAssets() actool.CoreTool {
 		"Query the asset library: search by DSL expression, or fetch directly by id/ids; supports pagination. Returns only assets within the test scope of [this task and directly related tasks].\n"+
 			"DSL: field=value fuzzy (ILIKE) | field==value exact | field!=value exclude | numeric fields support > >= < <= | a bare word = full-text fuzzy; AND/OR combination (AND has higher precedence), parentheses allowed for grouping. Asset type uses the separate type parameter, not written into the DSL.\n"+
 			"When id/ids are not passed, dsl must be non-empty (an unconditional full query is not allowed).\n"+
-			"Available fields: domain (root/sub/service domain), root_domain, ip, url, page_title, icp, service_name, app_name, method (e.g. GET/POST), service_type (http|other), record_type (e.g. A/CNAME), technology (array, = fuzzy == exact), port/status_code/company_id (integers).\n"+
+			"Available fields: domain (root/sub/service domain), root_domain, ip, url, page_title, service_name, app_name, method (e.g. GET/POST), service_type (http|other), record_type (e.g. A/CNAME), technology (array, = fuzzy == exact), port/status_code/company_id (integers).\n"+
 			"Examples: status_code>=400 AND technology=shiro ; (port==80 OR port==443) AND technology=nginx",
 		obj(map[string]any{
 			"dsl":    str(`DSL query expression (see the tool description for syntax/fields). Must be non-empty when id/ids are not passed.`),

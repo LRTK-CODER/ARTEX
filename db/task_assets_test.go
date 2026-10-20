@@ -186,3 +186,68 @@ func TestIntentAssetsIncludesDirectSourceProvenance(t *testing.T) {
 		t.Fatalf("unexpected intent provenance: %+v", assets[0])
 	}
 }
+
+// 손으로 넣은 빈 값 ICP 범위 행이 ICP 없는 자산 전부와 맞으면 작업 범위가 공유 DB 전체로
+// 넓어진다(#192). 작업 범위 쿼리 네 곳 모두 그런 행을 무시해야 한다.
+func TestEmptyICPTaskScopeMatchesNoAsset(t *testing.T) {
+	d, err := Open(testDSN(t))
+	if err != nil {
+		t.Skipf("postgres unavailable (%v) - skipping", err)
+	}
+	t.Cleanup(func() { d.Close() })
+
+	task, err := d.CreateTask("empty icp scope", "goal", nil, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.DeleteTask(task.ID) })
+	domain := fmt.Sprintf("empty-icp-%d.example.test", time.Now().UnixNano())
+	assetID, err := d.Assets().UpsertRootDomain(UpsertRootDomainReq{Domain: domain})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = d.Assets().DeleteByIDs([]int64{assetID}) })
+	// 코드 경로는 빈 ICP를 거부하므로 SQL로 직접 넣는다.
+	if _, err := d.Exec(`INSERT INTO task_scope(task_id, kind, value, source) VALUES ($1, 'icp', '', 'manual')`, task.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("scope target", func(t *testing.T) {
+		got, err := d.Assets().GetByIDsInScope(task.ID, []int64{assetID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("asset without ICP is in scope: %+v", got[0])
+		}
+	})
+	t.Run("coverage", func(t *testing.T) {
+		cov, err := d.Assets().TaskCoverage(task.ID, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cov.Denominator != 0 {
+			t.Fatalf("coverage denominator=%d want 0", cov.Denominator)
+		}
+	})
+	t.Run("coverage with sources", func(t *testing.T) {
+		cov, err := d.Assets().TaskCoverageWithSources(task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cov.Denominator != 0 {
+			t.Fatalf("coverage denominator=%d want 0", cov.Denominator)
+		}
+	})
+	t.Run("hosts", func(t *testing.T) {
+		hosts, err := d.Assets().HostsByTaskWithSources(task.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, host := range hosts {
+			if host == domain {
+				t.Fatalf("hosts include asset without ICP: %s", domain)
+			}
+		}
+	})
+}

@@ -2590,6 +2590,7 @@ const COMPANY_SCOPE_LABELS: Record<string, string> = {
   domain: "도메인",
   ip: "IP",
   cidr: "CIDR",
+  // 새 ICP 범위는 자동 판정으로 생기지 않지만(#192), 예전에 만든 범위 행은 이 이름으로 보인다.
   icp: "ICP",
   keyword: "키워드",
 };
@@ -3342,7 +3343,7 @@ function CreateTaskSheet({
                 portalContainer={sheetContentRef}
               />
               <FieldDescription>
-                작업을 만들 때 선택한 기업의 현재 자산을 "테스트 자산"에 넣고, 도메인, IP, CIDR, ICP, 기업 키워드를
+                작업을 만들 때 선택한 기업의 현재 자산을 "테스트 자산"에 넣고, 도메인, IP, CIDR, 기업 키워드를
                 에이전트에 범위 컨텍스트로 줍니다. 탐색 의도를 자동으로 만들거나 실행 목표를 강제로 바꾸지 않습니다.
               </FieldDescription>
             </Field>

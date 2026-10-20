@@ -239,10 +239,10 @@ A custom DSL (**not SQL**):
 | asset_type           | Fields                                                                              |
 | -------------------- | ----------------------------------------------------------------------------------- |
 | asset                | domain, ip, port, service, app, title, statuscode, icon, banner, type, body, header |
-| RootDomain           | domain, icp, company                                                                |
+| RootDomain           | domain, company                                                                     |
 | subdomain            | domain, ip, type, value                                                             |
-| app                  | name, icp, company, category, description, url, apk                                 |
-| mp                   | name, icp, company, category, description, url                                      |
+| app                  | name, company, category, description, url, apk                                      |
+| mp                   | name, company, category, description, url                                           |
 | UrlScan              | url, input, source, resultId, type                                                  |
 | SensitiveResult      | url, sname, body, info, md5                                                         |
 | DirScanResult        | url, statuscode, redirect, length                                                   |
