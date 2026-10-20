@@ -22,7 +22,8 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dataDir, "tasks", "7", "key-link")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dataDir, 0o700); err != nil {
+	// 그룹·다른 사용자 쓰기가 있는 데이터 디렉터리도 통과만 남아야 한다. 에이전트 그룹이 나머지 항목을 바꿔치기하지 못하게.
+	if err := os.Chmod(dataDir, 0o777); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,7 +35,7 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 		path string
 		want fs.FileMode
 	}{
-		{path: dataDir, want: 0o710},
+		{path: dataDir, want: 0o715},
 		{path: filepath.Join(dataDir, "tasks"), want: fs.ModeSetgid | 0o775},
 		{path: filepath.Join(dataDir, "sessions"), want: fs.ModeSetgid | 0o775},
 		{path: filepath.Join(dataDir, "drafts"), want: fs.ModeSetgid | 0o775},

@@ -171,7 +171,7 @@ func checkSandboxHelper(ctx context.Context, helper string, uid, gid int) error 
 }
 
 // sandboxHelperHint 는 자기 검사가 실패했을 때 흔한 원인을 알려 준다.
-const sandboxHelperHint = " (install the helper next to the artex binary as root: chown root:<server group> artex-sandbox; chmod 0750 artex-sandbox; setcap cap_setuid,cap_setgid+ep artex-sandbox. Do not run the container with no-new-privileges or drop SETUID/SETGID. See README \"에이전트 uid 분리\")"
+const sandboxHelperHint = " (if this is a permission error: install the helper next to the artex binary as root with chown root:<server group> artex-sandbox; chmod 0750 artex-sandbox; setcap cap_setuid,cap_setgid+ep artex-sandbox, and do not use no-new-privileges or drop SETUID/SETGID. See README \"에이전트 uid 분리\")"
 
 // installShellDir 는 도우미를 가리키는 bash 링크를 둔 디렉터리를 만들어 PATH 맨 앞에 넣는다.
 // 디렉터리는 서버 uid 소유 0700이다. 에이전트가 링크를 바꿔 서버 uid로 자기 코드를 실행시키지 못하게,

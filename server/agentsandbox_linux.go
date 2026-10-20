@@ -66,15 +66,18 @@ func setSharedUmask() {
 
 // prepareSharedWorkspace 는 작업 공간 디렉터리를 에이전트 그룹(gid)의 setgid 디렉터리로 맞춘다.
 //
-// 데이터 디렉터리 자체는 그룹을 gid로 바꾸고 그룹 실행(통과)만 더한다. 에이전트가 그 아래 작업 공간에 닿아야
-// 하지만 트래픽 저장소 같은 나머지 파일은 고치면 안 된다. sharedWorkspaceDirs는 그룹 읽기·쓰기와 setgid를
-// 주고, 기능을 켜기 전에 서버가 만든 파일·디렉터리도 같은 그룹·권한으로 바꾼다. 에이전트가 만든 것(다른 uid)은
-// 건드리지 않는다. 바꾸지 않으면 기능을 켠 뒤 예전 작업을 이어 할 때 에이전트가 자기 작업 공간에 쓰지 못한다.
+// 데이터 디렉터리 자체는 그룹을 gid로 바꾸고 그룹 권한을 실행(통과)만 남긴다. 에이전트가 그 아래 작업 공간에
+// 닿아야 하지만, 그룹 쓰기가 남으면 트래픽 저장소 같은 나머지 항목을 지우거나 바꿔치기할 수 있다. 다른 사용자
+// 쓰기도 같은 이유로 지운다.
+//
+// sharedWorkspaceDirs는 그룹 읽기·쓰기와 setgid를 주고, 기능을 켜기 전에 서버가 만든 파일·디렉터리도 같은
+// 그룹·권한으로 바꾼다. 바꾸지 않으면 기능을 켠 뒤 예전 작업을 이어 할 때 에이전트가 자기 작업 공간에 쓰지
+// 못한다. 에이전트가 만든 것(다른 uid)은 건드리지 않는다.
 func prepareSharedWorkspace(dataDir string, gid int) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	if err := shareWithGroup(dataDir, gid, 0o010); err != nil {
+	if err := shareWithGroup(dataDir, gid, 0o010, 0o062); err != nil {
 		return err
 	}
 	changed := 0
@@ -98,7 +101,7 @@ func prepareSharedWorkspace(dataDir string, gid int) error {
 			if d.IsDir() {
 				bits = 0o070 | fs.ModeSetgid
 			}
-			result, err := shareOwnedWithGroup(path, gid, bits)
+			result, err := shareOwnedWithGroup(path, gid, bits, 0)
 			if result == shareChanged {
 				changed++
 			}
@@ -126,9 +129,9 @@ const (
 // specialModeBits 는 권한 비교에 넣는 특수 비트다.
 const specialModeBits = fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky
 
-// shareWithGroup 은 서버 소유인 path의 그룹을 gid로 바꾸고 bits를 더한다. 서버 소유가 아니면 오류다.
-func shareWithGroup(path string, gid int, bits fs.FileMode) error {
-	result, err := shareOwnedWithGroup(path, gid, bits)
+// shareWithGroup 은 서버 소유인 path의 그룹을 gid로 바꾸고 권한에 add를 더하고 remove를 뺀다. 서버 소유가 아니면 오류다.
+func shareWithGroup(path string, gid int, add, remove fs.FileMode) error {
+	result, err := shareOwnedWithGroup(path, gid, add, remove)
 	if err != nil {
 		return fmt.Errorf("share %s with group %d: %w", path, gid, err)
 	}
@@ -138,9 +141,9 @@ func shareWithGroup(path string, gid int, bits fs.FileMode) error {
 	return nil
 }
 
-// shareOwnedWithGroup 은 path가 서버 소유일 때만 그룹을 gid로 바꾸고 권한에 bits를 더한다.
+// shareOwnedWithGroup 은 path가 서버 소유일 때만 그룹을 gid로 바꾸고 권한에 add를 더하고 remove를 뺀다.
 // 링크를 따라가지 않도록 Lstat으로 보고 링크는 건너뛴다.
-func shareOwnedWithGroup(path string, gid int, bits fs.FileMode) (shareResult, error) {
+func shareOwnedWithGroup(path string, gid int, add, remove fs.FileMode) (shareResult, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return shareSkipped, err
@@ -151,7 +154,7 @@ func shareOwnedWithGroup(path string, gid int, bits fs.FileMode) (shareResult, e
 	}
 	current := info.Mode() & (fs.ModePerm | specialModeBits)
 	// 파일의 setuid·setgid는 지운다. 에이전트 그룹이 실행할 수 있는 서버 소유 setuid 파일은 서버 uid로 가는 길이다.
-	want := info.Mode().Perm() | bits
+	want := (info.Mode().Perm() | add) &^ remove
 	if info.IsDir() {
 		want |= info.Mode() & fs.ModeSticky
 	}
