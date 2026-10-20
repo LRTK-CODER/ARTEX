@@ -41,7 +41,7 @@ func (s *Server) startTaskArchiveWorker() {
 		log.Printf("[task-archive] recover jobs: %v", err)
 	}
 	recoveryFailed := false
-	if err := recoverTaskArchiveStages(s.m.dir, s.m.pg); err != nil {
+	if err := recoverTaskArchiveStages(s.m.dir, s.m.pg, func(path string) error { return s.sandbox.RemoveAll(s.ctx, path) }); err != nil {
 		log.Printf("[task-archive] recover file staging: %v", err)
 		recoveryFailed = true
 	}
@@ -189,7 +189,7 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 		return err
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "compress", 50)
-	originalSize, compressedSize, checksum, err := writeTaskArchivePackage(archivePath, fileStage.payload, snapshot)
+	pkg, err := writeTaskArchivePackage(archivePath, fileStage.payload, snapshot)
 	if err != nil {
 		return err
 	}
@@ -213,11 +213,16 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 		}()
 	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "compact_database", 78)
-	if err := s.m.pg.CompleteTaskArchive(job.ID, snapshot, archivePath, checksum, originalSize, compressedSize); err != nil {
+	if err := s.m.pg.CompleteTaskArchive(job.ID, snapshot, archivePath, pkg.checksum, pkg.originalSize, pkg.compressedSize); err != nil {
 		return err
 	}
 	committed = true
 	removePackage = false
+	// CompleteTaskArchive가 경고 목록을 비우므로 그 뒤에 남긴다.
+	if warning := skippedArchiveWarning(pkg.skipped); warning != "" {
+		log.Printf("[task-archive] task %s: %s", taskID, warning)
+		_ = s.m.pg.AppendTaskArchiveWarning(job.ID, warning) // 경고 기록 실패는 보관 결과를 바꾸지 않는다(로그에 남겼다)
+	}
 	if trafficStage != nil {
 		if err := trafficStage.Commit(); err != nil {
 			warning := "보관은 끝났지만 이 작업만 쓰던 트래픽을 핫 스토리지에서 지우지 못했습니다(보관 패키지로는 여전히 복원할 수 있습니다): " + err.Error()
@@ -225,6 +230,7 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 			_ = s.m.pg.AppendTaskArchiveWarning(job.ID, warning)
 		}
 	}
+	fileStage.removeAll = func(path string) error { return s.sandbox.RemoveAll(s.ctx, path) }
 	if err := fileStage.commit(); err != nil {
 		warning := "보관은 끝났지만 임시 디렉터리를 지우지 못했습니다: " + err.Error()
 		log.Printf("[task-archive] task %s: %s", taskID, warning)
@@ -236,6 +242,24 @@ func (s *Server) archiveTask(job *pgdb.TaskArchive) (runErr error) {
 	s.taskAgentMu.Unlock()
 	s.m.forgetTask(taskID, job.TaskID)
 	return nil
+}
+
+// maxSkippedArchiveListed 는 보관 경고에 이름을 적는 건너뛴 항목 수의 상한이다. 에이전트가 읽을 수 없는 파일을
+// 수없이 만들어도 경고 한 줄이 끝없이 커지지 않게 한다. 나머지는 개수만 적는다.
+const maxSkippedArchiveListed = 50
+
+// skippedArchiveWarning 은 보관에서 건너뛴 항목(writeArchivePayload)을 보관 기록 경고 한 줄로 만든다. 없으면 빈 문자열이다.
+func skippedArchiveWarning(skipped []string) string {
+	if len(skipped) == 0 {
+		return ""
+	}
+	listed := skipped[:min(len(skipped), maxSkippedArchiveListed)]
+	warning := fmt.Sprintf("서버가 읽을 수 없는 항목 %d개를 보관하지 못했습니다(에이전트가 권한을 바꾼 파일·디렉터리, 복원해도 없습니다): %s",
+		len(skipped), strings.Join(listed, ", "))
+	if rest := len(skipped) - len(listed); rest > 0 {
+		warning += fmt.Sprintf(" 외 %d개", rest)
+	}
+	return warning
 }
 
 func (s *Server) restoreTaskArchive(job *pgdb.TaskArchive) (runErr error) {
@@ -326,6 +350,11 @@ func (s *Server) restoreTaskArchivePayload(job *pgdb.TaskArchive, snapshot *pgdb
 			runErr = errors.Join(runErr, files.rollback())
 		}
 	}()
+	// DB를 되살리기 전에 연다. 열지 못하면 파일을 되돌리고 복원을 실패로 남겨, 에이전트가 자기 파일에 닿지 못하는
+	// 작업이 살아나지 않게 한다.
+	if err := s.sandbox.reopenRestoredWorkspace(s.ctx, s.m.pg, s.m.dir, job.TaskID); err != nil {
+		return err
+	}
 	_ = s.m.pg.UpdateTaskArchiveProgress(job.ID, "restore_database", 70)
 	var warnings []string
 	if llmRecordsFile != nil {

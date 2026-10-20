@@ -408,3 +408,87 @@ func (o workspaceOwners) sessionUID(name string) int {
 	}
 	return o.conversations[id]
 }
+
+// agentRemoveTimeout 은 RemoveAll이 에이전트 uid로 지우는 도우미 실행 하나에 주는 시간이다. 큰 작업 공간도 수 초면 끝난다.
+const agentRemoveTimeout = 5 * time.Minute
+
+// agentRemoveScript 는 에이전트 uid로 돌아 인자의 디렉터리(그 uid 소유)를 지운다. 소유자는 자기 디렉터리를 chmod로
+// 다시 열 수 있다(chmod -R은 디렉터리 권한을 먼저 바꾼 뒤 안을 읽는다). 일부를 지우지 못해도 끝 코드로 판단하지
+// 않고, 서버가 다시 지워 남은 것이 있는지로 판단한다.
+const agentRemoveScript = `chmod -R u+rwX -- "$@"; rm -rf -- "$@"`
+
+// agentOwnedDirs 는 한 디렉터리(dir) 바로 아래에 있는, 한 uid 소유의 디렉터리 이름들이다(agentOwnedTopDirs).
+type agentOwnedDirs struct {
+	dir   string
+	uid   int
+	names []string
+}
+
+// RemoveAll 은 서버 전용 임시 자리로 옮긴 작업 파일 path(작업 삭제·보관의 임시 디렉터리)를 지운다(#179). 먼저 서버
+// uid로 지운다. uid 분리를 켜면 에이전트 uid 소유의 디렉터리가 있을 수 있고, 에이전트가 그 권한을 바꾸면(chmod 000,
+// setfacl) 서버는 안을 비우지 못한다. 서버에는 CAP_DAC_OVERRIDE·CAP_FOWNER가 없다. 그래서 서버 uid로 지우지 못하면,
+// 서버 소유 디렉터리 바로 아래에 있는 다른 uid 소유 디렉터리마다 도우미로 그 소유 uid가 되어 지운 뒤 서버가 다시 지운다.
+// 도우미는 늘 하던 대로 허용 범위 밖의 uid(0, 서버 uid 등)를 거부한다. 소유 uid는 파일 시스템에서 읽으므로 DB 할당이
+// 없어진 뒤(예전 공용 uid의 파일 포함)에도 지운다.
+//
+// path는 에이전트가 닿지 못하는 곳이어야 한다(경로로 걷는다). 도우미는 그 부모 디렉터리를 작업 디렉터리로 받아 상대
+// 이름으로만 지우므로 에이전트 uid가 path의 상위를 지나갈 권한이 없어도 된다. 꺼져 있으면 os.RemoveAll과 같다.
+func (s *AgentSandbox) RemoveAll(ctx context.Context, path string) error {
+	err := os.RemoveAll(path)
+	if err == nil || s == nil {
+		return err
+	}
+	groups, walkErr := agentOwnedTopDirs(path)
+	if walkErr != nil {
+		return errors.Join(err, fmt.Errorf("find agent-owned directories under %s: %w", path, walkErr))
+	}
+	if len(groups) == 0 {
+		return err
+	}
+	var helperErrs []error
+	for _, g := range groups {
+		if err := s.removeAsOwner(ctx, g); err != nil {
+			helperErrs = append(helperErrs, err)
+		}
+	}
+	if err := os.RemoveAll(path); err != nil {
+		return errors.Join(append([]error{err}, helperErrs...)...)
+	}
+	if len(helperErrs) > 0 {
+		log.Printf("[sandbox] %s를 지웠다(도우미가 보고한 오류는 무시함): %v", path, errors.Join(helperErrs...))
+	}
+	return nil
+}
+
+// removeAsOwner 는 도우미로 g.uid가 되어 g.dir 안의 g.names를 지운다. gid도 같은 값이다(풀 사용자마다 같은 번호의 그룹).
+func (s *AgentSandbox) removeAsOwner(ctx context.Context, g agentOwnedDirs) error {
+	ctx, cancel := context.WithTimeout(ctx, agentRemoveTimeout)
+	defer cancel()
+	// "sh -c 스크립트 이름 인자..."에서 "artex-remove"는 $0이다. 디렉터리 이름은 인자로만 넘겨 셸이 해석하지 않는다.
+	name, args := s.Command("sh", append([]string{"-c", agentRemoveScript, "artex-remove"}, g.names...))
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = g.dir
+	cmd.Env = append(identityEnv(g.uid, g.uid), AgentPathEnv+"="+s.agentPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("remove %q in %s as agent uid %d: %v: %s", g.names, g.dir, g.uid, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// reopenRestoredWorkspace 는 uid 분리를 켰을 때 복원한 작업 공간 tasks/<taskID>를 그 작업의 uid에 다시 연다(#179).
+// 보관 패키지를 풀면 모든 파일이 서버 소유이고 ACL이 없어 에이전트가 자기 옛 파일을 읽거나 고치지 못한다. 작업 uid는
+// 보관 중에도 할당이 남아 같은 값이 돌아온다. 할당이 없으면(기능을 켜기 전에 보관한 작업) 새로 받는다. 받지 못하면
+// (풀 고갈 등) 오류다. 호출자는 복원을 되돌린다. 꺼져 있으면 아무것도 하지 않는다.
+func (s *AgentSandbox) reopenRestoredWorkspace(ctx context.Context, pg *db.DB, dataDir string, taskID int64) error {
+	if s == nil {
+		return nil
+	}
+	uid, err := s.TaskUID(ctx, pg, taskID)
+	if err != nil {
+		return err
+	}
+	if err := shareTaskWorkspace(dataDir, strconv.FormatInt(taskID, 10), uid); err != nil {
+		return fmt.Errorf("reopen restored workspace of task %d to agent uid %d: %w", taskID, uid, err)
+	}
+	return nil
+}

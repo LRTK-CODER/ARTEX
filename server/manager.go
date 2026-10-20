@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -223,6 +224,8 @@ type Manager struct {
 	traffic     *traffic.Traffic       // process-wide recording proxy (may be nil)
 	enrich      *enrich.Engine         // engine-side asset auto-completion (DNS/HTTP)
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
+	// sandbox 는 에이전트 uid 분리 설정이다(server.New가 넣는다). nil이면 꺼져 있다. 작업 파일을 지울 때 쓴다(#179).
+	sandbox *AgentSandbox
 
 	companyMu sync.Mutex // serializes task/company-scope commits with live handle registration
 	// taskStateMu preserves commit order between PostgreSQL lifecycle writes and
@@ -1435,6 +1438,8 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 		if err != nil {
 			return result, err
 		}
+		// 임시 자리는 PostgreSQL 삭제가 커밋된 뒤에 지운다. 그때는 요청이 끊겨도 끝까지 지워야 하므로 요청 ctx를 쓰지 않는다.
+		fileStage.removeAll = func(path string) error { return m.sandbox.RemoveAll(context.Background(), path) }
 		result.FilesDeleted = fileStage.deleted
 	}
 
@@ -1548,6 +1553,8 @@ type taskFileDeleteStage struct {
 	moves    []stagedTaskPath
 	deleted  bool
 	done     bool
+	// removeAll 는 commit이 임시 자리를 지우는 함수다. nil이면 os.RemoveAll이다(taskArchiveFileStage.removeAll과 같다).
+	removeAll func(string) error
 }
 
 // stageTaskFiles atomically renames the task workspace and owned transcripts to
@@ -1611,7 +1618,11 @@ func (s *taskFileDeleteStage) commit() error {
 	if s == nil || s.done {
 		return nil
 	}
-	err := os.RemoveAll(s.stageDir)
+	remove := s.removeAll
+	if remove == nil {
+		remove = os.RemoveAll
+	}
+	err := remove(s.stageDir)
 	s.done = true
 	return err
 }

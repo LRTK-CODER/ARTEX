@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -461,6 +462,104 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		if !strings.Contains(syn, "raw socket") || strings.Contains(syn, port+"/tcp open") {
 			t.Fatalf("SYN scan with NMAP_PRIVILEGED=1 did not fail on the raw socket: %q", syn)
 		}
+	})
+	t.Run("archive, restore and delete handle files the agent locked", func(t *testing.T) {
+		// lockedTask 는 실행이 거는 것처럼 작업 A uid에 열린 tasks/<id>(읽기)·work(읽기·쓰기)를 만들고, 에이전트가
+		// 그 안에서 서버가 읽지 못하게 권한을 바꾼 파일(600)과 비어 있지 않은 디렉터리(000)를 만든다(#179).
+		lockedTask := func(t *testing.T, id string) *actool.ToolContext {
+			t.Helper()
+			taskDir := filepath.Join(dataDir, "tasks", id)
+			work := filepath.Join(taskDir, "work")
+			for _, step := range []struct {
+				dir    string
+				access agent.WorkspaceAccess
+			}{{taskDir, agent.WorkspaceRead}, {work, agent.WorkspaceWrite}} {
+				if err := os.Mkdir(step.dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := agent.ShareDir(step.dir, uidA, step.access); err != nil {
+					t.Fatal(err)
+				}
+			}
+			workCtx := &actool.ToolContext{WorkingDir: work, Env: envA}
+			t.Log(runTool(t, bash, workCtx, map[string]any{"command": "echo keep > open.txt && echo secret > secret.txt && chmod 600 secret.txt && " +
+				"mkdir -p locked/sub && echo inner > locked/sub/f && chmod 000 locked/sub locked && ls -ln"}))
+			if _, err := os.ReadFile(filepath.Join(work, "secret.txt")); err == nil {
+				t.Fatal("the server can still read the agent's chmod 600 file; the test does not exercise #179")
+			}
+			return workCtx
+		}
+
+		const archiveID = 9179
+		workCtx := lockedTask(t, "179")
+		stage, err := stageTaskArchiveFiles(dataDir, archiveID, "179", 179)
+		if err != nil {
+			t.Fatal(err)
+		}
+		archivePath := taskArchivePath(dataDir, archiveID, "179")
+		pkg, err := writeTaskArchivePackage(archivePath, stage.payload, &db.TaskArchiveSnapshot{FormatVersion: db.TaskArchiveFormatVersion, TaskID: 179})
+		if err != nil {
+			t.Fatalf("archive failed instead of skipping the agent's locked entries: %v", err)
+		}
+		t.Logf("archive skipped: %q", pkg.skipped)
+		t.Logf("archive warning: %s", skippedArchiveWarning(pkg.skipped))
+		if want := []string{"files/tasks/179/work/locked", "files/tasks/179/work/secret.txt"}; !slices.Equal(slices.Sorted(slices.Values(pkg.skipped)), want) {
+			t.Fatalf("skipped = %q, want %q", pkg.skipped, want)
+		}
+		if err := os.RemoveAll(stage.root); err == nil {
+			t.Fatal("the server uid removed the agent's chmod 000 directory on its own; the test does not exercise the helper")
+		} else {
+			t.Logf("server uid alone: %v", err)
+		}
+		stage.removeAll = func(path string) error { return sb.RemoveAll(ctx, path) }
+		if err := stage.commit(); err != nil {
+			t.Fatalf("remove archive staging: %v", err)
+		}
+		if _, err := os.Lstat(stage.root); !os.IsNotExist(err) {
+			t.Fatalf("archive staging still exists: %v", err)
+		}
+
+		// 복원: 패키지를 풀면 모두 서버 소유이고 ACL이 없다. 작업 uid에 다시 열어야 에이전트가 옛 파일을 읽고 고친다.
+		extracted := filepath.Join(taskArchiveRoot(dataDir), ".restore", "e2e")
+		if err := extractTaskArchivePackage(archivePath, pkg.checksum, extracted); err != nil {
+			t.Fatal(err)
+		}
+		files, err := installTaskArchiveFiles(dataDir, extracted, "179", archiveID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := shareTaskWorkspace(dataDir, "179", uidA); err != nil {
+			t.Fatal(err)
+		}
+		if err := files.commit(); err != nil {
+			t.Fatal(err)
+		}
+		restored := runTool(t, bash, workCtx, map[string]any{"command": "id -u; cat open.txt; echo changed >> open.txt && touch new.txt && echo write-ok; ls -ln"})
+		t.Logf("task A in the restored workspace:\n%s", restored)
+		if !strings.Contains(restored, "keep\n") || !strings.Contains(restored, "write-ok") {
+			t.Fatalf("task A cannot read and write its restored files: %q", restored)
+		}
+		restoredWork := filepath.Join(dataDir, "tasks", "179", "work")
+		other := runTool(t, bash, &actool.ToolContext{WorkingDir: wsB, Env: envB}, map[string]any{"command": fmt.Sprintf("id -u; ls %[1]s; cat %[1]s/open.txt; touch %[1]s/x", shellQuote(restoredWork))})
+		t.Logf("task B reaches for the restored workspace:\n%s", other)
+		if strings.Contains(other, "keep") || strings.Count(other, "Permission denied") < 3 {
+			t.Fatalf("task B reached task A's restored workspace: %q", other)
+		}
+
+		// 삭제: 파일을 지우는 작업 삭제는 작업 공간을 서버 전용 임시 자리로 옮긴 뒤 지운다.
+		lockedTask(t, "180")
+		deleteStage, err := stageTaskFiles(dataDir, "180", 180)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deleteStage.removeAll = func(path string) error { return sb.RemoveAll(ctx, path) }
+		if err := deleteStage.commit(); err != nil {
+			t.Fatalf("delete task files: %v", err)
+		}
+		if _, err := os.Lstat(deleteStage.stageDir); !os.IsNotExist(err) {
+			t.Fatalf("task delete staging still exists: %v", err)
+		}
+		t.Log("task 180 with a chmod 000 directory: files deleted")
 	})
 	// 마지막에 둔다. 셸 대체 링크를 지운 뒤에는 어떤 경로도 명령을 실행하지 않아야 한다(서버 uid로 넘어가지 않는다).
 	t.Run("missing shell substitute fails closed", func(t *testing.T) {

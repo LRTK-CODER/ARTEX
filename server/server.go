@@ -166,6 +166,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	if err != nil {
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
+	m.sandbox = sandbox
 	engine := NewEngine(m)
 	engine.sandbox = sandbox
 	s := &Server{m: m, engine: engine, ctx: ctx, skillDir: skillDir, inContainer: selfupdate.InDocker, sandbox: sandbox, jwtKey: key, chatBusy: map[string]bool{},

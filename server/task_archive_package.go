@@ -49,6 +49,9 @@ type taskArchiveFileStage struct {
 	payload string
 	journal archiveStageJournal
 	done    bool
+	// removeAll 는 commit이 임시 디렉터리를 지우는 함수다. nil이면 os.RemoveAll이다. uid 분리를 켜면 에이전트가
+	// 권한을 바꾼 디렉터리도 지우는 AgentSandbox.RemoveAll을 넣는다(#179).
+	removeAll func(string) error
 }
 
 type restoredArchivePath struct {
@@ -225,6 +228,9 @@ func (s *taskArchiveFileStage) commit() error {
 		return nil
 	}
 	s.done = true
+	if s.removeAll != nil {
+		return s.removeAll(s.root)
+	}
 	return os.RemoveAll(s.root)
 }
 
@@ -387,7 +393,9 @@ func recoverTaskArchiveRestoreStages(dataDir string, pg *pgdb.DB) error {
 // recoverTaskArchiveStages resolves file renames left by an interrupted archive.
 // A committed cold task already has a verified package, so stale staging can be
 // discarded; otherwise files are moved back before the persistent job retries.
-func recoverTaskArchiveStages(dataDir string, pg *pgdb.DB) error {
+// removeAll 은 버릴 임시 디렉터리를 지운다(taskArchiveFileStage.removeAll과 같다). 에이전트가 권한을 바꾼 디렉터리가
+// 남아 지우지 못하면 시작 복구가 실패해 보관 작업자가 멈추므로, uid 분리를 켜면 AgentSandbox.RemoveAll을 넣는다(#179).
+func recoverTaskArchiveStages(dataDir string, pg *pgdb.DB, removeAll func(string) error) error {
 	parent := filepath.Join(taskArchiveRoot(dataDir), ".staging")
 	entries, err := os.ReadDir(parent)
 	if os.IsNotExist(err) {
@@ -410,7 +418,7 @@ func recoverTaskArchiveStages(dataDir string, pg *pgdb.DB) error {
 			// copies already inside the package. Without a journal there is nothing to
 			// roll back, and reporting an error here keeps the archive worker from ever
 			// starting, so discard the directory instead.
-			if err := os.RemoveAll(root); err != nil {
+			if err := removeAll(root); err != nil {
 				errs = append(errs, err)
 			}
 			continue
@@ -430,7 +438,7 @@ func recoverTaskArchiveStages(dataDir string, pg *pgdb.DB) error {
 			continue
 		}
 		if archive != nil && archive.State == pgdb.ArchiveReady {
-			if err := os.RemoveAll(root); err != nil {
+			if err := removeAll(root); err != nil {
 				errs = append(errs, err)
 			}
 			continue
@@ -520,12 +528,22 @@ func stageTaskArchivePackageDelete(archivePath string, archiveID int64) (string,
 	return staged, false, nil
 }
 
-func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot) (originalSize, compressedSize int64, checksum string, err error) {
+// taskArchivePackage 는 writeTaskArchivePackage가 쓴 패키지의 크기·체크섬과, 서버가 읽지 못해 넣지 못한 항목이다.
+type taskArchivePackage struct {
+	originalSize   int64
+	compressedSize int64
+	checksum       string
+	// skipped 는 payload 기준 경로(슬래시 구분)다. 에이전트가 권한을 바꿔(chmod 600·000, setfacl) 서버가 읽지 못한 것이다.
+	skipped []string
+}
+
+func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchiveSnapshot) (taskArchivePackage, error) {
+	var pkg taskArchivePackage
 	if snapshot == nil {
-		return 0, 0, "", errors.New("nil task archive snapshot")
+		return pkg, errors.New("nil task archive snapshot")
 	}
-	if err = os.MkdirAll(filepath.Dir(path), archiveDirMode); err != nil {
-		return 0, 0, "", err
+	if err := os.MkdirAll(filepath.Dir(path), archiveDirMode); err != nil {
+		return pkg, err
 	}
 	manifestFile, err := os.OpenFile(
 		filepath.Join(payloadDir, "manifest.json"),
@@ -533,7 +551,7 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		archiveFileMode,
 	)
 	if err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	encodeErr := json.NewEncoder(manifestFile).Encode(snapshot)
 	var syncErr error
@@ -541,13 +559,13 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		syncErr = manifestFile.Sync()
 	}
 	if err := errors.Join(encodeErr, syncErr, manifestFile.Close()); err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	temporary := path + ".partial"
 	_ = os.Remove(temporary)
 	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, archiveFileMode)
 	if err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	committed := false
 	defer func() {
@@ -563,69 +581,84 @@ func writeTaskArchivePackage(path, payloadDir string, snapshot *pgdb.TaskArchive
 		zstd.WithEncoderCRC(true),
 	)
 	if err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	tarWriter := tar.NewWriter(encoder)
-	walkErr := writeArchivePayload(tarWriter, payloadDir, &originalSize)
+	skipped, walkErr := writeArchivePayload(tarWriter, payloadDir, &pkg.originalSize)
 	if walkErr != nil {
 		_ = tarWriter.Close()
 		_ = encoder.Close()
-		return 0, 0, "", walkErr
+		return pkg, walkErr
 	}
 	if err := tarWriter.Close(); err != nil {
 		_ = encoder.Close()
-		return 0, 0, "", err
+		return pkg, err
 	}
 	if err := encoder.Close(); err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	if err := file.Sync(); err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	if err := file.Close(); err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	stat, err := os.Stat(temporary)
 	if err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
-	compressedSize = stat.Size()
-	checksum = hex.EncodeToString(hasher.Sum(nil))
+	pkg.compressedSize = stat.Size()
+	pkg.checksum = hex.EncodeToString(hasher.Sum(nil))
+	pkg.skipped = skipped
 	if err := os.Rename(temporary, path); err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	if err := os.Chmod(path, archiveFileMode); err != nil {
-		return 0, 0, "", err
+		return pkg, err
 	}
 	committed = true
-	return originalSize, compressedSize, checksum, nil
+	return pkg, nil
 }
 
 // writeArchivePayload 는 payloadDir 아래의 디렉터리와 일반 파일을 tar로 쓰고, 쓴 파일 크기의 합을 originalSize에
-// 더한다. payloadDir 는 os.Root로 열어 그 안에서만 읽는다(#176). 걷기(lstat)와 열기 사이에 에이전트가 파일을
-// 링크로 바꿔도 payload 밖은 열지 않는다. 연 파일이 걷기에서 본 파일과 같은 일반 파일인지(os.SameFile) 다시 보고
-// 아니면 오류로 끝내므로 파일을 payload 안의 다른 파일을 가리키는 링크로 바꿔도 그 내용이 엉뚱한 이름으로 들어가지
-// 않는다. 디렉터리는 이 확인을 하지 않는다. 걷기는 디렉터리를 경로로 다시 열어 읽으므로, 디렉터리를 payload 안의 다른
-// 디렉터리를 가리키는 링크로 바꾸면 그 디렉터리 내용이 바꾼 이름 아래에도 들어갈 수 있다. payload는 한 작업의
-// 자료라 그 작업 밖의 내용이 들어가지는 않는다.
+// 더한다. 서버가 읽지 못해 넣지 못한 항목의 payload 기준 경로를 돌려준다. payloadDir 는 os.Root로 열어 그 안에서만
+// 읽는다(#176). 걷기(lstat)와 열기 사이에 에이전트가 파일을 링크로 바꿔도 payload 밖은 열지 않는다. 연 파일이 걷기에서
+// 본 파일과 같은 일반 파일인지(os.SameFile) 다시 보고 아니면 오류로 끝내므로 파일을 payload 안의 다른 파일을 가리키는
+// 링크로 바꿔도 그 내용이 엉뚱한 이름으로 들어가지 않는다. 디렉터리는 이 확인을 하지 않는다. 걷기는 디렉터리를 경로로
+// 다시 열어 읽으므로, 디렉터리를 payload 안의 다른 디렉터리를 가리키는 링크로 바꾸면 그 디렉터리 내용이 바꾼 이름
+// 아래에도 들어갈 수 있다. payload는 한 작업의 자료라 그 작업 밖의 내용이 들어가지는 않는다.
 //
 // 보관 형식은 처음부터 끝까지 일반 파일과 디렉터리만 지원한다(풀 때 다른 유형은 바로 오류다). 그래서 심볼릭 링크,
 // FIFO, 장치 같은 항목은 패키지 전체를 실패시키지 않고 건너뛴다. 링크 대상은 읽지 않고 symlink 항목도 쓰지 않는다.
 // 링크가 트리 안을 가리키면 대상 파일 자체는 따로 순회해 보관한다.
-func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize *int64) error {
+//
+// 에이전트 uid 분리를 켜면 작업 공간 안의 에이전트 파일은 에이전트 uid 소유다. 에이전트가 권한을 바꾸면(chmod 600·000,
+// setfacl) 서버는 그 파일을 읽거나 그 디렉터리를 나열하지 못한다(#179). 보관 전체를 실패시키면 그 작업은 영영 보관할 수
+// 없으므로, 권한 오류로 읽지 못한 항목은 건너뛰고 돌려준다. 호출자가 보관 기록에 남긴다. 디렉터리를 나열하지 못하면
+// 디렉터리 항목만 들어가고 그 안은 빠진다.
+func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize *int64) ([]string, error) {
 	root, err := os.OpenRoot(payloadDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer root.Close()
-	return fs.WalkDir(root.FS(), ".", func(current string, entry fs.DirEntry, walkErr error) error {
+	var skipped []string
+	err = fs.WalkDir(root.FS(), ".", func(current string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if current != "." && errors.Is(walkErr, fs.ErrPermission) {
+				skipped = append(skipped, current)
+				return nil
+			}
 			return walkErr
 		}
 		if current == "." {
 			return nil
 		}
 		info, err := entry.Info()
+		if errors.Is(err, fs.ErrPermission) {
+			skipped = append(skipped, current)
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -643,6 +676,10 @@ func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize 
 		}
 		// FIFO로 바꿔치기돼도 열기에서 멈추지 않게 O_NONBLOCK으로 연다. 일반 파일에는 영향이 없다.
 		input, err := root.OpenFile(filepath.FromSlash(current), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+		if errors.Is(err, fs.ErrPermission) {
+			skipped = append(skipped, current)
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -670,6 +707,7 @@ func writeArchivePayload(tarWriter *tar.Writer, payloadDir string, originalSize 
 		*originalSize += header.Size
 		return nil
 	})
+	return skipped, err
 }
 
 func extractTaskArchivePackage(path, expectedSHA, destination string) error {

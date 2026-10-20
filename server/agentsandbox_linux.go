@@ -364,3 +364,75 @@ func checkShellDir(dir, helper string) error {
 	}
 	return nil
 }
+
+// shareTaskWorkspace 는 tasks/<taskID> 하나를 작업 uid에 맞춘다. applyWorkspaceACL이 시작할 때 작업마다 하는 일과 같다
+// (shareTaskUnit). 작업 공간이 없으면(보관 패키지에 파일이 없던 작업) 아무것도 하지 않는다.
+func shareTaskWorkspace(dataDir, taskID string, uid int) error {
+	data, err := os.Open(dataDir)
+	if err != nil {
+		return fmt.Errorf("open data dir: %w", err)
+	}
+	defer data.Close()
+	tasks, err := openNoFollow(data, "tasks")
+	if err != nil {
+		return fmt.Errorf("open %s: %w", filepath.Join(dataDir, "tasks"), err)
+	}
+	defer tasks.Close()
+	f, err := openNoFollow(tasks, taskID)
+	if errors.Is(err, syscall.ENOENT) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("open %s: %w", filepath.Join(tasks.Name(), taskID), err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	return shareTaskUnit(f, info, uid)
+}
+
+// agentOwnedTopDirs 는 root 아래에서 서버 소유가 아닌 디렉터리 가운데 가장 위의 것들을 부모 디렉터리·소유 uid별로
+// 모은다(AgentSandbox.RemoveAll). 그 안으로는 들어가지 않는다(그 안은 소유 uid가 지운다). 서버가 읽지 못하는 서버 소유
+// 디렉터리는 없지만, 걷는 도중 사라진 항목처럼 읽지 못한 곳은 건너뛴다. 남은 것은 호출자가 다시 지울 때 오류로 보인다.
+func agentOwnedTopDirs(root string) ([]agentOwnedDirs, error) {
+	type key struct {
+		dir string
+		uid int
+	}
+	index := map[key]int{}
+	var groups []agentOwnedDirs
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if path == root {
+				return walkErr
+			}
+			return nil
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		if path == root || isServerOwned(info) {
+			return nil
+		}
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return nil
+		}
+		k := key{dir: filepath.Dir(path), uid: int(st.Uid)}
+		i, seen := index[k]
+		if !seen {
+			i = len(groups)
+			index[k] = i
+			groups = append(groups, agentOwnedDirs{dir: k.dir, uid: k.uid})
+		}
+		groups[i].names = append(groups[i].names, filepath.Base(path))
+		return fs.SkipDir
+	})
+	return groups, err
+}
