@@ -12,8 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Autumn-27/artex/agent"
 )
 
 // 작업 공간 파일 관리자다. 에이전트가 산출물을 쓰는 데이터 디렉터리(s.m.dir)를 둘러보고, 보고, 고치고,
@@ -33,14 +36,34 @@ const (
 )
 
 // wsUnitParents 는 에이전트가 쓰는 작업 단위 디렉터리(tasks/<tid>, sessions/<sid>, drafts/<id>)를 담는 최상위
-// 디렉터리다. 이 단위 안의 경로를 다루는 요청은 그 단위 디렉터리를 루트로 연다(#176). 데이터 디렉터리 전체를
-// 루트로 열면, 에이전트가 자기 작업 공간에 만든 링크를 따라 다른 작업·세션 파일이나 대화 기록(transcripts)을
-// 보여 주거나 덮어쓰게 된다. 링크가 같은 단위 안을 가리키면 그대로 따라간다.
+// 디렉터리와, 그 아래 단위 이름이 서버가 만드는 형식인지 보는 함수다. 이 단위 안의 경로를 다루는 요청은 그 단위
+// 디렉터리를 루트로 연다(#176). 데이터 디렉터리 전체를 루트로 열면, 에이전트가 자기 작업 공간에 만든 링크를 따라
+// 다른 작업·세션 파일이나 대화 기록(transcripts)을 보여 주거나 덮어쓰게 된다. 링크가 같은 단위 안을 가리키면 그대로
+// 따라간다.
 //
 // 단위 디렉터리와 그 부모(tasks/, sessions/, drafts/)는 에이전트가 바꾸지 못한다. 에이전트 uid 분리(#165)를 켜면
 // 커널 권한이 막고, 끄면 에이전트가 서버와 같은 uid라 Bash로도 같은 파일에 닿는다. 그래서 단위 디렉터리를 연 뒤에는
 // os.Root가 그 안에 묶는다.
-var wsUnitParents = map[string]bool{"tasks": true, "sessions": true, "drafts": true}
+var wsUnitParents = map[string]func(name string) bool{
+	"tasks":    isCanonicalPositiveID,
+	"sessions": isSessionUnitName,
+	"drafts":   safeChatID.MatchString, // 첨부 업로드(chatUpload)가 받는 id 형식이다
+}
+
+// isCanonicalPositiveID 는 name이 앞에 0이 없는 양의 십진수(작업 id)인지 본다.
+func isCanonicalPositiveID(name string) bool {
+	id, err := strconv.ParseInt(name, 10, 64)
+	return err == nil && id > 0 && strconv.FormatInt(id, 10) == name
+}
+
+// isSessionUnitName 은 name이 sessions/ 아래에 서버가 만드는 이름(대화 세션 conv-<id>, 큰 출력 cmd-output)인지 본다.
+func isSessionUnitName(name string) bool {
+	if name == agent.ToolOutputDirName {
+		return true
+	}
+	id, ok := strings.CutPrefix(name, "conv-")
+	return ok && isCanonicalPositiveID(id)
+}
 
 // wsPath 는 작업 공간 안으로 판정한 경로다.
 type wsPath struct {
@@ -55,17 +78,54 @@ type wsPath struct {
 
 // wsUnit 은 abs가 작업 단위 디렉터리 안(단위 자신은 빼고)이면 그 단위의 상대 경로를, 아니면 ""를 돌려준다.
 // 링크를 풀지 않은 글자 그대로의 경로로 정한다. 사용자가 고른 위치가 어느 단위인지가 기준이어서다.
-func (s *Server) wsUnit(abs string) string {
-	rel, err := filepath.Rel(filepath.Clean(s.m.dir), abs)
+//
+// 단위는 첫 요소가 wsUnitParents의 이름과 글자 그대로 같고 둘째 요소가 그 형식에 맞을 때만 정한다. 첫 요소가 단위
+// 부모와 글자는 다른데 같은 디렉터리일 수 있으면(대소문자, 유니코드 대소문자 접기, 정규화) ok=false다. 대소문자를
+// 무시하는 파일 시스템(macOS, Docker Desktop의 바인드 마운트)에서 TASKS/1/...이 tasks/1/...과 같은 파일을 가리키는데
+// 단위 밖으로 보면 데이터 디렉터리 전체 루트로 열려 링크를 따라가기 때문이다. 단위 부모 아래 둘째 요소가 형식에
+// 맞지 않아도 ok=false다.
+func (s *Server) wsUnit(abs string) (string, bool) {
+	data := filepath.Clean(s.m.dir)
+	rel, err := filepath.Rel(data, abs)
 	if err != nil {
-		return ""
+		return "", false
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) < 3 || !wsUnitParents[parts[0]] {
-		return ""
+	isUnitName, isUnitParent := wsUnitParents[parts[0]]
+	if !isUnitParent {
+		return "", !s.aliasesUnitParent(parts[0])
 	}
-	return filepath.Join(parts[0], parts[1])
+	if len(parts) < 3 {
+		return "", true
+	}
+	if !isUnitName(parts[1]) {
+		return "", false
+	}
+	return filepath.Join(parts[0], parts[1]), true
 }
+
+// aliasesUnitParent 는 데이터 디렉터리 바로 아래 이름 name이 글자는 달라도 단위 부모 디렉터리를 가리킬 수 있는지 본다.
+// 대소문자 접기로 같은 이름이거나, 둘 다 있고 같은 파일이면 그렇다. 파일 시스템마다 같게 보는 이름 규칙(대소문자,
+// 유니코드 정규화)이 달라 글자 비교만으로는 다 알 수 없으므로 실제 파일도 견준다.
+func (s *Server) aliasesUnitParent(name string) bool {
+	data := filepath.Clean(s.m.dir)
+	info, statErr := os.Stat(filepath.Join(data, name))
+	for parent := range wsUnitParents {
+		if strings.EqualFold(name, parent) {
+			return true
+		}
+		if statErr != nil {
+			continue
+		}
+		if parentInfo, err := os.Stat(filepath.Join(data, parent)); err == nil && os.SameFile(info, parentInfo) {
+			return true
+		}
+	}
+	return false
+}
+
+// errWorkspaceUnitLink 는 작업 단위 디렉터리 자체가 심볼릭 링크라 열지 않았다는 뜻이다. 서버 오류가 아니라 요청 거부다.
+var errWorkspaceUnitLink = errors.New("작업 단위 디렉터리가 심볼릭 링크입니다")
 
 // wsOpenRoot 는 작업 단위 unit(비면 데이터 디렉터리 전체)을 os.Root로 연다. 요청마다 열어 닫으므로 작업
 // 디렉터리가 바뀌어도 따라간다. create면 없는 단위 디렉터리를 만든다(쓰기·새 디렉터리·업로드).
@@ -86,7 +146,7 @@ func (s *Server) wsOpenRoot(unit string, create bool) (*os.Root, error) {
 		return nil, err
 	}
 	if info.Mode()&fs.ModeSymlink != 0 {
-		return nil, fmt.Errorf("작업 단위 디렉터리 %s가 심볼릭 링크입니다", unit)
+		return nil, fmt.Errorf("%s: %w", unit, errWorkspaceUnitLink)
 	}
 	return data.OpenRoot(unit)
 }
@@ -105,7 +165,10 @@ func (s *Server) wsAbs(rel string) string {
 // 이 판정은 오류 응답을 가르는 용도다. 판정과 열기 사이의 경쟁은 열기를 단위의 os.Root로 해서 막는다.
 func (s *Server) wsResolve(rel string) (wsPath, bool) {
 	abs := s.wsAbs(rel)
-	unit := s.wsUnit(abs)
+	unit, ok := s.wsUnit(abs)
+	if !ok {
+		return wsPath{}, false
+	}
 	name, ok := s.wsRootName(unit, abs)
 	if !ok {
 		return wsPath{}, false
@@ -193,6 +256,10 @@ func (s *Server) wsOpen(w http.ResponseWriter, rel string, create bool) (*os.Roo
 	root, err := s.wsOpenRoot(p.unit, create)
 	if errors.Is(err, fs.ErrNotExist) {
 		writeErr(w, 404, "경로가 없습니다")
+		return nil, wsPath{}, false
+	}
+	if errors.Is(err, errWorkspaceUnitLink) {
+		writeErr(w, 400, "잘못된 경로입니다")
 		return nil, wsPath{}, false
 	}
 	if err != nil {
@@ -364,10 +431,18 @@ func (s *Server) wsDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "작업 공간 루트 디렉터리는 삭제할 수 없습니다")
 		return
 	}
-	unit := s.wsUnit(abs)
+	unit, ok := s.wsUnit(abs)
+	if !ok {
+		writeErr(w, 400, "잘못된 경로입니다")
+		return
+	}
 	root, err := s.wsOpenRoot(unit, false)
 	if errors.Is(err, fs.ErrNotExist) {
 		writeErr(w, 404, "경로가 없습니다")
+		return
+	}
+	if errors.Is(err, errWorkspaceUnitLink) {
+		writeErr(w, 400, "잘못된 경로입니다")
 		return
 	}
 	if err != nil {
@@ -472,7 +547,9 @@ func saveUploadInRoot(root *os.Root, hdr *multipart.FileHeader, name string) err
 		return err
 	}
 	defer src.Close()
-	out, tmp, err := createUniqueUpload(root, filepath.Dir(name), "."+filepath.Base(name)+".upload")
+	// 권한은 umask에 맡긴다. 에이전트 uid 분리(#165)를 켜면 서버 umask가 002라 0664가 되어, 사용자가 올린 파일을
+	// 에이전트가 그 자리에서 고칠 수 있다. 같은 작업 디렉터리에 에이전트·서버가 만드는 다른 파일과 같다.
+	out, tmp, err := createUniqueUpload(root, filepath.Dir(name), "."+filepath.Base(name)+".upload", 0o666)
 	if err != nil {
 		return err
 	}

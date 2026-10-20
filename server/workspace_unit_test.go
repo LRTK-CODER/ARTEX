@@ -277,8 +277,8 @@ func TestChatUploadStaysInOwnSession(t *testing.T) {
 				t.Fatalf("다른 세션 uploads가 바뀌었다: %v (status=%d body=%s)", entries, rec.Code, rec.Body.String())
 			}
 			if tc.wantSaved == "" {
-				if rec.Code == http.StatusOK {
-					t.Fatalf("status=200 body=%s, want rejection", rec.Body.String())
+				if rec.Code != http.StatusConflict {
+					t.Fatalf("status=%d body=%s, want 409", rec.Code, rec.Body.String())
 				}
 				return
 			}
@@ -289,6 +289,65 @@ func TestChatUploadStaysInOwnSession(t *testing.T) {
 				t.Fatalf("saved content=%q", got)
 			}
 		})
+	}
+}
+
+// 단위 이름을 글자가 다르게 써도(대소문자, 유니코드 대소문자 접기, 0을 앞에 붙인 id) 단위 판정을 건너뛰지 않는다.
+// 대소문자를 무시하는 파일 시스템(macOS APFS, Docker Desktop 바인드 마운트)에서는 TASKS/1이 tasks/1과 같은
+// 디렉터리라, 이를 단위 밖으로 보면 데이터 디렉터리 전체 루트로 열려 다른 작업의 링크를 따라간다(#176).
+// 대소문자를 구분하는 파일 시스템에서도 같은 거부가 나야 어디서 돌려도 이 판정을 지킨다.
+func TestWorkspaceRejectsUnitNameVariants(t *testing.T) {
+	paths := []string{
+		"TASKS/1/work/other/secret.txt",
+		"Tasks/1/work/tx",
+		"taſks/1/work/tx", // U+017F는 유니코드 대소문자 접기로 s와 같다
+		"tasks/01/work/ok.txt",
+		"tasks/1x/work/ok.txt",
+		"sessions/CONV-1/other/secret.txt",
+		"SESSIONS/conv-1/other/secret.txt",
+		"tasks/3/secret.txt", // 단위 디렉터리 자체가 다른 작업을 가리키는 링크
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			f := newUnitFixture(t)
+			mustMkdir(t, filepath.Join(f.data, "sessions", "conv-1"))
+			mustSymlink(t, filepath.Join("..", "..", "tasks", "2"), filepath.Join(f.data, "sessions", "conv-1", "other"))
+			mustSymlink(t, "2", filepath.Join(f.data, "tasks", "3"))
+			requests := map[string]func() (http.HandlerFunc, *http.Request){
+				"내려받기": func() (http.HandlerFunc, *http.Request) {
+					return f.server.wsDownload, workspaceQuery(http.MethodGet, "/api/workspace/download", path)
+				},
+				"읽기": func() (http.HandlerFunc, *http.Request) {
+					return f.server.wsRead, workspaceQuery(http.MethodGet, "/api/workspace/read", path)
+				},
+				"쓰기": func() (http.HandlerFunc, *http.Request) {
+					return f.server.wsWrite, workspaceJSON("/api/workspace/write", `{"path":"`+path+`","content":"x"}`)
+				},
+				"삭제": func() (http.HandlerFunc, *http.Request) {
+					return f.server.wsDelete, workspaceQuery(http.MethodDelete, "/api/workspace/delete", path)
+				},
+			}
+			for name, request := range requests {
+				handler, req := request()
+				rec := serveWorkspace(handler, req)
+				if rec.Code != http.StatusBadRequest {
+					t.Errorf("%s: status = %d, want 400; body = %s", name, rec.Code, rec.Body.String())
+				}
+			}
+			if got := readFileString(t, filepath.Join(f.data, "tasks", "2", "secret.txt")); got != otherTaskSecret {
+				t.Fatalf("다른 작업 파일이 바뀌었다: %q", got)
+			}
+		})
+	}
+	// 정규 이름은 그대로 받는다.
+	f := newUnitFixture(t)
+	mustMkdir(t, filepath.Join(f.data, "sessions", "conv-1"))
+	mustWrite(t, filepath.Join(f.data, "sessions", "conv-1", "note.txt"), "inside")
+	for _, path := range []string{"tasks/1/work/ok.txt", "sessions/conv-1/note.txt"} {
+		rec := serveWorkspace(f.server.wsRead, workspaceQuery(http.MethodGet, "/api/workspace/read", path))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200; body = %s", path, rec.Code, rec.Body.String())
+		}
 	}
 }
 
