@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +43,38 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 	}
 	ctx := context.Background()
 	sessions := filepath.Join(m.dir, "sessions")
+	// 실제 StopProcesses는 그 uid가 되어 kill(-1)을 보내므로 여기서는 돌리지 않는다. 불린 시점에 작업 공간이 이미 닫혔고
+	// uid가 아직 할당돼 있었는지 남긴다. stopErr가 있으면 끝내지 못한 것으로 돌려준다(#179).
+	type stopCall struct {
+		uid              int
+		workspaceClosed  bool
+		uidStillAssigned bool
+	}
+	var stops []stopCall
+	var stopErr error
+	stopDirs := map[int]string{}
+	s.stopAgentUID = func(_ context.Context, uid int) error {
+		var n int
+		if err := m.pg.QueryRow(`SELECT count(*) FROM agent_uids WHERE uid=$1`, uid).Scan(&n); err != nil {
+			return err
+		}
+		closed := true
+		if dir, ok := stopDirs[uid]; ok {
+			// 삭제 요청을 처리하는 goroutine에서 불리므로 t.Fatal 대신 오류를 돌려준다. 그러면 삭제가 409로 드러난다.
+			f, err := os.Open(dir)
+			if err != nil {
+				return err
+			}
+			_, aclErr := agent.GetACL(f, agent.ACLAccess)
+			f.Close()
+			if aclErr != nil && !errors.Is(aclErr, agent.ErrNoACL) {
+				return aclErr
+			}
+			closed = errors.Is(aclErr, agent.ErrNoACL)
+		}
+		stops = append(stops, stopCall{uid: uid, workspaceClosed: closed, uidStillAssigned: n > 0})
+		return stopErr
+	}
 
 	// newConversation 은 uid를 받은 대화와, 그 uid에 열린 작업 공간·큰 출력 디렉터리를 만든다.
 	newConversation := func(t *testing.T, title string) (*db.Conversation, int, []string) {
@@ -73,6 +109,7 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 			t.Fatal(err)
 		}
 		dirs = append(dirs, filepath.Join(sessions, agent.CommandHomeDirName, key), filepath.Join(sessions, agent.CommandTmpDirName, key))
+		stopDirs[uid] = dirs[0]
 		return c, uid, dirs
 	}
 	deleteConversation := func(t *testing.T, id int64) *httptest.ResponseRecorder {
@@ -144,6 +181,11 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 		if uidAssigned(t, uid) {
 			t.Fatalf("uid %d still assigned after the conversation was deleted", uid)
 		}
+		// 남은 프로세스는 작업 공간을 닫은 뒤, uid를 돌려주기 전에 끝냈다(#179).
+		if want := []stopCall{{uid: uid, workspaceClosed: true, uidStillAssigned: true}}; !slices.Equal(stops, want) {
+			t.Fatalf("agent process stops = %+v, want %+v", stops, want)
+		}
+		stops = nil
 		s.chatMu.Lock()
 		busy := s.chatBusy[key]
 		s.chatMu.Unlock()
@@ -210,6 +252,69 @@ func TestDeleteConversationClosesWorkspaceBeforeReturningUID(t *testing.T) {
 		}
 		if !uidAssigned(t, uid) {
 			t.Fatalf("uid %d was returned although the workspace stayed open", uid)
+		}
+	})
+	t.Run("keeps the conversation and its uid when its agent processes cannot be stopped", func(t *testing.T) {
+		c, uid, _ := newConversation(t, "processes remain")
+		stopErr = errAgentProcessesRemain
+		t.Cleanup(func() { stopErr, stops = nil, nil })
+		rec := deleteConversation(t, c.ID)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("delete status = %d %s, want 409", rec.Code, rec.Body.String())
+		}
+		if body := rec.Body.String(); !strings.Contains(body, "에이전트 프로세스를 끝내지 못해 지우지 않았습니다") {
+			t.Fatalf("delete body = %s, want the agent process message", body)
+		}
+		if got, err := m.pg.GetConversation(c.ID); err != nil || got == nil {
+			t.Fatalf("conversation was deleted: %+v, %v", got, err)
+		}
+		if !uidAssigned(t, uid) {
+			t.Fatalf("uid %d was returned although its processes were not stopped", uid)
+		}
+		s.chatMu.Lock()
+		busy := s.chatBusy[s.convBusyKey(c.ID)]
+		s.chatMu.Unlock()
+		if busy {
+			t.Fatal("a refused delete left the busy marker held")
+		}
+	})
+
+	t.Run("batch delete stops each conversation's processes and keeps the ones it could not stop", func(t *testing.T) {
+		stopped, _, _ := newConversation(t, "batch stopped")
+		kept, keptUID, _ := newConversation(t, "batch kept")
+		s.stopAgentUID = func(_ context.Context, uid int) error {
+			stops = append(stops, stopCall{uid: uid})
+			if uid == keptUID {
+				return errAgentProcessesRemain
+			}
+			return nil
+		}
+		t.Cleanup(func() { stops = nil })
+		body := fmt.Sprintf(`{"ids":[%d,%d]}`, stopped.ID, kept.ID)
+		req := httptest.NewRequest(http.MethodPost, "/api/conversations/delete/batch", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("batch status = %d %s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Items []conversationDeleteItem `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if len(resp.Items) != 2 || !resp.Items[0].OK || resp.Items[1].OK || !strings.Contains(resp.Items[1].Error, "에이전트 프로세스를 끝내지 못해") {
+			t.Fatalf("batch items = %+v, want the first deleted and the second kept for its processes", resp.Items)
+		}
+		if len(stops) != 2 {
+			t.Fatalf("agent process stops = %+v, want one per conversation", stops)
+		}
+		if got, err := m.pg.GetConversation(kept.ID); err != nil || got == nil {
+			t.Fatalf("conversation whose processes remain was deleted: %+v, %v", got, err)
+		}
+		if !uidAssigned(t, keptUID) {
+			t.Fatalf("uid %d was returned although its processes were not stopped", keptUID)
 		}
 	})
 }

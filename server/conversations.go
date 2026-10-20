@@ -224,6 +224,10 @@ func (s *Server) pgDeleteConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+	if err := s.stopConversationAgentProcesses(r.Context(), c.ID); err != nil {
+		writeErr(w, http.StatusConflict, workspaceCloseMessage("대화 작업 공간", err))
+		return
+	}
 	if err := pg.DeleteConversation(c.ID); err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -247,6 +251,9 @@ var errTurnDidNotStop = errors.New("the running turn did not stop in time")
 func workspaceCloseMessage(workspace string, err error) string {
 	if errors.Is(err, errTurnDidNotStop) {
 		return "실행 중인 차례가 멈추지 않았습니다. 잠시 뒤 다시 지우세요"
+	}
+	if errors.Is(err, errAgentProcessesNotStopped) {
+		return "에이전트 프로세스를 끝내지 못해 지우지 않았습니다: " + err.Error()
 	}
 	return workspace + "을 닫지 못해 지우지 않았습니다: " + err.Error()
 }
@@ -304,6 +311,23 @@ func (s *Server) closeConversationWorkspace(id int64, deadline time.Time) (func(
 		}
 	}
 	return release, nil
+}
+
+// stopConversationAgentProcesses 는 대화에 할당한 uid에 대해 stopTaskAgentProcesses와 같은 일을 한다. 차례가 끝나도
+// 셸에서 떼어 띄운 프로세스는 남아 열어 둔 cwd·fd로 닫은 작업 공간에 닿고, uid를 다시 받은 작업·세션의 작업 공간에도
+// 닿는다. 작업 공간을 닫은 뒤(closeConversationWorkspace), uid를 돌려주기 전에 부른다.
+func (s *Server) stopConversationAgentProcesses(ctx context.Context, conversationID int64) error {
+	if s.sandbox == nil {
+		return nil
+	}
+	uid, ok, err := s.m.pg.ConversationAgentUID(ctx, conversationID)
+	if err != nil {
+		return fmt.Errorf("%w: read the agent uid of conversation %d: %w", errAgentProcessesNotStopped, conversationID, err)
+	}
+	if !ok {
+		return nil
+	}
+	return s.stopAgentProcesses(ctx, uid)
 }
 
 const maxConversationDeleteBatch = 100
@@ -371,6 +395,10 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 		defer release()
+		if err := s.stopConversationAgentProcesses(r.Context(), id); err != nil {
+			closeErrs[id] = err
+			continue
+		}
 		closed = append(closed, id)
 	}
 	var deleted []int64
