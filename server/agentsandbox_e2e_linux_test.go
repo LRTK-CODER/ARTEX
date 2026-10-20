@@ -546,6 +546,21 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		} else {
 			t.Logf("server uid alone: %v", err)
 		}
+		// 보관 준비 중에 서버가 다시 시작하면 시작 단계(restrictDataDir, #186)가 보관 임시 자리를 안쪽까지 서버 전용으로
+		// 닫고, 복구가 그 임시 자리를 지운다(recoverTaskArchiveStages). 도우미는 위 디렉터리를 거치지 않고 넘겨받은 fd로
+		// 에이전트 디렉터리에 들어가야 한다.
+		if err := restrictDataDir(dataDir); err != nil {
+			t.Fatal(err)
+		}
+		stagedWork := filepath.Join(stage.payload, "files", "tasks", "179", "work")
+		if acl := readACLOf(t, stagedWork, agent.ACLAccess); slices.ContainsFunc(acl, func(e agent.ACLEntry) bool { return e.Tag == agent.ACLNamedUser }) {
+			t.Fatalf("restrictDataDir left %s open to an agent uid: %v", stagedWork, acl)
+		}
+		closed := runTool(t, bash, syncCtx, map[string]any{"command": "id -u; ls " + shellQuote(stagedWork)})
+		t.Logf("task A reaches for the closed archive staging: %s", closed)
+		if !strings.Contains(closed, "Permission denied") {
+			t.Fatalf("task A still reaches the closed archive staging: %q", closed)
+		}
 		stage.removeAll = func(path string) error { return sb.RemoveAll(ctx, path) }
 		if err := stage.commit(); err != nil {
 			t.Fatalf("remove archive staging: %v", err)
@@ -581,13 +596,19 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatalf("task B reached task A's restored workspace: %q", other)
 		}
 
-		// 삭제: 파일을 지우는 작업 삭제는 작업 공간을 서버 전용 임시 자리로 옮긴 뒤 지운다.
+		// 삭제: 파일을 지우는 작업 삭제는 작업 공간을 서버 전용 임시 자리로 옮기고, uid를 돌려주기(DB 삭제) 전에 에이전트
+		// 디렉터리를 도우미로 비운다(Manager.DeleteTask). 커밋 뒤에는 서버 uid로만 지운다(taskFileDeleteStage.commit).
 		lockedTask(t, "180")
 		deleteStage, err := stageTaskFiles(dataDir, "180", 180)
 		if err != nil {
 			t.Fatal(err)
 		}
-		deleteStage.removeAll = func(path string) error { return sb.RemoveAll(ctx, path) }
+		if err := os.RemoveAll(deleteStage.stageDir); err == nil {
+			t.Fatal("the server uid removed the agent's chmod 000 directory on its own; the test does not exercise the helper")
+		}
+		if err := sb.clearAgentOwned(ctx, deleteStage.stageDir); err != nil {
+			t.Fatalf("clear the agent's directories before the database delete: %v", err)
+		}
 		if err := deleteStage.commit(); err != nil {
 			t.Fatalf("delete task files: %v", err)
 		}

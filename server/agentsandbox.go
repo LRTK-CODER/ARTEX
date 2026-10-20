@@ -418,54 +418,84 @@ func (o workspaceOwners) sessionUID(name string) int {
 // agentRemoveTimeout 은 RemoveAll이 에이전트 uid로 지우는 도우미 실행 하나에 주는 시간이다. 큰 작업 공간도 수 초면 끝난다.
 const agentRemoveTimeout = 5 * time.Minute
 
-// agentRemoveScript 는 에이전트 uid로 돌아 인자의 디렉터리(그 uid 소유)를 지운다. 지울 자리는 경로가 아니라 서버가 연
-// 디렉터리 fd 3으로 받는다. 서버가 경로를 다시 풀거나 chdir하지 않으므로, 걷기와 실행 사이에 상위 이름이 링크로
-// 바뀌어도 서버가 연 디렉터리 밖에서 지우지 않는다(#179). cd에 실패하면 아무것도 지우지 않고 끝난다. 소유자는 자기
-// 디렉터리를 chmod로 다시 열 수 있다(chmod -R은 디렉터리 권한을 먼저 바꾼 뒤 안을 읽는다). 일부를 지우지 못해도 끝
-// 코드로 판단하지 않고, 서버가 다시 지워 남은 것이 있는지로 판단한다.
-const agentRemoveScript = `cd -P /proc/self/fd/3 || exit 1; chmod -R u+rwX -- "$@"; rm -rf -- "$@"`
+// agentRemoveScript 는 에이전트 uid로 돌아, 서버가 넘긴 디렉터리(그 uid 소유)마다 안을 비운다. 디렉터리는 경로나
+// 이름이 아니라 서버가 링크를 따라가지 않고 연 fd(O_PATH)로 받고, 인자는 그 fd 번호다. 서버가 경로를 다시 풀지 않으므로
+// 걷기와 실행 사이에 이름이 링크로 바뀌어도 서버가 연 디렉터리 밖에서 지우지 않는다(#179). /proc/self/fd/<n>은 위
+// 디렉터리를 거치지 않고 그 디렉터리로 가므로, 위 디렉터리가 서버 전용으로 닫혀 있어도(시작 때 #186이 보관 임시 자리를
+// 닫은 경우) 들어간다. 소유자는 자기 디렉터리를 chmod로 다시 열 수 있다(chmod -R은 디렉터리 권한을 먼저 바꾼 뒤 안을
+// 읽는다). 빈 디렉터리 자체는 서버가 위 디렉터리(서버 소유)에서 지운다. 도우미의 cwd도 그 디렉터리라 서버 소유
+// 디렉터리를 쥐지 않는다. 일부를 지우지 못하면 0이 아닌 끝 코드다. chmod는 서버가 그 안에 만든 디렉터리에서 실패할 수
+// 있어(소유자가 아니다) 끝 코드에 넣지 않는다.
+const agentRemoveScript = `rc=0
+for fd do
+	chmod u+rwx "/proc/self/fd/$fd" 2>/dev/null
+	(cd -P "/proc/self/fd/$fd" && { chmod -R u+rwX . 2>/dev/null; find . -mindepth 1 -delete; }) || rc=1
+done
+exit $rc`
 
-// RemoveAll 은 서버 전용 임시 자리로 옮긴 작업 파일 path(작업 삭제·보관의 임시 디렉터리)를 지운다(#179). 먼저 서버
-// uid로 지운다. uid 분리를 켜면 에이전트 uid 소유의 디렉터리가 있을 수 있고, 에이전트가 그 권한을 바꾸면(chmod 000,
-// setfacl) 서버는 안을 비우지 못한다. 서버에는 CAP_DAC_OVERRIDE·CAP_FOWNER가 없다. 그래서 서버 uid로 지우지 못하면,
-// 서버 소유 디렉터리 바로 아래에 있는 다른 uid 소유 디렉터리마다 도우미로 그 소유 uid가 되어 지운 뒤 서버가 다시 지운다.
-// 도우미는 늘 하던 대로 허용 범위 밖의 uid(0, 서버 uid 등)를 거부한다. 소유 uid는 파일 시스템에서 읽으므로 DB 할당이
-// 없어진 뒤(예전 공용 uid의 파일 포함)에도 지운다.
-//
-// 걷기는 path부터 링크를 따라가지 않고 fd 기준으로 내려가고(walkAgentOwnedDirs), 도우미에는 경로 대신 서버가 연 부모
-// 디렉터리 fd를 넘긴다. 그래서 걷는 도중이나 도우미를 띄우기 전에 이름이 링크로 바뀌어도 path 밖을 지우지 않는다.
-// 호출자는 그 작업 uid의 프로세스를 먼저 끝낸다(StopProcesses). 꺼져 있으면 os.RemoveAll과 같다.
+// agentRemoveBatch 는 도우미 실행 하나에 넘기는 디렉터리 fd의 상한이다. 에이전트가 한 디렉터리에 디렉터리를 아주 많이
+// 만들어도 서버가 한꺼번에 여는 fd가 이만큼으로 묶인다.
+const agentRemoveBatch = 64
+
+// RemoveAll 은 서버 전용 임시 자리로 옮긴 작업 파일 path(보관의 임시 디렉터리, 시작 때 보관 복구)를 지운다(#179). 먼저
+// 서버 uid로 지운다. 지우지 못하면 path 아래 에이전트 소유 디렉터리를 도우미로 비운 뒤(clearAgentOwned) 서버가 다시
+// 지운다. 소유 uid는 파일 시스템에서 읽으므로 DB 할당이 없어진 뒤(예전 공용 uid의 파일 포함)에도 지운다. 그러므로 그
+// uid가 아직 그 작업에 할당돼 있을 때만 부른다. 풀로 돌아간 uid는 다른 작업이 받아, 그 작업의 프로세스가 도우미의
+// cwd·fd를 거쳐 지우는 파일에 닿는다. 작업 삭제는 DB 삭제 전에 clearAgentOwned를 따로 부른다(Manager.DeleteTask).
+// 꺼져 있으면 os.RemoveAll과 같다.
 func (s *AgentSandbox) RemoveAll(ctx context.Context, path string) error {
 	err := os.RemoveAll(path)
 	if err == nil || s == nil {
 		return err
 	}
-	helperErrs, walkErr := s.removeAgentOwned(ctx, path)
-	if walkErr != nil {
-		return errors.Join(append([]error{err, fmt.Errorf("find agent-owned directories under %s: %w", path, walkErr)}, helperErrs...)...)
-	}
+	clearErr := s.clearAgentOwned(ctx, path)
 	if err := os.RemoveAll(path); err != nil {
-		return errors.Join(append([]error{err}, helperErrs...)...)
+		return errors.Join(err, clearErr)
 	}
-	if len(helperErrs) > 0 {
-		log.Printf("[sandbox] %s를 지웠다(도우미가 보고한 오류는 무시함): %v", path, errors.Join(helperErrs...))
+	if clearErr != nil {
+		log.Printf("[sandbox] %s를 지웠다(도우미가 보고한 오류는 무시함): %v", path, clearErr)
 	}
 	return nil
 }
 
-// removeAsOwner 는 도우미로 uid가 되어 dir 안의 names를 지운다. gid도 같은 값이다(풀 사용자마다 같은 번호의 그룹).
-// dir은 경로가 아니라 연 fd로 넘긴다(agentRemoveScript).
-func (s *AgentSandbox) removeAsOwner(ctx context.Context, dir *os.File, uid int, names []string) error {
+// clearAgentOwned 는 path 아래의 에이전트 소유 디렉터리를 소유 uid마다 도우미로 그 uid가 되어 비운다(#179). uid 분리를
+// 켜면 에이전트 uid 소유의 디렉터리가 있을 수 있고, 에이전트가 그 권한을 바꾸면(chmod 000, setfacl) 서버는 안을 비우지
+// 못한다. 서버에는 CAP_DAC_OVERRIDE·CAP_FOWNER가 없다. 빈 디렉터리와 서버가 지울 수 있는 나머지는 남기므로 호출자가
+// os.RemoveAll로 마저 지운다. 도우미는 늘 하던 대로 허용 범위 밖의 uid(0, 서버 uid 등)를 거부한다.
+//
+// 걷기는 path부터 링크를 따라가지 않고 fd 기준으로 내려가고(walkAgentOwnedDirs), 도우미에는 경로 대신 걷기가 연 그
+// 디렉터리 fd를 넘긴다. 호출자는 그 작업 uid의 프로세스를 먼저 끝내고(StopProcesses), uid를 돌려주기 전에 부른다.
+// 걷기나 도우미가 실패하면 오류다. 꺼져 있으면 아무것도 하지 않는다.
+func (s *AgentSandbox) clearAgentOwned(ctx context.Context, path string) error {
+	if s == nil {
+		return nil
+	}
+	helperErrs, walkErr := s.removeAgentOwned(ctx, path)
+	if walkErr != nil {
+		helperErrs = append(helperErrs, fmt.Errorf("find agent-owned directories under %s: %w", path, walkErr))
+	}
+	return errors.Join(helperErrs...)
+}
+
+// removeAsOwner 는 도우미로 uid가 되어 dirs(그 uid 소유 디렉터리를 연 fd)의 안을 비운다. gid도 같은 값이다(풀 사용자마다
+// 같은 번호의 그룹).
+func (s *AgentSandbox) removeAsOwner(ctx context.Context, uid int, dirs []*os.File) error {
 	ctx, cancel := context.WithTimeout(ctx, agentRemoveTimeout)
 	defer cancel()
-	// "sh -c 스크립트 이름 인자..."에서 "artex-remove"는 $0이다. 디렉터리 이름은 인자로만 넘겨 셸이 해석하지 않는다.
-	name, args := s.Command("sh", append([]string{"-c", agentRemoveScript, "artex-remove"}, names...))
+	// "sh -c 스크립트 이름 인자..."에서 "artex-remove"는 $0이다. 인자는 서버가 정한 fd 번호뿐이다.
+	args := []string{"-c", agentRemoveScript, "artex-remove"}
+	names := make([]string, len(dirs))
+	for i, dir := range dirs {
+		args = append(args, strconv.Itoa(3+i)) // ExtraFiles의 i번째는 자식에서 fd 3+i가 된다
+		names[i] = dir.Name()
+	}
+	name, args := s.Command("sh", args)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = "/"
-	cmd.ExtraFiles = []*os.File{dir} // 자식에서 fd 3이 된다(agentRemoveScript)
+	cmd.ExtraFiles = dirs
 	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("remove %q in %s as agent uid %d: %v: %s", names, dir.Name(), uid, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("clear %q as agent uid %d: %v: %s", names, uid, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

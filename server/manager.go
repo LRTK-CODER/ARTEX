@@ -226,6 +226,10 @@ type Manager struct {
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
 	// sandbox 는 에이전트 uid 분리 설정이다(server.New가 넣는다). nil이면 꺼져 있다. 작업 파일을 지울 때 쓴다(#179).
 	sandbox *AgentSandbox
+	// clearAgentDirs 는 작업 삭제가 DB 삭제 전에 임시 자리의 에이전트 소유 디렉터리를 비우는 함수다(DeleteTask). nil이면
+	// sandbox.clearAgentOwned다. 실제 구현은 그 uid가 되는 도우미가 필요해 테스트에서 돌릴 수 없다. 테스트가 이것이 uid를
+	// 돌려주기 전에 불리는지, 실패하면 지우기를 멈추는지 보려고 이음매로 둔다.
+	clearAgentDirs func(ctx context.Context, path string) error
 
 	companyMu sync.Mutex // serializes task/company-scope commits with live handle registration
 	// taskStateMu preserves commit order between PostgreSQL lifecycle writes and
@@ -1420,6 +1424,13 @@ func (m *Manager) SetTaskStatus(id, status string) error {
 // task's asset rows. Files are staged before the database operation; traffic is
 // staged while PostgreSQL excludes asset/anchor writers. Both are restored on a
 // database failure and purged only after its commit.
+//
+// uid 분리를 켜면 파일을 지울 때 임시 자리의 에이전트 소유 디렉터리를 DB 삭제 전에 도우미로 비운다(#179). DB 삭제가
+// 커밋되면 작업 uid가 풀로 돌아가고 다음 작업이 바로 그 uid를 받는다. 그 뒤에 그 uid로 도우미를 띄우면 새 작업의
+// 프로세스가 도우미의 cwd·fd를 거쳐 지우는 파일에 닿는다. DB 삭제 전에는 호출자(pgDeleteTask)가 삭제 장벽을 잡고 그
+// uid의 프로세스를 끝낸 뒤라 그 uid로 도는 것은 도우미뿐이다. 그래서 DB 삭제가 실패하면 비운 에이전트 디렉터리는 되돌리지 못한다(빈
+// 디렉터리로 돌아간다). 사용자가 파일을 지우라고 했으므로 받아들인다. 비우지 못하면 작업을 지우지 않는다
+// (errAgentFilesNotCleared). 커밋 뒤의 마무리는 서버 uid로만 지운다.
 func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResult, error) {
 	result := DeleteTaskResult{Deleted: id}
 	n, err := strconv.ParseInt(id, 10, 64)
@@ -1441,8 +1452,11 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 		if err != nil {
 			return result, err
 		}
-		// 임시 자리는 PostgreSQL 삭제가 커밋된 뒤에 지운다. 그때는 요청이 끊겨도 끝까지 지워야 하므로 요청 ctx를 쓰지 않는다.
-		fileStage.removeAll = func(path string) error { return m.sandbox.RemoveAll(context.Background(), path) }
+		if fileStage.stageDir != "" {
+			if err := m.clearStagedAgentDirs(fileStage.stageDir); err != nil {
+				return result, rollbackTaskDelete(fmt.Errorf("%w: %w", errAgentFilesNotCleared, err), nil, fileStage)
+			}
+		}
 		result.FilesDeleted = fileStage.deleted
 	}
 
@@ -1493,6 +1507,21 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 		return result, &taskDeleteCommittedError{err: err}
 	}
 	return result, nil
+}
+
+// errAgentFilesNotCleared 는 작업 파일을 지우기 전에 에이전트가 권한을 바꾼 디렉터리를 비우지 못했다는 뜻이다
+// (DeleteTask). 작업과 uid는 그대로 남는다.
+var errAgentFilesNotCleared = errors.New("could not clear the directories the agent locked")
+
+// clearStagedAgentDirs 는 작업 삭제의 임시 자리 path에서 에이전트 소유 디렉터리를 비운다(clearAgentDirs 이음매, 없으면
+// AgentSandbox.clearAgentOwned). 삭제 요청은 이미 서버 전용 임시 자리로 옮긴 뒤라, 요청이 끊겨도 이 단계를 끝까지
+// 해서 DB 삭제로 넘어가거나 되돌린다. 그래서 요청 ctx를 쓰지 않는다. 도우미 하나는 agentRemoveTimeout으로 묶인다.
+func (m *Manager) clearStagedAgentDirs(path string) error {
+	clearDirs := m.clearAgentDirs
+	if clearDirs == nil {
+		clearDirs = m.sandbox.clearAgentOwned
+	}
+	return clearDirs(context.Background(), path)
 }
 
 // taskDeleteCommittedError means PostgreSQL deletion succeeded but purging one
@@ -1556,8 +1585,6 @@ type taskFileDeleteStage struct {
 	moves    []stagedTaskPath
 	deleted  bool
 	done     bool
-	// removeAll 는 commit이 임시 자리를 지우는 함수다. nil이면 os.RemoveAll이다(taskArchiveFileStage.removeAll과 같다).
-	removeAll func(string) error
 }
 
 // stageTaskFiles atomically renames the task workspace and owned transcripts to
@@ -1594,7 +1621,7 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 		return stage, nil
 	}
 
-	parent := filepath.Join(dataDir, ".delete-staging")
+	parent := filepath.Join(dataDir, taskDeleteStagingDir)
 	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return nil, err
 	}
@@ -1617,15 +1644,55 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 	return stage, nil
 }
 
+// taskDeleteStagingDir 는 작업 삭제가 파일을 옮겨 두는 서버 전용 임시 자리다(stageTaskFiles).
+const taskDeleteStagingDir = ".delete-staging"
+
+// recoverTaskDeleteStages 는 시작할 때 작업 삭제의 임시 자리(.delete-staging/task-<id>-*)에 남은 것을 지운다. 커밋 뒤
+// 마무리(taskFileDeleteStage.commit)가 실패했거나 그 사이 서버가 멈추면 남는다. 작업이 DB에 남아 있으면(DB 삭제 전에
+// 멈춘 경우) 지우지 않고 기록만 남긴다. 그 파일은 아직 지우지 않은 작업의 것이다. 서버 uid로만 지운다. 에이전트가 권한을
+// 바꾼 디렉터리는 DB 삭제 전에 비우므로(DeleteTask) 보통 남지 않는다. 지운 작업의 uid는 이미 다른 작업에 할당됐을 수
+// 있어 그 uid로 도우미를 띄우지 않는다.
+func recoverTaskDeleteStages(dataDir string, pg *pgdb.DB) error {
+	parent := filepath.Join(dataDir, taskDeleteStagingDir)
+	entries, err := os.ReadDir(parent)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, entry := range entries {
+		rest, ok := strings.CutPrefix(entry.Name(), "task-")
+		idText, _, hasSuffix := strings.Cut(rest, "-")
+		if !ok || !hasSuffix || !isCanonicalPositiveID(idText) {
+			continue
+		}
+		id, _ := strconv.ParseInt(idText, 10, 64) // isCanonicalPositiveID가 확인했다
+		task, err := pg.GetTask(id)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("look up task %d for %s: %w", id, entry.Name(), err))
+			continue
+		}
+		path := filepath.Join(parent, entry.Name())
+		if task != nil {
+			log.Printf("[task-delete] 작업 %d가 아직 있어 삭제 임시 자리 %s를 지우지 않았다(삭제 도중 멈춘 것이다. 파일은 그 안에 있다)", id, path)
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func (s *taskFileDeleteStage) commit() error {
 	if s == nil || s.done {
 		return nil
 	}
-	remove := s.removeAll
-	if remove == nil {
-		remove = os.RemoveAll
-	}
-	err := remove(s.stageDir)
+	// 서버 uid로만 지운다. 에이전트가 권한을 바꾼 디렉터리는 DB 삭제 전에 비웠다(DeleteTask). 지금은 작업 uid가 풀로
+	// 돌아가 다른 작업에 할당될 수 있어 그 uid로 도우미를 띄우지 않는다.
+	err := os.RemoveAll(s.stageDir)
 	s.done = true
 	return err
 }

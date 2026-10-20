@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,10 +18,13 @@ const agentMarkMode = 0o711
 
 func isAgentMarked(st *syscall.Stat_t) bool { return st.Mode&0o777 == agentMarkMode }
 
-// agentDirVisit 은 walkAgentOwnedDirs가 visit에 넘긴 값이다. dir은 root 기준 경로다.
-type agentDirVisit struct {
-	dir   string
-	names []string
+// visitedPaths 는 walkAgentOwnedDirs가 visit에 넘긴 디렉터리들의 root 기준 경로다.
+func visitedPaths(root string, dirs []*os.File) []string {
+	paths := make([]string, len(dirs))
+	for i, dir := range dirs {
+		paths[i], _ = filepath.Rel(root, dir.Name())
+	}
+	return paths
 }
 
 func mkdirMode(t *testing.T, path string, mode os.FileMode) {
@@ -51,20 +55,54 @@ func TestWalkAgentOwnedDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var visits []agentDirVisit
-	err := walkAgentOwnedDirs(root, isAgentMarked, func(dir *os.File, uid int, names []string) {
+	var visits [][]string
+	err := walkAgentOwnedDirs(root, isAgentMarked, func(uid int, dirs []*os.File) {
 		if uid != os.Getuid() {
 			t.Errorf("uid = %d, want the owner from fstat (%d)", uid, os.Getuid())
 		}
-		rel, _ := filepath.Rel(root, dir.Name())
-		visits = append(visits, agentDirVisit{dir: rel, names: names})
+		visits = append(visits, visitedPaths(root, dirs))
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []agentDirVisit{{dir: "a", names: []string{"agent1", "agent2"}}, {dir: filepath.Join("b", "deep"), names: []string{"agent3"}}, {dir: ".", names: []string{"top"}}}
-	if !slices.EqualFunc(visits, want, func(a, b agentDirVisit) bool { return a.dir == b.dir && slices.Equal(a.names, b.names) }) {
-		t.Fatalf("visits = %+v, want %+v", visits, want)
+	want := [][]string{{filepath.Join("a", "agent1"), filepath.Join("a", "agent2")}, {filepath.Join("b", "deep", "agent3")}, {"top"}}
+	if !slices.EqualFunc(visits, want, slices.Equal) {
+		t.Fatalf("visits = %q, want %q", visits, want)
+	}
+}
+
+// TestWalkAgentOwnedDirsBatches 는 한 디렉터리에 에이전트 디렉터리가 많아도 visit 한 번에 agentRemoveBatch개까지만
+// 넘겨, 서버가 한꺼번에 여는 fd가 묶이는지 본다.
+func TestWalkAgentOwnedDirsBatches(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "stage")
+	total := agentRemoveBatch + 3
+	for i := range total {
+		mkdirMode(t, filepath.Join(root, fmt.Sprintf("d%03d", i)), agentMarkMode)
+	}
+	var sizes []int
+	err := walkAgentOwnedDirs(root, isAgentMarked, func(_ int, dirs []*os.File) { sizes = append(sizes, len(dirs)) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{agentRemoveBatch, 3}; !slices.Equal(sizes, want) {
+		t.Fatalf("batch sizes = %v, want %v", sizes, want)
+	}
+}
+
+// clearThroughFD 는 도우미가 agentRemoveScript에서 하는 것처럼, 넘겨받은 디렉터리 fd를 /proc/self/fd로 따라가 그 안을
+// 비운다(경로를 다시 풀지 않는다).
+func clearThroughFD(t *testing.T, dir *os.File) {
+	t.Helper()
+	proc := filepath.Join("/proc/self/fd", strconv.Itoa(int(dir.Fd())))
+	entries, err := os.ReadDir(proc)
+	if err != nil {
+		t.Errorf("read %s through its fd: %v", dir.Name(), err)
+		return
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(proc, entry.Name())); err != nil {
+			t.Errorf("clear %s: %v", dir.Name(), err)
+		}
 	}
 }
 
@@ -85,13 +123,10 @@ func TestWalkAgentOwnedDirsDoesNotFollowSwappedLink(t *testing.T) {
 
 	swapped := false
 	var visited []string
-	err := walkAgentOwnedDirs(root, isAgentMarked, func(dir *os.File, _ int, names []string) {
-		for _, name := range names {
-			visited = append(visited, filepath.Join(dir.Name(), name))
-			// 넘긴 디렉터리 fd 기준으로 지운다(도우미가 fd 3에서 하는 것과 같다).
-			if err := os.RemoveAll(filepath.Join("/proc/self/fd", strconv.Itoa(int(dir.Fd())), name)); err != nil {
-				t.Errorf("remove %s: %v", name, err)
-			}
+	err := walkAgentOwnedDirs(root, isAgentMarked, func(_ int, dirs []*os.File) {
+		for _, dir := range dirs {
+			visited = append(visited, dir.Name())
+			clearThroughFD(t, dir)
 		}
 		if swapped {
 			return
@@ -119,6 +154,49 @@ func TestWalkAgentOwnedDirsDoesNotFollowSwappedLink(t *testing.T) {
 	}
 }
 
+// TestWalkAgentOwnedDirsHandsOverTheOpenedDir 는 visit에 넘긴 fd가 걷기가 연 그 디렉터리를 가리키는지 본다(#179). 넘긴
+// 뒤 이름이 밖을 가리키는 링크로 바뀌어도 fd로 비우면 밖은 그대로다. 위 디렉터리가 닫혀 있어도(시작 때 #186이 보관
+// 임시 자리를 서버 전용으로 닫은 경우) fd로는 들어간다.
+func TestWalkAgentOwnedDirsHandsOverTheOpenedDir(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "stage")
+	parent := filepath.Join(root, "work")
+	mkdirMode(t, filepath.Join(parent, "agent"), agentMarkMode)
+	if err := os.WriteFile(filepath.Join(parent, "agent", "secret"), []byte("deleted task"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(base, "outside")
+	mkdirMode(t, outside, 0o755)
+	if err := os.WriteFile(filepath.Join(outside, "keep"), []byte("other task"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := walkAgentOwnedDirs(root, isAgentMarked, func(_ int, dirs []*os.File) {
+		if err := os.Rename(filepath.Join(parent, "agent"), filepath.Join(base, "moved")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(parent, "agent")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(parent, 0); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = os.Chmod(parent, 0o755) }() // t.TempDir 정리를 위해 되돌린다. 실패하면 정리가 알린다
+		for _, dir := range dirs {
+			clearThroughFD(t, dir)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(outside, "keep")); err != nil || string(got) != "other task" {
+		t.Fatalf("the link target was cleared: %q, %v", got, err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(base, "moved")); err != nil || len(entries) != 0 {
+		t.Fatalf("the opened directory was not cleared: %v, %v", entries, err)
+	}
+}
+
 // TestWalkAgentOwnedDirsRejectsLinkRoot 는 지울 자리 자체가 링크면 따라가지 않고 오류인지 본다.
 func TestWalkAgentOwnedDirsRejectsLinkRoot(t *testing.T) {
 	base := t.TempDir()
@@ -128,7 +206,7 @@ func TestWalkAgentOwnedDirsRejectsLinkRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	called := false
-	err := walkAgentOwnedDirs(root, isAgentMarked, func(*os.File, int, []string) { called = true })
+	err := walkAgentOwnedDirs(root, isAgentMarked, func(int, []*os.File) { called = true })
 	if !errors.Is(err, syscall.ELOOP) && !errors.Is(err, syscall.ENOTDIR) {
 		t.Fatalf("walk of a link root = %v, want ELOOP or ENOTDIR", err)
 	}

@@ -193,6 +193,10 @@ func (s *Server) pgDeleteTask(w http.ResponseWriter, r *http.Request) {
 			writeCommittedTaskDelete(w, result, err)
 			return
 		}
+		if errors.Is(err, errAgentFilesNotCleared) {
+			writeErr(w, http.StatusConflict, "에이전트가 권한을 바꾼 파일을 지우지 못해 작업을 지우지 않았습니다: "+err.Error())
+			return
+		}
 		writeErr(w, 500, err.Error())
 		return
 	}
