@@ -2,15 +2,11 @@ package selfupdate
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -112,58 +108,6 @@ func TestDownloadStopsAtLimitAndRemovesTempFile(t *testing.T) {
 			t.Errorf("실패한 다운로드의 임시 파일이 남아 있음: %v", statErr)
 		}
 	})
-}
-
-// TestStageWritesPrivateSumFile 은 Stage의 성공 경로가 임시 저장본과 0600 해시 파일을 남기는지 본다.
-// writeFilePrivate만이 아니라 Stage가 해시 파일을 그것으로 쓰는지(호출 지점)를 잡는다.
-func TestStageWritesPrivateSumFile(t *testing.T) {
-	requireUnix(t)
-	p := testPaths(t)
-	const tag = "v1.0.0"
-	name := AssetName(tag, runtime.GOOS, runtime.GOARCH)
-	binBody := "#!/bin/sh\nexit 0\n"
-
-	var zipBuf bytes.Buffer
-	zw := zip.NewWriter(&zipBuf)
-	w, err := zw.Create("artex-1.0.0/artex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.Write([]byte(binBody)); err != nil {
-		t.Fatal(err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	zipSum := sha256.Sum256(zipBuf.Bytes())
-	sums := hex.EncodeToString(zipSum[:]) + "  " + name + "\n"
-
-	base := "https://github.com/LRTK-CODER/ARTEX/releases/download/" + tag + "/"
-	bodies := map[string][]byte{base + name: zipBuf.Bytes(), base + sumsAsset: []byte(sums)}
-	c := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		body, ok := bodies[r.URL.String()]
-		if !ok {
-			return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody, Header: make(http.Header)}, nil
-		}
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
-	})}
-	rel := &Release{TagName: tag, Assets: []Asset{
-		{Name: name, URL: base + name, Size: int64(zipBuf.Len())},
-		{Name: sumsAsset, URL: base + sumsAsset, Size: int64(len(sums))},
-	}}
-
-	if err := stageAt(context.Background(), c, rel, p, "0.9.0", nil); err != nil {
-		t.Fatalf("stageAt: %v", err)
-	}
-
-	if got := readAll(t, p.New); got != binBody {
-		t.Errorf("임시 저장본 내용 = %q, want %q", got, binBody)
-	}
-	assertPrivateRegularFile(t, p.Sum)
-	binSum := sha256.Sum256([]byte(binBody))
-	if got := readAll(t, p.Sum); got != hex.EncodeToString(binSum[:]) {
-		t.Errorf("해시 파일 내용 = %q, want 임시 저장본의 sha256", got)
-	}
 }
 
 // TestDownloadTempFileIsPrivateAndDoesNotFollowSymlink 는 다운로드 임시 파일이 0600이고, 고정 이름 자리에

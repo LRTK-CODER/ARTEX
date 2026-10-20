@@ -1,7 +1,9 @@
 package selfupdate
 
 import (
+	"archive/zip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -10,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -49,10 +52,12 @@ type State struct {
 //
 // 세 가지 경우:
 //
-//	① 임시 저장본 artex.new가 있음 → 검증 + 스모크 테스트. 통과하면 바이너리를 교체하고 재시작을 요청하고, 통과하지 못하면 버리고 이전 버전으로 계속 실행
+//	① 임시 저장본 artex.new가 있음 → 서명·해시·버전 검증 + 스모크 테스트. 통과하면 바이너리를 교체하고 재시작을 요청하고, 통과하지 못하면 버리고 이전 버전으로 계속 실행
 //	② 마커 파일만 남음          → 바이너리를 막 교체했다는 뜻. 시도를 한 번 센다. 연속 실패가 한도에 이르면 롤백
 //	③ 아무것도 없음            → 정상 시작
-func Bootstrap() (Action, State) {
+//
+// currentVersion은 지금 실행 중인 바이너리의 버전이다. 임시 저장본이 이보다 높은 버전일 때만 설치한다.
+func Bootstrap(currentVersion string) (Action, State) {
 	if os.Getenv(smokeEnv) != "" {
 		return Continue, State{}
 	}
@@ -63,7 +68,7 @@ func Bootstrap() (Action, State) {
 	}
 
 	if _, err := os.Stat(p.New); err == nil {
-		return applyStaged(p)
+		return applyStaged(p, currentVersion, releaseKeys)
 	}
 
 	m, ok := readMarker(p.Marker)
@@ -78,10 +83,10 @@ func Bootstrap() (Action, State) {
 // 업데이트 과정 전체에서 실행 파일을 덮어쓰는 곳은 여기뿐이고, 마지막 관문이기도 하다. 스모크 테스트가
 // 다운로드 손상, 잘못 고른 아키텍처, 동적 링크 누락 같은 문제를 막는다. 실행되지 않는 바이너리를 한 번 통과시키면
 // 감시 스크립트가 지치지 않고 계속 다시 띄우는데, Go 코드는 실행될 기회조차 없으니 자동 롤백도 할 수 없다.
-func applyStaged(p Paths) (Action, State) {
+func applyStaged(p Paths, currentVersion string, keys []ed25519.PublicKey) (Action, State) {
 	m, _ := readMarker(p.Marker)
 
-	if err := verifyStaged(p); err != nil {
+	if err := verifyStaged(p, currentVersion, keys); err != nil {
 		log.Printf("[update] 임시 저장한 새 버전 검증 실패, 버리고 현재 버전으로 계속 실행: %v", err)
 		cleanStaged(p)
 		_ = os.Remove(p.Marker)
@@ -161,18 +166,61 @@ func settle(p Paths) {
 // SettleDelay 는 "새 버전이 살아남았다"고 판정하는 데 필요한 실행 시간이다.
 const SettleDelay = 30 * time.Second
 
-// verifyStaged 는 임시 저장본을 검증한다. 먼저 SHA256을 비교하고, 실제로 한 번 띄워 실행해 본다.
-func verifyStaged(p Paths) error {
-	want, err := os.ReadFile(p.Sum)
-	if err != nil {
-		return fmt.Errorf("체크섬 읽기: %w", err)
+// verifyStaged 는 임시 저장본을 설치해도 되는지 처음부터 다시 확인한다. 실행 디렉터리에 쓸 수 있는 누구나
+// artex.new를 둘 수 있으므로, 임시 저장 때의 검증을 믿지 않고 서명된 SHA256SUMS에서 다시 시작한다.
+//
+// 순서: 기대 버전이 현재보다 높은지 → SHA256SUMS 서명 → 그 버전 배포 패키지의 해시 → 그 패키지에서 바이너리를
+// 다시 꺼내 artex.new를 덮어씀 → 스모크 테스트. 이전 버전이 남긴 임시 저장본은 서명된 SHA256SUMS가 없어 거부된다.
+func verifyStaged(p Paths, currentVersion string, keys []ed25519.PublicKey) error {
+	m, ok := readMarker(p.Marker)
+	if !ok {
+		return errors.New("업데이트 마커가 없어 기대 버전을 알 수 없음")
 	}
-	got, err := fileSHA256(p.New)
-	if err != nil {
-		return fmt.Errorf("체크섬 계산: %w", err)
+	if cmp, ok := CompareVersions(m.To, currentVersion); !ok || cmp <= 0 {
+		return fmt.Errorf("임시 저장본 버전 %s이(가) 현재 버전 %s보다 높지 않음", orUnknown(m.To), orUnknown(currentVersion))
 	}
-	if !strings.EqualFold(strings.TrimSpace(string(want)), got) {
-		return errors.New("SHA256이 일치하지 않음(다운로드 손상 또는 변조)")
+	sums, err := os.ReadFile(p.Sums)
+	if err != nil {
+		return fmt.Errorf("서명된 %s 읽기(이전 버전이 받아 둔 것이면 업데이트를 다시 받아야 함): %w", sumsAsset, err)
+	}
+	sig, err := os.ReadFile(p.SumsSig)
+	if err != nil {
+		return fmt.Errorf("%s 읽기: %w", sigAsset, err)
+	}
+	if err := verifySums(sums, sig, keys); err != nil {
+		return err
+	}
+	name := AssetName(m.To, runtime.GOOS, runtime.GOARCH)
+	want, ok := parseSums(string(sums))[name]
+	if !ok {
+		return fmt.Errorf("서명된 %s에 %s이(가) 없음", sumsAsset, name)
+	}
+	// 해시를 계산한 핸들 그대로 압축을 푼다. 경로로 다시 열면 그 사이에 파일을 바꿔치기할 틈이 생긴다.
+	zf, err := os.Open(p.Zip)
+	if err != nil {
+		return fmt.Errorf("배포 패키지 열기: %w", err)
+	}
+	defer zf.Close()
+	h := sha256.New()
+	size, err := io.Copy(h, zf)
+	if err != nil {
+		return fmt.Errorf("배포 패키지 체크섬 계산: %w", err)
+	}
+	if !strings.EqualFold(want, hex.EncodeToString(h.Sum(nil))) {
+		return errors.New("배포 패키지 SHA256이 서명된 목록과 일치하지 않음(손상 또는 변조)")
+	}
+	zr, err := zip.NewReader(zf, size)
+	if err != nil {
+		return fmt.Errorf("배포 패키지 열기: %w", err)
+	}
+	// artex.new 자체는 서명이 다루지 않으므로 해시를 확인한 패키지에서 다시 꺼낸 것으로 바꾼다.
+	part := p.New + ".part"
+	defer func() { _ = os.Remove(part) }() // 성공하면 이미 옮겨져 없고, 실패하면 남은 조각이다
+	if err := extractBinaryFrom(zr, part); err != nil {
+		return err
+	}
+	if err := os.Rename(part, p.New); err != nil {
+		return fmt.Errorf("검증한 바이너리로 바꾸기: %w", err)
 	}
 	return smokeTest(p.New)
 }
@@ -240,7 +288,7 @@ func swap(p Paths) error {
 		}
 		return fmt.Errorf("새 버전 설치: %w", err)
 	}
-	_ = os.Remove(p.Sum)
+	cleanStaged(p)
 	return nil
 }
 
@@ -300,19 +348,6 @@ func HasBackup() bool {
 	}
 	_, err = os.Stat(p.Old)
 	return err == nil
-}
-
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func orUnknown(s string) string {

@@ -79,7 +79,7 @@ func run() int {
 	// attempt and roll back if the new build keeps dying. Must run before we open
 	// the stores or bind a port — this may end with "exit and let the start script
 	// relaunch me", and there is no point paying for either first.
-	action, upState := selfupdate.Bootstrap()
+	action, upState := selfupdate.Bootstrap(version)
 	server.SetBootUpdateState(upState)
 	if action == selfupdate.Restart {
 		return selfupdate.ExitRestart

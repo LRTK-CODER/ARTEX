@@ -223,8 +223,9 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 **시스템 설정** 페이지(사이드바 '시스템 설정' → `/system/settings`)의 **버전과 업데이트** 카드에서 서버에 로그인하지 않고도 새 버전을 바로 확인하고 설치할 수 있다. 단독 실행 파일(Releases, 소스 컴파일) 배포에서만 쓴다. Docker는 아래 Docker 항목을 본다.
 
-'업데이트'를 누르면 현재 플랫폼의 배포 파일을 내려받아 Release의 `SHA256SUMS`와 대조하고, `-h`로 새 바이너리를 스모크 테스트한 뒤 `artex.new`로 임시 저장한다. 그다음 프로그램이 종료되면 `start.sh` / `start.bat`이 다시 띄우며 교체를 끝낸다. 화면은 새 버전이 올라올 때까지 기다렸다가 자동으로 새로 고친다.
+'업데이트'를 누르면 현재 플랫폼의 배포 파일을 내려받아, 바이너리에 고정한 공개 키로 서명(`SHA256SUMS.sig`)을 검증한 `SHA256SUMS`와 대조하고, `-h`로 새 바이너리를 스모크 테스트한 뒤 `artex.new`로 임시 저장한다. 그다음 프로그램이 종료되면 `start.sh` / `start.bat`이 다시 띄우며 교체를 끝낸다. 화면은 새 버전이 올라올 때까지 기다렸다가 자동으로 새로 고친다.
 
+- **서명이 없으면 설치하지 않는다**: 서명이 없거나 맞지 않는 릴리스는 거부한다. 다시 시작할 때도 남겨 둔 서명된 `SHA256SUMS`와 배포 패키지로 서명·해시와 '현재보다 높은 버전'인지 다시 확인한 뒤에만 교체한다. 서명 도입 전 버전이 받아 둔 `artex.new`는 설치하지 않고 지우므로 업데이트를 다시 누른다.
 - **실패해도 망가진 프로그램이 남지 않는다**: 검증이나 스모크 테스트를 통과하지 못하면 임시 파일을 버리고 현재 버전을 계속 돌린다. 교체한 새 버전이 3번 연속으로 시작에 실패하면 `artex.old`로 자동 롤백한다(실패한 것은 조사용으로 `artex.failed`로 남긴다).
 - **언제든 되돌릴 수 있다**: 이전 버전은 `artex.old`로 남고, 카드에 '이전 버전으로 롤백'이 있다. 단, 데이터베이스 구조는 되돌아가지 않는다.
 - **업데이트는 실행 중인 작업을 중단한다**: 업데이트가 곧 다시 시작이므로 쉴 때 한다.
@@ -418,6 +419,42 @@ server {
 ---
 
 
+
+## 릴리스
+
+`v*` 태그를 밀면 릴리스 워크플로가 zip과 `SHA256SUMS`를 붙인 **초안** 릴리스를 만든다(Docker 이미지는 이때 바로 올라간다). 셀프 업데이트는 `SHA256SUMS.sig`가 바이너리에 고정한 공개 키(`selfupdate/release_keys.go`)로 검증될 때만 설치하므로, 소유자가 오프라인 개인 키로 서명해 붙인 뒤 발행한다. immutable releases가 켜져 있어 발행 뒤에는 자산을 붙일 수 없다. 개인 키는 저장소·GitHub Secret에 두지 않는다.
+
+1. 초안 릴리스에서 `SHA256SUMS`를 내려받고, 릴리스 워크플로 `release` job 로그의 "Generate checksums" 단계에 찍힌 내용과 같은지 확인한다. 초안 자산은 발행 전까지 바꿀 수 있으므로, 다르면 서명하지 않는다.
+
+   ```bash
+   gh release download v1.2.3 -p SHA256SUMS
+   cat SHA256SUMS
+   ```
+
+2. 오프라인 기기에서 서명한다. 둘 중 하나를 쓴다. ed25519 서명은 결정적이라 둘의 결과는 같은 바이트다.
+
+   ```bash
+   go run ./cmd/artex-release-sign sign -key release.key SHA256SUMS      # SHA256SUMS.sig를 쓰고 이 빌드의 키 목록으로 검증한다
+   openssl pkeyutl -sign -inkey release.key -rawin -in SHA256SUMS -out SHA256SUMS.sig   # Go가 없을 때(OpenSSL 3)
+   ```
+
+3. 서명을 초안에 붙이고 발행한다.
+
+   ```bash
+   gh release upload v1.2.3 SHA256SUMS.sig
+   gh release edit v1.2.3 --draft=false
+   ```
+
+키 쌍 만들기(처음 한 번, 오프라인 기기에서):
+
+```bash
+go run ./cmd/artex-release-sign keygen -out release.key   # 0600 PKCS#8 PEM 개인 키, 공개 키(base64)를 출력
+# 또는 openssl
+openssl genpkey -algorithm ed25519 -out release.key
+openssl pkey -in release.key -pubout -outform DER | tail -c 32 | base64   # 공개 키(base64)
+```
+
+공개 키를 `selfupdate/release_keys.go` 목록에 넣는다. 키를 바꿀 때는 새 키를 더한 버전을 옛 키로 서명해 먼저 내보내고, 그 버전이 퍼진 뒤 새 키로 서명하고 옛 키를 뺀다. 서명을 확인만 하려면 `go run ./cmd/artex-release-sign verify SHA256SUMS SHA256SUMS.sig`.
 
 ## 개발
 

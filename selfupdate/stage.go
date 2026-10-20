@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"archive/zip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -46,9 +47,8 @@ type Progress func(ph Phase, pct int, msg string)
 
 // Stage 는 지정한 Release의 현재 플랫폼용 배포 패키지를 내려받아 검증한 뒤 새 바이너리를 artex.new로 임시 저장한다.
 //
-// 바이너리만이 아니라 zip 전체를 받는 이유는 두 가지다. 기존 Release의 SHA256SUMS는 원래
-// zip만 다루므로 zip을 받으면 CI를 고칠 필요가 없고 이미 배포한 이전 버전과도 호환된다. 또 zip에는
-// skills/ 가 들어 있어 나중에 내장 스킬을 동기화할 여지가 남는다. 대가는 skills 몇백 KB를 더 받는 것뿐이다.
+// 바이너리만이 아니라 zip 전체를 받는 이유는 SHA256SUMS와 그 서명이 zip을 다루기 때문이다. 다음 시작 때
+// Bootstrap이 서명·해시를 다시 확인하도록 zip과 서명된 SHA256SUMS 원본도 artex.new 옆에 남긴다.
 //
 // 함수가 반환하면 임시 저장이 끝난 것이다. 호출자는 이어서 정상 종료하고 ExitRestart로 종료한다.
 func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion string, prog Progress) error {
@@ -56,11 +56,12 @@ func Stage(ctx context.Context, c *http.Client, rel *Release, currentVersion str
 	if err != nil {
 		return err
 	}
-	return stageAt(ctx, c, rel, p, currentVersion, prog)
+	return stageAt(ctx, c, rel, p, currentVersion, releaseKeys, prog)
 }
 
-// stageAt 은 Stage의 본문이다. 경로를 인자로 받는 이유는 테스트가 실행 파일 디렉터리 대신 격리된 디렉터리를 쓰게 하기 위해서다.
-func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, currentVersion string, prog Progress) error {
+// stageAt 은 Stage의 본문이다. 경로와 공개 키를 인자로 받는 이유는 테스트가 실행 파일 디렉터리 대신 격리된
+// 디렉터리와 테스트 안에서 만든 키를 쓰게 하기 위해서다.
+func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, currentVersion string, keys []ed25519.PublicKey, prog Progress) (err error) {
 	if prog == nil {
 		prog = func(Phase, int, string) {}
 	}
@@ -74,23 +75,33 @@ func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, current
 		return fmt.Errorf("이 버전에는 %s/%s용 배포 패키지가 없습니다(%s 없음)", runtime.GOOS, runtime.GOARCH, name)
 	}
 
-	prog(PhaseDownload, 0, "체크섬 목록 받는 중…")
-	sums, err := fetchSums(ctx, c, rel)
+	prog(PhaseDownload, 0, "체크섬 목록과 서명 받는 중…")
+	sumsRaw, sig, err := fetchSignedSums(ctx, c, rel, keys)
 	if err != nil {
 		return err
 	}
-	want, ok := sums[name]
+	want, ok := parseSums(string(sumsRaw))[name]
 	if !ok {
 		return fmt.Errorf("%s에 %s이(가) 없어 검증하지 않은 바이너리의 설치를 거부합니다", sumsAsset, name)
 	}
 
 	// 임시 파일은 모두 대상 디렉터리에 둔다. 마지막 rename이 같은 파일 시스템 안의 원자적 동작이 되게 하기 위해서다
 	// (다른 장치로의 rename은 실패하고, /tmp는 흔히 별도 마운트 지점이다).
-	zipPath := p.New + ".zip.part"
+	zipPath := p.Zip + ".part"
 	binPath := p.New + ".part"
+	wroteMarker := false
 	defer func() {
 		_ = os.Remove(zipPath)
 		_ = os.Remove(binPath)
+		if err == nil {
+			return
+		}
+		cleanStaged(p) // 반쯤 남은 검증 자료가 다음 임시 저장과 섞이지 않게 한다
+		// 이번에 쓴 마커만 지운다. 남기면 다음 시작이 교체하지 않은 바이너리를 "새 버전 시작"으로 센다.
+		// 쓰기 전에 실패했다면 있는 마커는 지난 업데이트의 롤백 보호이므로 건드리지 않는다.
+		if wroteMarker {
+			_ = os.Remove(p.Marker)
+		}
 	}()
 
 	prog(PhaseDownload, 0, fmt.Sprintf("%s(%s) 다운로드 중…", name, humanSize(asset.Size)))
@@ -112,54 +123,70 @@ func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, current
 		return fmt.Errorf("새 버전이 현재 시스템에서 실행되지 않습니다: %w", err)
 	}
 
-	// 임시 저장본 자체의 sha256을 따로 저장한다. 다음 시작 때 바이너리를 교체하기 전에 한 번 더 검증해서,
-	// 임시 저장한 뒤 재시작하기 전 사이에 파일이 바뀌거나 망가지는 것을 막는다.
-	binSum, err := fileSHA256(binPath)
-	if err != nil {
-		return fmt.Errorf("새 바이너리 체크섬 계산: %w", err)
+	// 다음 시작 때 Bootstrap이 서명·해시·버전을 다시 확인할 자료를 남긴다. 마커의 To가 기대 버전이므로
+	// 마커도 필수다. artex.new는 맨 마지막에 옮긴다. Bootstrap은 artex.new가 있을 때만 적용을 시도한다.
+	if err := os.Rename(zipPath, p.Zip); err != nil {
+		return fmt.Errorf("배포 패키지 보관: %w", err)
 	}
-	if err := writeFilePrivate(p.Sum, []byte(binSum)); err != nil {
-		return fmt.Errorf("체크섬 쓰기: %w", err)
+	if err := writeFilePrivate(p.Sums, sumsRaw); err != nil {
+		return fmt.Errorf("%s 보관: %w", sumsAsset, err)
 	}
-	if err := os.Rename(binPath, p.New); err != nil {
-		_ = os.Remove(p.Sum)
-		return fmt.Errorf("새 버전 임시 저장: %w", err)
+	if err := writeFilePrivate(p.SumsSig, sig); err != nil {
+		return fmt.Errorf("%s 보관: %w", sigAsset, err)
 	}
-
 	if err := writeMarker(p.Marker, marker{
 		From:     currentVersion,
 		To:       strings.TrimPrefix(rel.TagName, "v"),
 		StagedAt: time.Now().Unix(),
 	}); err != nil {
-		// 마커는 자동 롤백 기능에만 영향을 준다. 임시 저장본은 이미 준비됐으므로 이 때문에 업데이트를 멈추지 않는다.
-		prog(PhaseStaged, -1, "경고: 업데이트 마커를 쓰지 못했습니다. 이번 업데이트는 자동 롤백으로 보호되지 않습니다")
+		return fmt.Errorf("업데이트 마커 쓰기: %w", err)
+	}
+	wroteMarker = true
+	if err := os.Rename(binPath, p.New); err != nil {
+		return fmt.Errorf("새 버전 임시 저장: %w", err)
 	}
 
 	prog(PhaseStaged, 100, "새 버전이 준비됐습니다. 재시작하는 중…")
 	return nil
 }
 
-// fetchSums 는 SHA256SUMS를 내려받아 파싱하고, 파일 이름 → 16진수 다이제스트를 돌려준다.
-func fetchSums(ctx context.Context, c *http.Client, rel *Release) (map[string]string, error) {
-	asset, ok := rel.FindAsset(sumsAsset)
+// fetchSignedSums 는 SHA256SUMS와 그 서명을 내려받아, keys 중 하나의 서명일 때만 원본 바이트와 서명을 돌려준다.
+// 서명이 없는 릴리스는 예외 없이 거부한다.
+func fetchSignedSums(ctx context.Context, c *http.Client, rel *Release, keys []ed25519.PublicKey) (sums, sig []byte, err error) {
+	sums, err = fetchSmallAsset(ctx, c, rel, sumsAsset, maxSumsSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	sig, err = fetchSmallAsset(ctx, c, rel, sigAsset, ed25519.SignatureSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := verifySums(sums, sig, keys); err != nil {
+		return nil, nil, err
+	}
+	return sums, sig, nil
+}
+
+// fetchSmallAsset 은 작은 자산을 통째로 읽는다. maxBytes를 넘으면 잘라 읽지 않고 거부한다.
+func fetchSmallAsset(ctx context.Context, c *http.Client, rel *Release, name string, maxBytes int64) ([]byte, error) {
+	asset, ok := rel.FindAsset(name)
 	if !ok {
-		return nil, fmt.Errorf("이 Release에 %s이(가) 없어 무결성을 검증할 수 없으므로 업데이트를 거부합니다", sumsAsset)
+		return nil, fmt.Errorf("이 Release에 %s이(가) 없어 무결성을 검증할 수 없으므로 업데이트를 거부합니다", name)
 	}
 	body, err := get(ctx, c, asset.URL)
 	if err != nil {
-		return nil, fmt.Errorf("%s 다운로드: %w", sumsAsset, err)
+		return nil, fmt.Errorf("%s 다운로드: %w", name, err)
 	}
 	defer body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(body, maxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("%s 읽기: %w", sumsAsset, err)
+		return nil, fmt.Errorf("%s 읽기: %w", name, err)
 	}
-	out := parseSums(string(raw))
-	if len(out) == 0 {
-		return nil, fmt.Errorf("%s의 내용이 비어 있거나 형식을 알아볼 수 없습니다", sumsAsset)
+	if int64(len(raw)) > maxBytes {
+		return nil, fmt.Errorf("%s이(가) 상한 %s을(를) 넘어 거부합니다", name, humanSize(maxBytes))
 	}
-	return out, nil
+	return raw, nil
 }
 
 // parseSums 는 sha256sum 형식의 목록을 파싱해 파일 이름 → 16진수 다이제스트를 돌려준다.
@@ -314,15 +341,20 @@ func get(ctx context.Context, c *http.Client, rawURL string) (io.ReadCloser, err
 // 패키지 안 구조는 artex-<버전>-<os>-<arch>/artex이지만, 여기서는 전체 경로를 이어 붙이지 않고 **기본 이름**으로 찾는다.
 // 버전 번호가 패키지 이름에 한 번 나오므로 한 글자만 틀려도 업데이트 전체가 실패한다. 기본 이름으로 찾는 편이 변경에 강하다.
 func extractBinary(zipPath, dst string) error {
-	want := "artex"
-	if runtime.GOOS == "windows" {
-		want = "artex.exe"
-	}
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("배포 패키지 열기: %w", err)
 	}
 	defer zr.Close()
+	return extractBinaryFrom(&zr.Reader, dst)
+}
+
+// extractBinaryFrom 은 이미 연 배포 패키지에서 artex 실행 파일을 꺼낸다.
+func extractBinaryFrom(zr *zip.Reader, dst string) error {
+	want := "artex"
+	if runtime.GOOS == "windows" {
+		want = "artex.exe"
+	}
 
 	for _, entry := range zr.File {
 		if entry.FileInfo().IsDir() || !strings.EqualFold(path.Base(entry.Name), want) {
