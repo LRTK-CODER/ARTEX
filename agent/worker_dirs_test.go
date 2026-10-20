@@ -16,8 +16,10 @@ func TestIsTaskWorkspaceName(t *testing.T) {
 		{name: filepath.Base(sharedRunDirs("/data", 7, 0).work), want: true},
 		{name: filepath.Base(sharedRunDirs("/data", 7, 1).work), want: true},
 		{name: filepath.Base(sharedRunDirs("/data", 7, 42).work), want: true},
+		{name: filepath.Base(taskCommandDirs("/data", 7).home), want: true},
+		{name: filepath.Base(taskCommandDirs("/data", 7).tmp), want: true},
 	}
-	for _, name := range []string{"uploads", ToolOutputDirName, "scans", "i", "i0", "i03", "i-1", "i1x", "1", "work2", "Work"} {
+	for _, name := range []string{"uploads", ToolOutputDirName, "scans", "i", "i0", "i03", "i-1", "i1x", "1", "work2", "Work", "Home", "tmp2"} {
 		cases = append(cases, struct {
 			name string
 			want bool

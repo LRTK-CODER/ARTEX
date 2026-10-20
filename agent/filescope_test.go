@@ -236,6 +236,10 @@ func TestSharedModeDropsDirectoryTools(t *testing.T) {
 func TestFileScopeForRoles(t *testing.T) {
 	data := filepath.Join(string(filepath.Separator), "srv", "artex")
 	tmp := os.TempDir()
+	tmpReal, err := filepath.EvalSymlinks(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
 	task := func(id string) string { return filepath.Join(data, "tasks", id) }
 	drafts := filepath.Join(data, "drafts")
 	task7 := fileScopeInput{DataDir: data, TaskID: 7, SourceTaskIDs: []int64{3}}
@@ -255,14 +259,15 @@ func TestFileScopeForRoles(t *testing.T) {
 		{"conversation", fileRoleConversation, conv9, false,
 			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), tmp}, Readable: []string{filepath.Join(data, "tasks"), drafts}}},
 		{"unknown role", fileRole("other"), fileScopeInput{DataDir: data}, false, FileScope{}},
-		// 켜면 planner·mainagent는 tasks/<tid>/work에 쓰고 tasks/<tid>(첨부·의도·큰 출력)는 읽기만 한다.
+		// 켜면 planner·mainagent는 tasks/<tid>/work에 쓰고 tasks/<tid>(첨부·의도·큰 출력)는 읽기만 한다. 공용 임시
+		// 디렉터리 대신 그 작업·세션의 TMPDIR(#178)에 쓴다.
 		{"planner and mainagent shared", fileRoleTask, task7, true,
-			FileScope{Writable: []string{filepath.Join(task("7"), "work"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
+			FileScope{Writable: []string{filepath.Join(task("7"), "work"), filepath.Join(task("7"), "tmp")}, Readable: []string{task("7"), drafts, task("3")}}},
 		{"worker shared", fileRoleIntent, intent42, true,
-			FileScope{Writable: []string{filepath.Join(task("7"), "i42"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
+			FileScope{Writable: []string{filepath.Join(task("7"), "i42"), filepath.Join(task("7"), "tmp")}, Readable: []string{task("7"), drafts, task("3")}}},
 		// 켜면 대화의 큰 출력은 sessions/cmd-output/<sid>라 읽기에 더한다.
 		{"conversation shared", fileRoleConversation, conv9, true,
-			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), tmp}, Readable: []string{filepath.Join(data, "tasks"), drafts, filepath.Join(data, "sessions", "cmd-output", "conv-9")}}},
+			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), filepath.Join(data, "sessions", "tmp", "conv-9")}, Readable: []string{filepath.Join(data, "tasks"), drafts, filepath.Join(data, "sessions", "cmd-output", "conv-9")}}},
 		{"unknown role shared", fileRole("other"), fileScopeInput{DataDir: data}, true, FileScope{}},
 	}
 	for _, tc := range cases {
@@ -273,6 +278,13 @@ func TestFileScopeForRoles(t *testing.T) {
 			}
 			if strings.Join(got.Writable, "|") != strings.Join(tc.want.Writable, "|") || strings.Join(got.Readable, "|") != strings.Join(tc.want.Readable, "|") {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+			// 켜면 공용 임시 디렉터리는 읽기로도 닿지 않는다(#178). 끄면 지금처럼 쓴다(검사가 헛돌지 않는지도 본다).
+			tmpFile := filepath.Join(tmpReal, "x")
+			if allowed := got.allows(tmpFile, false); tc.share && allowed {
+				t.Fatalf("shared scope %+v allows the system temp directory %s", got, tmpReal)
+			} else if !tc.share && len(tc.want.Writable) > 0 && !got.allows(tmpFile, true) {
+				t.Fatalf("unshared scope %+v does not allow writing the system temp directory %s", got, tmpReal)
 			}
 		})
 	}

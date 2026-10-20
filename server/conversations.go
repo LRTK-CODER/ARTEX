@@ -257,7 +257,7 @@ func newStopTicker() (<-chan time.Time, func()) {
 }
 
 // closeConversationWorkspace 는 uid 분리를 켰을 때 대화 id를 지우기 전에 그 작업 공간(sessions/conv-<id>,
-// sessions/cmd-output/conv-<id>)을 서버 전용으로 닫는다(#182). 대화를 지우면 그 uid가 풀로 돌아가 다른 작업·세션에
+// sessions/cmd-output/conv-<id>, 명령의 HOME·TMPDIR sessions/home·tmp/conv-<id>)을 서버 전용으로 닫는다(#182, #178). 대화를 지우면 그 uid가 풀로 돌아가 다른 작업·세션에
 // 다시 할당되는데, 디렉터리는 남는다(지우기는 #179). 닫지 않으면 새 주인이 지운 대화의 작업 공간을 읽는다.
 //
 // 돌고 있는 차례가 있으면(호출자가 멈춤을 요청했다) deadline까지 끝나기를 기다린 뒤 닫는다. 차례가 끝나야 그 uid로
@@ -292,7 +292,12 @@ func (s *Server) closeConversationWorkspace(id int64, deadline time.Time) (func(
 		<-ticks
 	}
 	sessions := filepath.Join(s.m.dir, "sessions")
-	for _, dir := range []string{filepath.Join(sessions, key), filepath.Join(sessions, agent.ToolOutputDirName, key)} {
+	for _, dir := range []string{
+		filepath.Join(sessions, key),
+		filepath.Join(sessions, agent.ToolOutputDirName, key),
+		filepath.Join(sessions, agent.CommandHomeDirName, key),
+		filepath.Join(sessions, agent.CommandTmpDirName, key),
+	} {
 		if err := agent.ShareDir(dir, 0, agent.WorkspaceServerOnly); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			release()
 			return nil, err

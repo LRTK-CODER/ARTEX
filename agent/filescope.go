@@ -87,8 +87,10 @@ type fileScopeInput struct {
 //	conversation  sessions/<sid>, 임시          tasks, drafts
 //
 // uid 분리를 켜면(#165, sharedRunDirs) task의 쓰기는 tasks/<tid>/work이고 tasks/<tid>는 읽기만이다(첨부, 의도
-// 디렉터리, 큰 출력). conversation은 자기 큰 출력 위치(sessions/cmd-output/<sid>)를 읽기에 더한다. intent는 같다
-// (자기 큰 출력 tasks/<tid>/cmd-output/i<iid>는 tasks/<tid> 안이다).
+// 디렉터리, 큰 출력). conversation은 자기 큰 출력 위치(sessions/cmd-output/<sid>)를 읽기에 더한다. intent의 작업
+// 디렉터리는 같다(자기 큰 출력 tasks/<tid>/cmd-output/i<iid>는 tasks/<tid> 안이다). 켜면 모든 역할에서 공용 임시
+// 디렉터리를 빼고 그 작업·세션의 TMPDIR(commanddirs.go)를 쓰기로 둔다(#178). 공용 임시 디렉터리는 서버 uid로 다른
+// 작업과 서버의 임시 파일에 닿는 길이다.
 //
 // 공통으로 AugmentTools가 보이는 스킬 디렉터리를 읽기에 더한다.
 // 읽기 허용의 이유: 작업 생성 전 첨부는 drafts/<id>/uploads에 남고 그 절대 경로가 작업 설명에 실린다.
@@ -111,20 +113,23 @@ func fileScopeFor(role fileRole, in fileScopeInput) FileScope {
 			Readable: append([]string{drafts}, sources...),
 			dataDir:  in.DataDir,
 			shared: &FileScope{
-				Writable: []string{sharedRunDirs(in.DataDir, in.TaskID, 0).work, tmp},
+				Writable: []string{sharedRunDirs(in.DataDir, in.TaskID, 0).work, taskCommandDirs(in.DataDir, in.TaskID).tmp},
 				Readable: append([]string{taskDir, drafts}, sources...),
 				dataDir:  in.DataDir,
 			},
 		}
 	case fileRoleIntent:
-		s := FileScope{
+		readable := append([]string{runDirPath(in.DataDir, in.TaskID, 0), drafts}, sources...)
+		return FileScope{
 			Writable: []string{runDirPath(in.DataDir, in.TaskID, in.IntentID), tmp},
-			Readable: append([]string{runDirPath(in.DataDir, in.TaskID, 0), drafts}, sources...),
+			Readable: readable,
 			dataDir:  in.DataDir,
+			shared: &FileScope{
+				Writable: []string{runDirPath(in.DataDir, in.TaskID, in.IntentID), taskCommandDirs(in.DataDir, in.TaskID).tmp},
+				Readable: readable,
+				dataDir:  in.DataDir,
+			},
 		}
-		shared := s
-		s.shared = &shared
-		return s
 	case fileRoleConversation:
 		tasks := filepath.Join(in.DataDir, "tasks")
 		return FileScope{
@@ -132,7 +137,7 @@ func fileScopeFor(role fileRole, in fileScopeInput) FileScope {
 			Readable: []string{tasks, drafts},
 			dataDir:  in.DataDir,
 			shared: &FileScope{
-				Writable: []string{in.SessionDir, tmp},
+				Writable: []string{in.SessionDir, sessionCommandDirs(in.SessionDir).tmp},
 				Readable: []string{tasks, drafts, sharedSessionDirs(in.SessionDir).toolOutput},
 				dataDir:  in.DataDir,
 			},

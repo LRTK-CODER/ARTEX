@@ -115,6 +115,41 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatalf("agent PATH still has the shell dir: %q", out)
 		}
 	})
+	t.Run("per-run HOME and TMPDIR", func(t *testing.T) {
+		// 세션 A·B는 각자 서버가 만든 HOME·TMPDIR(#178)를 받는다. 쓸 수 있고, umask는 007이며, 서로의 것에는 닿지 못한다.
+		dirsA, err := agent.EnsureCommandDirs(dataDir, agent.RunInfo{SessionID: filepath.Base(ws)}, uidA)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := agent.EnsureCommandDirs(dataDir, agent.RunInfo{SessionID: filepath.Base(wsB)}, uidB); err != nil {
+			t.Fatal(err)
+		}
+		homeA, tmpA := filepath.Join(dataDir, "sessions", "home", "e2e"), filepath.Join(dataDir, "sessions", "tmp", "e2e")
+		homeB, tmpB := filepath.Join(dataDir, "sessions", "home", "e2e-b"), filepath.Join(dataDir, "sessions", "tmp", "e2e-b")
+		runCtx := &actool.ToolContext{WorkingDir: ws, Env: append(append([]string{}, envA...), dirsA...)}
+		out := runTool(t, bash, runCtx, map[string]any{"command": `echo "$HOME $TMPDIR"; touch "$HOME/x" "$TMPDIR/y" && echo touched; umask; ` +
+			`python3 -c 'import tempfile, os.path; print(tempfile.gettempdir(), os.path.expanduser("~"))'; ` +
+			`git config --global user.name e2e && git config --global user.name; ` +
+			`npm config get cache; ` +
+			`ls ` + homeB + `; touch ` + homeB + `/x ` + tmpB + `/y; stat -c '%a %u %n' "$HOME" "$TMPDIR" "$HOME/x"`})
+		t.Logf("session A (uid %s) HOME/TMPDIR:\n%s", uid, out)
+		for _, want := range []string{
+			homeA + " " + tmpA + "\n",
+			"touched\n",
+			"0007\n",
+			tmpA + " " + homeA + "\n",
+			"e2e\n",
+			filepath.Join(homeA, ".npm") + "\n",
+			"ls: cannot open directory '" + homeB + "': Permission denied",
+			"touch: cannot touch '" + homeB + "/x': Permission denied",
+			"touch: cannot touch '" + tmpB + "/y': Permission denied",
+			"660 " + uid + " " + homeA + "/x\n",
+		} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("session A output lacks %q", want)
+			}
+		}
+	})
 	t.Run("server caps do not leak to unwrapped children", func(t *testing.T) {
 		// 서버가 감싸지 않고 띄우는 자식(ripgrep 등)과 같은 방식으로 절대 경로 명령을 띄운다.
 		out, err := exec.Command("/bin/grep", "^Cap", "/proc/self/status").CombinedOutput()
