@@ -61,7 +61,13 @@ func TestSharedWorkspaceEndToEnd(t *testing.T) {
 		}
 		setE2EDir(t, p, gidNum, 0o750|os.ModeSetgid)
 	}
-	keys, err := os.MkdirTemp("", "artex-e2e-keys-") // 0700 서버 소유. 에이전트는 들어가지 못한다
+	// 키는 서버 홈(0700) 아래에 둔다. 임시 디렉터리는 모든 역할의 파일 도구 쓰기 허용 경로라 그 아래 키는 경쟁 없이도
+	// 닿는다(실제 키 디렉터리는 임시 디렉터리 밖이다).
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := os.MkdirTemp(home, "artex-e2e-keys-")
 	if err != nil {
 		t.Fatal(err)
 	}
