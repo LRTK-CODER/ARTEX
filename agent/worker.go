@@ -274,7 +274,8 @@ func workerArtifactSpec(runDir string) string {
 // failure, writes fail the same way an unwritable CWD would.
 func ensureRunDir(base string, taskID, intentID int64) string {
 	dir := runDirPath(base, taskID, intentID)
-	_ = os.MkdirAll(dir, 0o755)
+	// 0775: 에이전트 명령이 다른 uid로 돌면(#165) 그룹 쓰기가 있어야 쓴다. 기본 umask(022)에서는 예전처럼 0755다.
+	_ = os.MkdirAll(dir, 0o775)
 	return dir
 }
 

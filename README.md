@@ -166,7 +166,7 @@ docker compose up -d artex
 - 키를 아직 컨테이너 안(`/app/*.key`)에서 꺼내지 않은 예전 설치라면 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업)의 키 꺼내기를 먼저 한다.
 - 이전한 뒤 호스트 사용자는 `./data`·`./keys`를 sudo 없이 읽지 못한다. 백업은 `sudo`로 하거나 `docker compose cp`로 꺼낸다.
 - 컨테이너가 `./skills`에 새로 만든 스킬(화면·에이전트)은 10001 소유, 그룹 10001에 그룹 쓰기 권한이다. git이 추적하는 파일은 호스트 사용자 소유 그대로라 `git pull`은 그대로 된다. 컨테이너가 만든 스킬을 호스트에서 고치려면 sudo를 쓰거나, 호스트에 gid 10001 그룹을 만들어 사용자를 넣는다(`sudo groupadd -g 10001 artex && sudo usermod -aG artex "$USER"`, 다시 로그인한 뒤 적용).
-- nmap은 실행 파일에 `cap_net_raw`가 있어 root가 아니어도 SYN 스캔(`-sS`)과 OS 탐지가 된다.
+- nmap은 실행 파일에 `cap_net_raw`가 있어 root가 아니어도 SYN 스캔(`-sS`)과 OS 탐지가 된다(에이전트 uid 분리를 켜면 쓸 수 없다. [에이전트 uid 분리](#에이전트-uid-분리) 참고).
 
 원격 MCP는 시스템 설정에서 `http`(Streamable HTTP) 또는 `sse`(이전 버전 SSE)를 고를 수 있다.
 이전 버전 SSE 서비스는 보통 `GET /sse`로 이벤트 스트림을 열고, 서비스가 돌려주는
@@ -301,6 +301,52 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 **동시 실행**: 작업마다 띄우는 work 에이전트 수는 '시스템 설정'에서 설정한다(기본값 3).
 
 **자주 쓰는 파라미터**: `./start.sh -addr :8787 -proxy :8788`(`-addr`는 프런트엔드+API, `-proxy`는 트래픽 기록 프록시). 시작 스크립트는 파라미터를 `artex`에 그대로 넘긴다.
+
+### 에이전트 uid 분리
+
+Linux에서만 쓰는 기본 꺼짐 기능이다. 켜면 에이전트가 실행하는 명령(Bash 동기·백그라운드, shell_open, 사용자 지정 도구의 command·python, stdio MCP)이 서버와 다른 uid로 돈다. 프롬프트 주입을 당한 에이전트가 서버 키(`<키 디렉터리>/oauth.key`), 서버 프로세스 환경(`/proc/<서버 pid>/environ`의 DB DSN·API 키), 실행 파일 옆 업데이트 경로에 닿지 못하게 한다.
+
+- 켜기: 환경 변수 `ARTEX_AGENT_UID`·`ARTEX_AGENT_GID`를 함께 준다. 허용 범위는 20000-29999이고 도우미 코드에 고정돼 있다(0과 서버 자신의 uid·주 그룹은 거부한다). 서버는 그 그룹에 보조 그룹으로 속해야 한다.
+- 동작: 서버가 시작할 때 도우미 `artex-sandbox`(실행 파일 옆)로 자기 검사를 하고, PATH 맨 앞에 도우미를 가리키는 `bash`를 둔다. 도우미는 보조 그룹을 비우고 uid·gid를 바꾼 뒤 cap을 모두 버리고 `no_new_privs`를 켜고 umask 002로 진짜 bash(또는 명령)를 실행한다. 작업 공간(`<데이터 디렉터리>/tasks`, `sessions`, `drafts`)은 에이전트 그룹의 setgid 디렉터리로 바뀌어 서버와 에이전트가 서로 만든 파일을 읽고 고친다.
+- 켰는데 준비하지 못하면(Linux가 아님, 도우미가 없음, 파일 cap이 없음, `no-new-privileges`, 서버에 `CAP_KILL`이 없음) 원인을 찍고 시작하지 않는다. 조용히 꺼지지 않는다.
+- 켜면 raw 소켓이 필요한 스캔(`nmap -sS`, `-O` 등)은 쓸 수 없다. `nmap -sT`(연결 스캔)를 쓴다. 도우미가 `NMAP_PRIVILEGED`를 지워 nmap이 연결 스캔을 기본으로 고른다.
+
+Docker: 이미지에 도우미(`0750 root:artex`, `cap_setuid,cap_setgid+ep`)와 에이전트 사용자 `artex-agent`(uid·gid 20000)가 들어 있다. `.env`에 `ARTEX_AGENT_UID=20000`, `ARTEX_AGENT_GID=20000`을 두고 `docker compose up -d`. `security_opt: [no-new-privileges:true]`를 쓰지 않고, `cap_drop`을 쓰면 `SETUID`·`SETGID`·`KILL`을 남긴다. 켠 뒤 `./data` 아래 작업 공간 디렉터리의 그룹은 20000이 된다.
+
+단일 바이너리(systemd): 에이전트 사용자를 만들고, 서버 사용자를 그 그룹에 넣고, root로 도우미에 cap을 준다. 서버에는 `CAP_KILL`을 준다. 다른 uid가 된 에이전트 프로세스를 시간 초과·TaskStop·shell_close에서 죽이는 데 필요하다. 서버 실행 파일에 파일 cap을 주지 않는 이유는 원클릭 업데이트로 바이너리가 바뀌면 cap이 사라지기 때문이다.
+
+```bash
+sudo groupadd --system --gid 20000 artex-agent
+sudo useradd --system --uid 20000 --gid artex-agent --create-home --shell /usr/sbin/nologin artex-agent
+sudo usermod -aG artex-agent artex            # 서버를 돌리는 사용자
+cd /opt/artex                                  # artex와 artex-sandbox가 있는 디렉터리
+sudo chown root:artex artex-sandbox && sudo chmod 0750 artex-sandbox
+sudo setcap cap_setuid,cap_setgid+ep artex-sandbox
+```
+
+```ini
+# /etc/systemd/system/artex.service
+[Unit]
+Description=ARTEX
+After=network-online.target postgresql.service
+
+[Service]
+User=artex
+WorkingDirectory=/opt/artex
+ExecStart=/opt/artex/start.sh -addr :8787 -proxy 127.0.0.1:8788
+Environment=ARTEX_AGENT_UID=20000 ARTEX_AGENT_GID=20000
+EnvironmentFile=-/opt/artex/artex.env          # ARTEX_PG_DSN, API 키(0600)
+AmbientCapabilities=CAP_KILL
+# NoNewPrivileges=yes와 이를 켜는 설정(SystemCallFilter=, RestrictNamespaces= 등)을 쓰지 않는다. 도우미의 파일 cap이 무시된다.
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+서버는 시작할 때 ambient `CAP_KILL`을 effective로만 남기고 ambient를 비운다. 도우미는 cap을 모두 버리므로 에이전트로 새지 않는다.
+
+한계: 파일 도구(Read/Write 등)는 여전히 서버 uid로 돈다. 이것은 작업 공간 경로 제한이 막는다(검사와 열기 사이의 링크 바꾸기 경쟁은 남는다). 에이전트 uid는 하나다(작업별 uid는 #166). 같은 커널·네트워크 이름공간을 쓰므로 서버 포트·트래픽 기록 프록시에는 그대로 닿는다. 에이전트가 자기 디렉터리를 0700으로 바꾸면 서버가 그 안을 지우지 못할 수 있다.
 
 ### 리버스 프록시 배포(HTTPS / 443만 열기)
 

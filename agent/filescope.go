@@ -31,9 +31,11 @@ import (
 
 // FileScope 는 파일 도구가 닿을 수 있는 디렉터리 목록이다. Writable은 읽기·쓰기, Readable은 읽기만
 // 허용한다. 비어 있으면 모든 경로를 거부한다.
+// ShareWritesWithGroup이 참이면 쓰기 도구가 끝난 뒤 그 파일에 그룹 쓰기를 더한다.
 type FileScope struct {
-	Writable []string
-	Readable []string
+	Writable             []string
+	Readable             []string
+	ShareWritesWithGroup bool
 }
 
 // fileRole 은 파일 도구 허용 경로를 정하는 에이전트 역할이다.
@@ -191,7 +193,27 @@ func (c *confinedFileTool) Call(ctx context.Context, in json.RawMessage, tc *act
 	if err != nil {
 		return actool.Errorf(fmt.Sprintf("Error: %s refused: cannot pass the checked path for %q: %v", c.Name(), raw, err)), nil
 	}
-	return c.CoreTool.Call(ctx, rewritten, tc)
+	res, err := c.CoreTool.Call(ctx, rewritten, tc)
+	if err == nil && !res.IsError && c.access.isWrite && c.scope.ShareWritesWithGroup {
+		if chErr := addGroupWrite(target); chErr != nil {
+			// 파일은 이미 썼다. 에이전트 명령이 이 파일을 고치지 못할 뿐이라 결과를 실패로 바꾸지 않고 기록만 한다.
+			log.Printf("[tools] %s: 쓴 파일에 그룹 쓰기를 더하지 못했다: %v", c.Name(), chErr)
+		}
+	}
+	return res, err
+}
+
+// addGroupWrite 는 norma가 0644로 만든 파일에 그룹 읽기·쓰기를 더한다. 작업 공간은 에이전트 그룹의 setgid
+// 디렉터리라서 그룹은 이미 에이전트 그룹이다. 링크는 따라가지 않는다(target은 링크를 푼 실제 경로다).
+func addGroupWrite(target string) error {
+	info, err := os.Lstat(target)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o060 == 0o060 {
+		return nil
+	}
+	return os.Chmod(target, info.Mode().Perm()|0o060)
 }
 
 // withPath 는 입력의 경로 키를 path로 바꾼 입력을 돌려준다. encoding/json은 대소문자가 다른 키도 같은

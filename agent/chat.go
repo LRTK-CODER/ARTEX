@@ -112,7 +112,8 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// Per-session working directory: <workDir>/sessions/<sessionID>/
 	// Isolates file writes across conversations, mirroring how workers use i<intentID>/.
 	sessionWorkDir := filepath.Join(c.workDir, "sessions", sessionID)
-	_ = os.MkdirAll(sessionWorkDir, 0o755)
+	// 0775: 에이전트 명령이 다른 uid로 돌면(#165) 그룹 쓰기가 있어야 쓴다. 기본 umask(022)에서는 예전처럼 0755다.
+	_ = os.MkdirAll(sessionWorkDir, 0o775)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, sessionWorkDir)
 
 	// Pure assistant: DefaultTools as the base; AugmentTools layers in the key's

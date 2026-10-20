@@ -20,14 +20,17 @@ type mcpClient interface {
 	Close() error
 }
 
-// connectMCP dials one MCP server per its transport. Callers must Close the client.
-func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
+// connectMCP 는 전송 방식에 맞춰 MCP 서버 하나에 연결한다. 호출자가 Close해야 한다.
+// sandbox가 켜져 있으면 stdio 서버를 도우미로 감싸 에이전트 uid로 띄운다. MCP 서버는 LLM이 고른 인자로
+// 대상 데이터를 다루므로 에이전트 명령과 같은 경계에 둔다.
+func connectMCP(ctx context.Context, m *db.MCPServer, sandbox *AgentSandbox) (mcpClient, error) {
 	switch m.Transport {
 	case "stdio":
 		if m.Command == "" {
 			return nil, fmt.Errorf("stdio 전송 방식에 명령이 없습니다")
 		}
-		return mcp.NewStdioClient(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
+		command, args := sandbox.Command(m.Command, jsonStrSlice(m.Args))
+		return mcp.NewStdioClient(ctx, m.Name, command, stdioMCPEnv(jsonStrMap(m.Env), sandbox), args...)
 	case "http":
 		if m.URL == "" {
 			return nil, fmt.Errorf("http 전송 방식에 URL이 없습니다")
@@ -44,10 +47,27 @@ func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
 	}
 }
 
+// stdioMCPEnv 는 stdio MCP에 넘길 환경 변수다. 도우미가 읽는 uid·gid는 사용자가 MCP 설정에 같은 이름을
+// 적어도 서버 설정이 이기도록 마지막에 덮어쓴다. 꺼져 있으면 설정 그대로다.
+func stdioMCPEnv(env map[string]string, sandbox *AgentSandbox) map[string]string {
+	extra := sandbox.Env()
+	if len(extra) == 0 {
+		return env
+	}
+	out := make(map[string]string, len(env)+len(extra))
+	for k, v := range env {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
+}
+
 // discoverAndCacheMCP connects to one MCP, lists its tools, and persists the tool
 // names to mcp_tools_cache so the UI shows them without a live connection.
 func (s *Server) discoverAndCacheMCP(ctx context.Context, m *db.MCPServer) error {
-	cl, err := connectMCP(ctx, m)
+	cl, err := connectMCP(ctx, m, s.sandbox)
 	if err != nil {
 		return err
 	}

@@ -24,6 +24,9 @@ type DeferredInfo struct {
 	// SkillDirs 는 이 에이전트에게 보이는 스킬의 디렉터리다. 파일 도구가 SKILL.md의 참조 파일을 읽을 수 있게
 	// 읽기 허용에 더한다.
 	SkillDirs []string
+	// ShareWritesWithGroup 은 파일 도구가 쓴 파일에 그룹 쓰기를 더할지다. 에이전트 명령이 다른 uid로 돌 때(#165)
+	// 서버 uid로 도는 Write가 만든 파일을 에이전트가 그룹 권한으로 고칠 수 있게 한다.
+	ShareWritesWithGroup bool
 }
 
 // ToolAugment, if set, returns the EXTRA tools an agent should see beyond its
@@ -67,6 +70,7 @@ func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) 
 	// 파일 도구는 호출한 쪽이 withFileScope로 실은 허용 경로 안에서만 돈다. 싣지 않았으면 모든 경로를 거부한다.
 	scope := fileScopeFrom(ctx)
 	scope.Readable = append(append([]string{}, scope.Readable...), def.SkillDirs...)
+	scope.ShareWritesWithGroup = def.ShareWritesWithGroup
 	out = confineFileTools(out, scope)
 	for i, t := range out {
 		out[i] = guardPanic(t)

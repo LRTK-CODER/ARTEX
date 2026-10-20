@@ -368,7 +368,7 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 		}
 		sessionEnv = tc.Env
 	}
-	body, err := execPython(ctx, interp, key, spec.Code, params, workDir, sessionEnv, timeoutOr(spec.TimeoutMs, 120000))
+	body, err := execPython(ctx, interp, key, spec.Code, params, workDir, sessionEnv, timeoutOr(spec.TimeoutMs, 120000), s.sandbox)
 	if err != nil {
 		return actool.Errorf(err.Error()), nil
 	}
@@ -378,7 +378,8 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 // execPython writes the code to a temp .py under workDir/.tools, runs it via interp
 // with the params JSON on stdin + scalar params mirrored to TOOL_<NAME> env, and
 // returns combined stdout+stderr (with a timeout/exit note). Standalone + testable.
-func execPython(ctx context.Context, interp, key, code string, params map[string]any, workDir string, sessionEnv []string, timeout time.Duration) (string, error) {
+// sandbox가 켜져 있으면 도우미로 감싸 에이전트 uid로 실행한다.
+func execPython(ctx context.Context, interp, key, code string, params map[string]any, workDir string, sessionEnv []string, timeout time.Duration, sandbox *AgentSandbox) (string, error) {
 	toolsDir := filepath.Join(workDir, ".tools")
 	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
 		return "", err
@@ -393,14 +394,24 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 		f.Close()
 		return "", err
 	}
+	// CreateTemp는 0600으로 만든다. uid 분리를 켜면 python이 에이전트 uid로 돌아 그룹 읽기가 있어야 연다.
+	// 끈 상태에서도 그룹(서버 그룹)에 읽기만 더하는 것이라 달라지는 것이 없다.
+	if err := f.Chmod(0o640); err != nil {
+		f.Close()
+		return "", err
+	}
 	f.Close()
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	c := exec.CommandContext(runCtx, interp, tmp)
+	name, args := sandbox.Command(interp, []string{tmp})
+	c := exec.CommandContext(runCtx, name, args...)
 	c.Dir = workDir
 	c.Env = append(pythonToolEnviron(os.Environ()), sessionEnv...) // 세션 프록시 env
-	for k, v := range params {                                     // 스칼라 파라미터를 TOOL_<NAME>으로 복사한다
+	for k, v := range sandbox.Env() {                              // 허용 목록이 거르므로 도우미가 읽을 uid·gid를 따로 넣는다
+		c.Env = append(c.Env, k+"="+v)
+	}
+	for k, v := range params { // 스칼라 파라미터를 TOOL_<NAME>으로 복사한다
 		if sv, ok := scalarStr(v); ok {
 			c.Env = append(c.Env, "TOOL_"+strings.ToUpper(k)+"="+sv)
 		}

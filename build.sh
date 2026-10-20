@@ -173,6 +173,7 @@ package_binary() {
   rm -rf "$package_root" "$archive"
   mkdir -p "$package_root"
   cp "$binary" "$package_root/"
+  if [ "$goos" = "linux" ]; then cp "$(dirname "$binary")/artex-sandbox" "$package_root/"; fi
   # 감시 시작 스크립트가 정식 진입점이다. 화면의 원클릭 업데이트는 프로세스가 끝난 뒤 이 스크립트가 다시 띄워 줘야 하므로
   # artex 본체를 직접 실행하면 업데이트 뒤 다시 뜨지 않는다. 대상 시스템에 맞는 스크립트 하나만 넣는다.
   if [ "$goos" = "windows" ]; then
@@ -225,6 +226,12 @@ build_target() {
 
   compress_binary "$output" "$goos"
   if command -v file >/dev/null 2>&1; then file "$output"; fi
+  # 에이전트 uid 분리 도우미(Linux 전용, README "에이전트 uid 분리"). 설치할 때 root가 setcap 한다.
+  # UPX로 압축하지 않는다. 파일 cap은 실행 파일 자체에 붙으므로 압축 해제 단계가 끼면 검토하기 어렵다.
+  if [ "$goos" = "linux" ]; then
+    GOSUMDB="$ARTEX_GOSUMDB" CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+      go build -trimpath -ldflags "-s -w -buildid=" -o "$(dirname "$output")/artex-sandbox" ./cmd/artex-sandbox
+  fi
   if [ "$ARTEX_PACKAGE" = "1" ]; then package_binary "$output" "$goos" "$goarch"; fi
   ok "컴파일을 마쳤습니다: $output"
 }
