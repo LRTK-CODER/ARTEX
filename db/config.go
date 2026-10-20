@@ -832,14 +832,30 @@ func (d *DB) SeedPromptIfEmpty(agentID int64, tmpl string) error {
 	if cur.Valid {
 		return nil // already seeded or user-edited → leave it
 	}
-	_, err := d.SavePrompt(agentID, tmpl, "내장 기본값", "system")
+	_, err := d.SavePrompt(agentID, tmpl, PromptNoteBuiltinDefault, "system")
 	return err
 }
+
+// 시스템이 프롬프트 버전을 만들 때 남기는 메모다. 프롬프트 버전 목록 화면에 보인다.
+const (
+	PromptNoteBuiltinDefault = "내장 기본값"
+	PromptNoteResetDefault   = "내장 기본값으로 복원"
+)
 
 // ResetPromptToDefault 는 코드 기본 템플릿을 새 버전으로 덧붙이고 current가 그것을 가리키게 한다.
 // 사용자가 명시적으로 고르는 "내장 기본값으로 복원" 동작이다.
 func (d *DB) ResetPromptToDefault(agentID int64, tmpl string) (int, error) {
-	return d.SavePrompt(agentID, tmpl, "내장 기본값으로 복원", "system")
+	return d.SavePrompt(agentID, tmpl, PromptNoteResetDefault, "system")
+}
+
+// ReplacePromptNote 는 note가 from과 글자 그대로 같은 모든 프롬프트 버전의 note를 to로 바꾸고,
+// 바꾼 행 수를 돌려준다. 본문(template_text)과 다른 메모는 건드리지 않는다.
+func (d *DB) ReplacePromptNote(from, to string) (int64, error) {
+	res, err := d.Exec(`UPDATE agent_prompts SET note=$2 WHERE note=$1`, from, to)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // SavePrompt appends a new version and points current_prompt_id at it.
