@@ -568,7 +568,9 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 		webSearch = a.WebSearch
 	}
 	// 대화형 세션은 세션마다 uid를 받는다(#166). 받지 못하면(풀 고갈, 일시 오류 모두) 기다리지 않고 이 차례를 원인과
-	// 함께 실패시킨다. uid 없이 돌지 않는다(#177). 일시 오류면 다음 차례에서 다시 받는다.
+	// 함께 실패시킨다. uid 없이 돌지 않는다(#177). 작업과 달리 일시 오류에도 다시 시도하지 않는다. 차례는 사용자가
+	// 보낸 메시지 하나라 사용자가 오류를 보고 다시 보내면 다음 차례에서 다시 받는다. 여기서 기다리면 세션이 바쁜
+	// 상태로 남아 그동안 보낸 메시지도 막힌다.
 	if _, err := s.sandbox.ConversationUID(ctx, pg, c.ID); err != nil {
 		log.Printf("[conv %d] 에이전트 uid를 받지 못해 차례를 멈춤: %v", c.ID, err)
 		finishReason = agentUIDUnavailableMessage + " " + err.Error()

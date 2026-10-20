@@ -3897,7 +3897,8 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			taskDir := filepath.Join(s.m.dir, "tasks", t.ID)
 			agentMsg := composeAgentMessage(agentMessage, req.Attachments, taskDir)
 			// 메인 에이전트도 작업 uid로 명령을 돌린다(#166). 받지 못하면(풀 고갈, 일시 오류 모두) 이 대화만 실패시키고
-			// 작업 상태는 그대로 둔다. uid 없이 돌지 않는다(#177). 일시 오류면 다음 대화에서 다시 받는다.
+			// 작업 상태는 그대로 둔다. uid 없이 돌지 않는다(#177). 작업 루프와 달리 일시 오류에도 다시 시도하지 않는다.
+			// 사용자가 보낸 메시지 하나에 대한 응답이라 사용자가 오류를 보고 다시 보내면 다음 대화에서 다시 받는다.
 			if _, err := s.sandbox.TaskUID(ctx, s.m.pg, maTaskID); err != nil {
 				log.Printf("[mainagent] task %s 에이전트 uid를 받지 못해 대화를 멈춤: %v", t.ID, err)
 				s.engine.emitActivity(t, db.Activity{Worker: "mainagent", Kind: "text", IsError: true, Summary: "(메인 에이전트 오류: " + agentUIDUnavailableMessage + " " + agentUIDRetryHint(err) + ")", Detail: err.Error(), MainSeg: segPtr})
