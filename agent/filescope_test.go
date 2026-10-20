@@ -232,3 +232,93 @@ func TestFileScopeForRoles(t *testing.T) {
 		})
 	}
 }
+
+// TestFileToolsRejectDotDotAfterDirLink 는 작업 공간 안 디렉터리 링크 뒤에 ".."를 둔 절대 경로가 밖으로
+// 빠져나가지 못하는지 본다. 커널은 링크를 먼저 따라간 뒤 ".."를 적용하므로 "<ws>/dirlink/../keys/x"는
+// 링크 대상의 상위(밖)를 가리킨다. 글자 단위로 ".."를 먼저 지우면 "<ws>/keys/x"로 잘못 판단한다.
+func TestFileToolsRejectDotDotAfterDirLink(t *testing.T) {
+	f := newFileScopeFixture(t)
+	if err := os.Symlink(f.outside, filepath.Join(f.workspace, "dirlink")); err != nil {
+		t.Fatal(err)
+	}
+	escaped := filepath.Join(f.workspace, "dirlink") + "/../keys"
+	cases := []struct {
+		name  string
+		tool  string
+		input map[string]any
+	}{
+		{"read", "Read", map[string]any{"file_path": escaped + "/oauth.key"}},
+		{"write new file", "Write", map[string]any{"file_path": escaped + "/planted.txt", "content": "x"}},
+		{"edit", "Edit", map[string]any{"file_path": escaped + "/oauth.key", "old_string": "FAKE", "new_string": "REAL"}},
+		{"multiedit", "MultiEdit", map[string]any{"file_path": escaped + "/oauth.key", "edits": []map[string]any{{"old_string": "FAKE", "new_string": "REAL"}}}},
+		{"ls", "LS", map[string]any{"path": escaped}},
+		{"glob", "Glob", map[string]any{"pattern": "*", "path": escaped}},
+		{"grep dir", "Grep", map[string]any{"pattern": "FAKE", "path": escaped, "output_mode": "content"}},
+		{"grep file", "Grep", map[string]any{"pattern": "FAKE", "path": escaped + "/oauth.key", "output_mode": "content"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := callTool(t, f.tools[tc.tool], f.tc, tc.input)
+			out := res.Flatten()
+			if !res.IsError || !strings.Contains(out, "refused") {
+				t.Fatalf("want refusal, got IsError=%v %q", res.IsError, out)
+			}
+			if strings.Contains(out, fakeKeyContent) || strings.Contains(out, "oauth.key\t") {
+				t.Fatalf("refusal leaks outside content: %q", out)
+			}
+		})
+	}
+	if data, err := os.ReadFile(f.keyPath); err != nil || string(data) != fakeKeyContent {
+		t.Fatalf("key file changed: %q, %v", data, err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.outside, "planted.txt")); err == nil {
+		t.Fatal("file created outside writable scope")
+	}
+}
+
+// TestFileToolsOpenTheCheckedPath 는 링크 뒤 ".."가 작업 공간 안에서 끝날 때 norma가 검사한 그 파일(링크를
+// 푼 경로)을 여는지 본다. 검사 경로와 연 경로가 다르면 글자 단위로 정리한 다른 파일을 열게 된다.
+func TestFileToolsOpenTheCheckedPath(t *testing.T) {
+	f := newFileScopeFixture(t)
+	deep := filepath.Join(f.workspace, "a", "b")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(f.workspace, "a", "target.txt"), "linked target\n")
+	mustWrite(t, filepath.Join(f.workspace, "target.txt"), "lexical target\n")
+	if err := os.Symlink(deep, filepath.Join(f.workspace, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	// 커널 기준: <ws>/sub/.. = <ws>/a. 글자 단위 기준: <ws>.
+	viaLink := filepath.Join(f.workspace, "sub") + "/../target.txt"
+	cases := []struct {
+		name, tool string
+		input      map[string]any
+		want       string
+	}{
+		{"absolute", "Read", map[string]any{"file_path": viaLink}, "linked target"},
+		{"relative", "Read", map[string]any{"file_path": "sub/../target.txt"}, "linked target"},
+		{"case-folded key", "Read", map[string]any{"FILE_PATH": viaLink}, "linked target"},
+		{"grep file", "Grep", map[string]any{"pattern": "target", "path": viaLink, "output_mode": "content"}, "linked target"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := callTool(t, f.tools[tc.tool], f.tc, tc.input)
+			out := res.Flatten()
+			if res.IsError || !strings.Contains(out, tc.want) || strings.Contains(out, "lexical target") {
+				t.Fatalf("want %q, got IsError=%v %q", tc.want, res.IsError, out)
+			}
+		})
+	}
+
+	// 아직 없는 파일은 부모를 푼 실제 경로에 만든다.
+	if res := callTool(t, f.tools["Write"], f.tc, map[string]any{"file_path": filepath.Join(f.workspace, "sub") + "/../new.txt", "content": "new"}); res.IsError {
+		t.Fatalf("write via link: %q", res.Flatten())
+	}
+	if data, err := os.ReadFile(filepath.Join(f.workspace, "a", "new.txt")); err != nil || string(data) != "new" {
+		t.Fatalf("new file not at the resolved path: %q, %v", data, err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.workspace, "new.txt")); err == nil {
+		t.Fatal("new file created at the lexically cleaned path")
+	}
+}

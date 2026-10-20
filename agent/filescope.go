@@ -22,9 +22,12 @@ import (
 // 다른 작업 공간을 읽고 쓸 수 있다. norma는 고치지 않으므로(#163) 여기서 도구를 감싸, 입력 경로를
 // 심볼릭 링크까지 푼 실제 경로로 바꾼 뒤 역할별 허용 디렉터리 밖이면 norma에 넘기지 않고 거부한다.
 //
-// 한계: 검사와 norma의 열기 사이에 에이전트가 (백그라운드 Bash 등으로) 링크를 바꾸면 빠져나갈 수 있다.
-// 검사한 실제 경로를 norma에 넘길 방법이 없어서다. 경쟁을 없애려면 os.Root로 파일 도구를 다시 구현해야
-// 하고, 이는 후속으로 둔다. 하드 링크도 같은 파일이라 경로 검사로는 가려내지 못한다(#165의 uid 분리가 막는다).
+// 검사한 실제 경로(링크를 모두 푼 절대 경로)로 입력을 바꿔 norma에 넘기므로 검사한 경로와 연 경로가 같다.
+//
+// 한계: 검사와 norma의 열기 사이에 에이전트가 (백그라운드 Bash 등으로) 실제 경로의 디렉터리를 링크로
+// 바꾸면 빠져나갈 수 있다. 경쟁을 없애려면 os.Root로 파일 도구를 다시 구현해야 하고, 이는 후속으로 둔다.
+// 하드 링크도 같은 파일이라 경로 검사로는 가려내지 못한다(#165의 uid 분리가 막는다). 임시 디렉터리는
+// 모든 역할이 읽고 쓰므로 세션·작업끼리, 그리고 서버가 그곳에 둔 파일과 공유된다.
 
 // FileScope 는 파일 도구가 닿을 수 있는 디렉터리 목록이다. Writable은 읽기·쓰기, Readable은 읽기만
 // 허용한다. 비어 있으면 모든 경로를 거부한다.
@@ -182,11 +185,64 @@ func (c *confinedFileTool) Call(ctx context.Context, in json.RawMessage, tc *act
 			return actool.Errorf(fmt.Sprintf("Error: %s refused: %q contains a symbolic link (%s) that points outside the directories this agent may read. Remove the link or search a narrower path.", c.Name(), raw, link)), nil
 		}
 	}
-	return c.CoreTool.Call(ctx, in, tc)
+	// 검사한 실제 경로를 norma에 넘긴다. 원래 입력을 넘기면 norma·커널이 다른 규칙으로 경로를 풀어
+	// 검사하지 않은 파일을 열 수 있다(링크 뒤의 "..").
+	rewritten, err := c.withPath(in, target)
+	if err != nil {
+		return actool.Errorf(fmt.Sprintf("Error: %s refused: cannot pass the checked path for %q: %v", c.Name(), raw, err)), nil
+	}
+	return c.CoreTool.Call(ctx, rewritten, tc)
 }
 
-// toolTargetPath 는 norma가 실제로 열 경로를 norma와 같은 규칙으로 만든다(tool/helpers.go의 resolvePath,
-// ls.go·search.go의 기본 디렉터리).
+// withPath 는 입력의 경로 키를 path로 바꾼 입력을 돌려준다. encoding/json은 대소문자가 다른 키도 같은
+// 필드로 읽으므로 그런 키를 모두 지우고 정규 키 하나만 남긴다. 바꾼 입력을 norma와 같은 방식으로 다시
+// 읽어 path가 나오는지 확인한다. 키 접기 규칙이 어긋나 다른 값이 남으면 넘기지 않는다.
+func (c *confinedFileTool) withPath(in json.RawMessage, path string) (json.RawMessage, error) {
+	key := "file_path"
+	if c.access.isDirTool {
+		key = "path"
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(in, &fields); err != nil {
+		return nil, fmt.Errorf("decode input: %w", err)
+	}
+	if fields == nil {
+		fields = map[string]json.RawMessage{}
+	}
+	for k := range fields {
+		if strings.EqualFold(k, key) {
+			delete(fields, k)
+		}
+	}
+	encoded, err := json.Marshal(path)
+	if err != nil {
+		return nil, fmt.Errorf("encode path: %w", err)
+	}
+	fields[key] = encoded
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return nil, fmt.Errorf("encode input: %w", err)
+	}
+	var check struct {
+		FilePath string `json:"file_path"`
+		Path     string `json:"path"`
+	}
+	if err := json.Unmarshal(out, &check); err != nil {
+		return nil, fmt.Errorf("decode rewritten input: %w", err)
+	}
+	got := check.FilePath
+	if c.access.isDirTool {
+		got = check.Path
+	}
+	if got != path {
+		return nil, errors.New("another key still sets the path")
+	}
+	return out, nil
+}
+
+// toolTargetPath 는 norma가 열 경로를 만든다. 작업 디렉터리·기본 디렉터리 규칙은 norma와 같다
+// (tool/helpers.go의 resolvePath, ls.go·search.go의 기본 디렉터리). 다만 상대 경로를 filepath.Join으로
+// 정리하지 않고 그대로 잇는다. ".."는 realPath가 링크를 푼 뒤 커널과 같은 순서로 적용한다.
 func toolTargetPath(tc *actool.ToolContext, p string, isDirTool bool) string {
 	workDir := ""
 	if tc != nil {
@@ -201,38 +257,61 @@ func toolTargetPath(tc *actool.ToolContext, p string, isDirTool bool) string {
 	if filepath.IsAbs(p) || workDir == "" {
 		return p
 	}
-	return filepath.Join(workDir, p)
+	return workDir + string(filepath.Separator) + p
 }
 
-// realPath 는 p를 절대 경로로 정리하고 심볼릭 링크를 모두 푼 실제 경로를 돌려준다. p가 아직 없으면
-// (새로 쓸 파일, 만들 디렉터리) 있는 가장 가까운 상위 디렉터리를 풀고 남은 이름을 붙인다. 남은 이름은
-// 존재하지 않으므로 링크일 수 없다. 대상이 끊긴 링크이면 오류다. 쓰기가 링크를 따라 밖에 파일을 만들 수 있어서다.
+// realPath 는 p를 커널이 여는 것과 같은 실제 경로로 바꾼다. 경로 요소를 앞에서부터 하나씩 보며 링크를
+// 만나면 그 자리에서 풀고, ".."는 이미 푼 경로에 적용한다. filepath.Abs·Clean처럼 ".."를 글자 단위로
+// 먼저 지우면 "<ws>/dirlink/../x"를 "<ws>/x"로 잘못 보고, 커널은 링크 대상의 상위를 연다.
+//
+// 아직 없는 요소를 만나면(새로 쓸 파일, 만들 디렉터리) 나머지 이름을 붙인다. 없는 요소는 링크일 수
+// 없지만, 그 뒤의 ".."는 이미 있는 다른 링크로 되돌아갈 수 있어 오류로 둔다. 링크가 끊겼으면 오류다.
+// 쓰기가 링크를 따라 밖에 파일을 만들 수 있어서다.
 func realPath(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", fmt.Errorf("absolute path: %w", err)
+	if p == "" {
+		p = "."
 	}
-	cur := abs
-	var rest []string
-	for {
-		_, err := os.Lstat(cur)
-		if err == nil {
-			resolved, err := filepath.EvalSymlinks(cur)
-			if err != nil {
-				return "", fmt.Errorf("resolve symlinks: %w", err)
+	if !filepath.IsAbs(p) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("working directory: %w", err)
+		}
+		p = wd + string(filepath.Separator) + p
+	}
+	vol := filepath.VolumeName(p)
+	resolved := vol + string(filepath.Separator)
+	elems := strings.FieldsFunc(p[len(vol):], func(r rune) bool { return os.IsPathSeparator(uint8(r)) })
+	for i, elem := range elems {
+		switch elem {
+		case ".":
+			continue
+		case "..":
+			resolved = filepath.Dir(resolved) // resolved에는 링크가 없으므로 커널과 같다
+			continue
+		}
+		next := filepath.Join(resolved, elem)
+		info, err := os.Lstat(next)
+		if errors.Is(err, fs.ErrNotExist) {
+			rest := elems[i:]
+			for _, r := range rest {
+				if r == ".." {
+					return "", fmt.Errorf("%q after a missing directory: %w", "..", fs.ErrNotExist)
+				}
 			}
 			return filepath.Join(append([]string{resolved}, rest...)...), nil
 		}
-		if !errors.Is(err, fs.ErrNotExist) {
+		if err != nil {
 			return "", fmt.Errorf("stat: %w", err)
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return "", fmt.Errorf("stat: %w", fs.ErrNotExist)
+		if info.Mode()&fs.ModeSymlink != 0 {
+			// next의 상위는 이미 실제 경로이므로 EvalSymlinks는 링크 대상만 풀면 된다.
+			if next, err = filepath.EvalSymlinks(next); err != nil {
+				return "", fmt.Errorf("resolve symlinks: %w", err)
+			}
 		}
-		rest = append([]string{filepath.Base(cur)}, rest...)
-		cur = parent
+		resolved = next
 	}
+	return resolved, nil
 }
 
 // allows 는 실제 경로 target이 허용 디렉터리 안인지 본다. 허용 디렉터리도 실제 경로로 풀어 비교한다
