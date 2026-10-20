@@ -59,6 +59,11 @@ func run() int {
 	)
 	flag.Parse()
 
+	// 비밀 환경 변수(DB DSN, LLM 키)를 읽어 두고 이 프로세스 환경에서 지운다. 에이전트가 띄우는 자식 프로세스는
+	// 서버 환경을 그대로 물려받으므로, 어떤 자식도 띄우기 전인 여기서 해야 한다. 업데이트 재시작은 이 프로세스가
+	// 종료하고 감시 스크립트(start.sh)나 Docker가 자기 환경으로 다시 띄우므로 지운 값을 넘길 필요가 없다.
+	secretEnv := config.TakeSecretEnv()
+
 	// hand the build version to the server package so GET /api/health can report it
 	// to the frontend top bar.
 	server.BuildVersion = version
@@ -96,7 +101,7 @@ func run() int {
 	ctx, shutdown := shutdownContext(sigCtx)
 	defer shutdown(agent.AbortShutdown)
 
-	mgr, err := server.NewManager(*dataDir, *proxy)
+	mgr, err := server.NewManager(*dataDir, *proxy, secretEnv)
 	if err != nil {
 		log.Fatalf("open stores: %v", err)
 	}

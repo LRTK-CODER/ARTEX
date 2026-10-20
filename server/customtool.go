@@ -399,8 +399,8 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 	defer cancel()
 	c := exec.CommandContext(runCtx, interp, tmp)
 	c.Dir = workDir
-	c.Env = append(os.Environ(), sessionEnv...) // 세션 프록시 env
-	for k, v := range params {                  // 스칼라 파라미터를 TOOL_<NAME>으로 복사한다
+	c.Env = append(pythonToolEnviron(os.Environ()), sessionEnv...) // 세션 프록시 env
+	for k, v := range params {                                     // 스칼라 파라미터를 TOOL_<NAME>으로 복사한다
 		if sv, ok := scalarStr(v); ok {
 			c.Env = append(c.Env, "TOOL_"+strings.ToUpper(k)+"="+sv)
 		}
@@ -415,6 +415,46 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 		body += "\n[exit: " + err.Error() + "]"
 	}
 	return body, nil
+}
+
+// 사용자 지정 python 도구가 서버 환경에서 물려받는 변수. 도구 코드는 LLM이 고른 인자로 돌고 대상 데이터를 다루므로,
+// 비밀값이 아니더라도 서버 설정 변수는 넘기지 않는다. SystemRoot·TEMP·TMP·USERPROFILE은 Windows에서
+// python이 시작하는 데 쓰인다(selfupdate 스모크 테스트 허용 목록과 같은 이유).
+var (
+	pythonToolEnvNames = []string{
+		"PATH", "HOME", "LANG", "TERM", "TZ", "TMPDIR", "NODE_PATH", "SSL_CERT_FILE",
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+		"SystemRoot", "TEMP", "TMP", "USERPROFILE",
+	}
+	pythonToolEnvPrefixes = []string{"LC_", "TOOL_"}
+)
+
+// pythonToolEnviron 은 environ에서 허용 목록의 변수만 남긴다. 프록시 변수는 소문자 이름(http_proxy)도 쓰이고
+// Windows 이름은 대소문자를 가리지 않으므로 이름을 대소문자 구분 없이 비교한다.
+func pythonToolEnviron(environ []string) []string {
+	out := make([]string, 0, len(pythonToolEnvNames))
+	for _, kv := range environ {
+		name, _, ok := strings.Cut(kv, "=")
+		if ok && isPythonToolEnvName(name) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+func isPythonToolEnvName(name string) bool {
+	for _, allowed := range pythonToolEnvNames {
+		if strings.EqualFold(name, allowed) {
+			return true
+		}
+	}
+	upper := strings.ToUpper(name)
+	for _, prefix := range pythonToolEnvPrefixes {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------- http: 직접 요청 + 프록시 ----------

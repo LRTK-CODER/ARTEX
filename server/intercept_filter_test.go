@@ -6,12 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/intercept"
 )
 
 func TestInterceptFilterHTTP(t *testing.T) {
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skip("no test database configured")
 	}

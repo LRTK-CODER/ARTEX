@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 )
 
 func TestTaskTemplateHTTPCRUD(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}
@@ -84,7 +85,7 @@ func TestTaskTemplateHTTPCRUD(t *testing.T) {
 }
 
 func TestConversationPatchReturnsPinState(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) — skipping", err)
 	}

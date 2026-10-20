@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/config"
 	"github.com/Autumn-27/artex/db"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -15,7 +16,7 @@ import (
 // server test suite so cross-package DELETE cleanup races with db/agent
 // packages are avoided when running `go test ./...`.
 func TestMain(m *testing.M) {
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		os.Exit(m.Run())
 	}
@@ -39,7 +40,7 @@ const postgresPingTimeout = 5 * time.Second
 // 호출자가 그대로 t.Fatal하도록 남긴다.
 func skipWithoutPostgres(t *testing.T) {
 	t.Helper()
-	dsn, _, err := db.DSN()
+	dsn, _, err := db.DSN(config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres not configured: %v", err)
 	}

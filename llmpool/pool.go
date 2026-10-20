@@ -96,7 +96,10 @@ func (p *Pool) Stream(ctx context.Context, req llm.CompletionRequest) iter.Seq2[
 					return // caller stopped consuming (cancel / early exit)
 				}
 				if err != nil {
-					if noReplay(err) {
+					switch {
+					case profileHealthy(err):
+						p.health.Pass(m.ID) // 프로필은 정상 응답했다(예: 모델의 명시적 거절)
+					case noReplay(err):
 						p.health.Trip(m.ID, trimErr(err), isHardFailure(err))
 					}
 					return // terminal error already handed to the caller
@@ -142,7 +145,7 @@ func (p *Pool) Complete(ctx context.Context, req llm.CompletionRequest) (llm.Mes
 		if !shouldFailover(ctx, err) {
 			// Non-failover error (e.g. ctx cancel, deterministic 4xx): surface as-is
 			// without tripping health, matching Stream's non-failover path.
-			if noReplay(err) {
+			if noReplay(err) && !profileHealthy(err) {
 				p.health.Trip(m.ID, trimErr(err), isHardFailure(err))
 			} else {
 				p.health.Pass(m.ID)
@@ -259,6 +262,14 @@ func shouldFailover(ctx context.Context, err error) bool {
 func noReplay(err error) bool {
 	var policy interface{ NoReplay() bool }
 	return errors.As(err, &policy) && policy.NoReplay()
+}
+
+// profileHealthy 는 프로필이 정상 응답했지만 결과가 오류인 경우(예: 모델의 명시적 거절)를 좁은 오류
+// 인터페이스로 받는다. 이런 오류는 프로필 장애가 아니므로 회로 차단기의 실패로 세지 않는다.
+// 재전송 금지(noReplay)와는 따로 판단한다. 같은 요청을 다시 보내지 않는 것과 프로필이 고장 난 것은 다르다.
+func profileHealthy(err error) bool {
+	var policy interface{ ProfileHealthy() bool }
+	return errors.As(err, &policy) && policy.ProfileHealthy()
 }
 
 // isHardFailure reports whether the failure is deterministic (the profile will

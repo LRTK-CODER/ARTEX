@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 )
 
 func TestEngineDeleteBarrierRejectsNewTaskOperations(t *testing.T) {
@@ -145,7 +146,7 @@ func TestTaskLifecycleRechecksDeleteBarrierAfterConcLock(t *testing.T) {
 }
 
 func TestAbortTaskDeleteUsesPersistedPauseAndQueueState(t *testing.T) {
-	m, err := NewManager(t.TempDir(), "")
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
 	if err != nil {
 		t.Skipf("postgres unavailable (%v) - skipping", err)
 	}
