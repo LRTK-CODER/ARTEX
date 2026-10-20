@@ -77,6 +77,11 @@ RUN groupadd --system --gid "$ARTEX_UID" artex \
     && groupadd --system --gid "$ARTEX_AGENT_UID" artex-agent \
     && useradd --system --uid "$ARTEX_UID" --gid artex --groups artex-agent --home-dir /home/artex --create-home --shell /usr/sbin/nologin artex \
     && useradd --system --uid "$ARTEX_AGENT_UID" --gid artex-agent --home-dir /home/artex-agent --create-home --shell /usr/sbin/nologin artex-agent
+# 작업·대화형 세션마다 나눠 줄 에이전트 uid 풀(20001-21024, #166)의 passwd·group 항목. 셸은 nologin이고 홈은 없다.
+# passwd 항목이 없으면 그 uid로 ssh가 "No user exists for uid"로 실패한다. 범위는 스크립트 안에 있다.
+# --image는 계정 파일에 직접 덧붙이는 빠른 방식이다(호스트에서는 쓰지 않는다).
+COPY --chmod=755 agent-pool-users.sh /tmp/agent-pool-users.sh
+RUN /tmp/agent-pool-users.sh --image && rm /tmp/agent-pool-users.sh
 WORKDIR /app
 # /app 아래 실행 파일·스크립트·스킬은 root 소유에 읽기 전용(755/644)이다. 프롬프트 주입을 당한 에이전트가 같은 uid로
 # 돌아도 서버 바이너리나 시작 스크립트를 바꿔 다음 재시작 때 자기 코드를 실행시키지 못하게 한다.

@@ -173,7 +173,12 @@ package_binary() {
   rm -rf "$package_root" "$archive"
   mkdir -p "$package_root"
   cp "$binary" "$package_root/"
-  if [ "$goos" = "linux" ]; then cp "$(dirname "$binary")/artex-sandbox" "$package_root/"; fi
+  if [ "$goos" = "linux" ]; then
+    cp "$(dirname "$binary")/artex-sandbox" "$package_root/"
+    # 에이전트 uid 분리(#166)의 풀 사용자를 단일 바이너리 설치에서 만들 때 쓴다(README "에이전트 uid 분리").
+    cp agent-pool-users.sh "$package_root/"
+    chmod +x "$package_root/agent-pool-users.sh"
+  fi
   # 감시 시작 스크립트가 정식 진입점이다. 화면의 원클릭 업데이트는 프로세스가 끝난 뒤 이 스크립트가 다시 띄워 줘야 하므로
   # artex 본체를 직접 실행하면 업데이트 뒤 다시 뜨지 않는다. 대상 시스템에 맞는 스크립트 하나만 넣는다.
   if [ "$goos" = "windows" ]; then

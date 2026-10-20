@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -268,4 +269,31 @@ func (s *AgentSandbox) ShellDir() string {
 		return ""
 	}
 	return s.shellDir
+}
+
+// TaskUID 는 켜져 있으면 작업의 에이전트 uid를 DB 풀에서 받는다(#166). 이미 받았으면 같은 값이다. 꺼져 있으면
+// 0, nil이다. 풀이 비면 db.ErrAgentUIDPoolExhausted를 올린다.
+//
+// TODO: #177 - 지금은 받기만 하고 명령은 여전히 공용 에이전트 uid(AgentUIDEnv)로 돈다.
+func (s *AgentSandbox) TaskUID(ctx context.Context, pg *db.DB, taskID int64) (int, error) {
+	if s == nil {
+		return 0, nil
+	}
+	uid, err := pg.AcquireTaskAgentUID(ctx, taskID)
+	if err != nil {
+		return 0, fmt.Errorf("assign agent uid to task %d: %w", taskID, err)
+	}
+	return uid, nil
+}
+
+// ConversationUID 는 대화형 세션(conversations)에 대해 TaskUID와 같은 일을 한다.
+func (s *AgentSandbox) ConversationUID(ctx context.Context, pg *db.DB, conversationID int64) (int, error) {
+	if s == nil {
+		return 0, nil
+	}
+	uid, err := pg.AcquireConversationAgentUID(ctx, conversationID)
+	if err != nil {
+		return 0, fmt.Errorf("assign agent uid to conversation %d: %w", conversationID, err)
+	}
+	return uid, nil
 }

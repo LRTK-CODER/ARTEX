@@ -55,7 +55,7 @@ go vet ./...                                     # 정적 검사(커밋·PR 전�
 gofmt -l .                                       # 형식 어긋난 파일 목록(빈 출력이면 통과)
 gofmt -w .                                       # 형식 고치기
 go test ./...                                    # 전체 테스트
-go test -short ./...                             # testing.Short()로 거른 느린 테스트 빼고(지금은 그런 테스트가 없어 go test ./...와 같다)
+go test -short ./...                             # testing.Short()로 거른 느린 테스트 빼고(지금은 에이전트 uid 풀 전체를 채우는 db·server 테스트가 빠진다)
 go test -race ./...                              # 경쟁 상태 검사
 go test ./server/ -run TestName                 # 특정 패키지의 특정 테스트
 ARTEX_PG_DSN=postgres://... go test ./db/...     # 실제 PostgreSQL이 필요한 테스트
@@ -88,7 +88,7 @@ python3 -m unittest discover -s .claude/hooks/tests   # .claude hook·스크립�
 - 데이터베이스는 PostgreSQL이 필요하다. 연결은 `config.json`의 `database`나 환경 변수 `ARTEX_PG_DSN`으로 준다(`ARTEX_PG_DSN`이 우선). `config.json`에는 `database`와 `skill_dir`만 있고, 그 밖의 설정은 환경 변수나 앱 안 설정으로 받는다. 예시는 `config.example.json`.
 - 탐색에는 LLM이 필요하다. 키는 환경 변수 `ANTHROPIC_API_KEY`·`OPENAI_API_KEY`(또는 `ARTEX_LLM_*`)로 주거나 UI에서 설정한다. Docker 배포 변수 예시는 `.env.example`.
 - 서버 키(`jwt.key`, `oauth.key`)는 환경 변수 `ARTEX_KEY_DIR`의 디렉터리에 둔다. 없으면 실행 파일 옆 디렉터리다. 작업 공간(`-data`)과 같거나 그 안이면 서버가 시작하지 않는다. Docker는 `./keys:/app/keys` 볼륨에 둔다. 잃으면 웹 세션과 ChatGPT·Claude 구독 로그인이 풀리므로 백업한다.
-- 에이전트 명령을 서버와 다른 uid로 돌리려면(Linux, 기본 꺼짐) 환경 변수 `ARTEX_AGENT_UID`·`ARTEX_AGENT_GID`를 준다. 실행 파일 옆 도우미 `artex-sandbox`(`cmd/artex-sandbox`)에 파일 cap이, 서버에 ambient `CAP_KILL`이 있어야 하고(Docker 이미지는 엔트리포인트가 도우미로 올린다), 켜면 서버 PATH가 실행 파일 옆 셸 대체 디렉터리 `artex-shell` 하나가 된다. 준비하지 못하면 서버가 시작하지 않는다. 설정은 `README.md` "에이전트 uid 분리".
+- 에이전트 명령을 서버와 다른 uid로 돌리려면(Linux, 기본 꺼짐) 환경 변수 `ARTEX_AGENT_UID`·`ARTEX_AGENT_GID`를 준다. 실행 파일 옆 도우미 `artex-sandbox`(`cmd/artex-sandbox`)에 파일 cap이, 서버에 ambient `CAP_KILL`이 있어야 하고(Docker 이미지는 엔트리포인트가 도우미로 올린다), 켜면 서버 PATH가 실행 파일 옆 셸 대체 디렉터리 `artex-shell` 하나가 된다. 준비하지 못하면 서버가 시작하지 않는다. 켜면 작업·대화형 세션마다 uid 풀(20001-21024)에서 uid를 DB로 할당한다(아직 실행에는 쓰지 않는다). 풀 사용자는 Docker 이미지에 있고, 단일 바이너리는 `sudo ./agent-pool-users.sh`로 만든다. 설정은 `README.md` "에이전트 uid 분리".
 - 설치·배포 방법(일괄 스크립트, Docker, 단일 바이너리)은 `README.md`와 `install.sh`에 있다.
 
 ## 검사와 CI

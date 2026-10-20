@@ -49,6 +49,27 @@ install_docker(){
   info "로그 보기: docker compose logs -f artex"
 }
 
+# ── 에이전트 uid 풀(Linux, 로컬 실행) ─────────────────────
+# 에이전트 uid 분리(ARTEX_AGENT_UID/GID, 기본 꺼짐)를 켜면 작업·대화형 세션마다 풀(20001-21024)의 uid를 받는다.
+# 그 uid의 passwd·group 항목이 있어야 ssh 같은 도구가 돈다. Docker 이미지는 빌드 때 만든다.
+setup_agent_pool(){
+  if [ "$(uname -s)" != Linux ]; then
+    info "에이전트 uid 분리는 Linux에서만 씁니다. 풀 사용자 만들기를 건너뜁니다"
+    return
+  fi
+  info "에이전트 uid 분리를 쓰려면 uid 풀(20001-21024)의 사용자 1024개가 필요합니다(셸 없음, 홈 없음). README \"에이전트 uid 분리\" 참고"
+  case "$(ask '지금 만들까요? root 권한이 필요합니다 (y/N)' N)" in
+    y|Y|yes|YES)
+      if [ "$(id -u)" -eq 0 ]; then
+        ./agent-pool-users.sh || die "에이전트 uid 풀 사용자를 만들지 못했습니다"
+      else
+        sudo ./agent-pool-users.sh || die "에이전트 uid 풀 사용자를 만들지 못했습니다"
+      fi
+      ok "에이전트 uid 풀 사용자를 준비했습니다" ;;
+    *) info "건너뜁니다. 나중에 sudo ./agent-pool-users.sh 로 만들 수 있습니다" ;;
+  esac
+}
+
 # ── 2) 로컬에서 컴파일해 실행 ──────────────────────────────
 install_local(){
   echo "데이터베이스 설치 방식:"
@@ -102,6 +123,8 @@ JSON
     CGO_ENABLED=0 go build -o artex ./cmd/artex
   fi
   ok "컴파일을 마쳤습니다 → ./artex"
+
+  setup_agent_pool
 
   info "시작합니다…(Ctrl-C로 종료)"
   ./artex
