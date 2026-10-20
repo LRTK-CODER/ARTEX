@@ -12,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/traffic"
 )
 
 // Linux capability·prctl 상수(include/uapi/linux/capability.h, prctl.h). syscall 패키지에 없다.
@@ -201,6 +202,97 @@ func applyWorkspaceACL(dataDir string, owners workspaceOwners) error {
 		if err != nil {
 			return fmt.Errorf("apply agent uid ACLs under %s: %w", filepath.Join(dataDir, top), err)
 		}
+	}
+	return nil
+}
+
+// restrictDataDir 은 데이터 디렉터리에서 작업 공간이 아닌 항목을 서버 전용으로 닫는다(#186). 데이터 디렉터리는 모든
+// uid가 지나가는 공유 디렉터리라(prepareWorkspaceRoots), 그 바로 아래 항목이 umask대로 0755·0644면 아무 작업의
+// 에이전트 uid나 이름으로 들어가 트래픽 저장소·보관 묶음·대화 기록을 읽는다.
+//
+//	tasks, sessions, drafts             손대지 않는다(prepareWorkspaceRoots·applyWorkspaceACL이 맞춘다)
+//	traffic, traffic/_ca                모든 uid가 지나가기만(agent.EnsureContainerDir)
+//	traffic/_ca/mitmproxy-ca-cert.pem   모든 uid가 읽기(0644). 에이전트 명령이 믿을 프록시 CA 인증서다(SSL_CERT_FILE)
+//	그 밖(트래픽 색인·호스트, 보관 묶음 등)  서버 전용(디렉터리 0700, 파일 0600). 안쪽 전체를 맞춘다
+//
+// 데이터 디렉터리와 위 디렉터리에는 기본 ACL(agent.ServerOnlyDefaultACL)을 걸어, 서버가 나중에 새로 만드는 항목도
+// umask와 상관없이 서버 전용이 되게 한다. 이 디렉터리들은 에이전트가 쓰지 못해 경로로 다뤄도 되지만, 걷기는
+// applyWorkspaceACL과 같이 링크를 따라가지 않고 연 기술자에 쓴다. 서버 소유가 아닌 것(예전 root 컨테이너가 만든 것)은
+// 바꿀 수 없어 건너뛴다.
+func restrictDataDir(dataDir string) error {
+	data, err := os.Open(dataDir)
+	if err != nil {
+		return fmt.Errorf("open data dir: %w", err)
+	}
+	defer data.Close()
+	if err := setServerOnlyDefault(data); err != nil {
+		return err
+	}
+	return eachEntry(data, func(f *os.File, info fs.FileInfo, name string) error {
+		switch {
+		case workspaceRootNames[name]:
+			return nil
+		case name == trafficDirName && info.IsDir():
+			return restrictTrafficDir(filepath.Join(dataDir, name), f)
+		}
+		return restrictTree(f, info)
+	})
+}
+
+// workspaceRootNames 는 데이터 디렉터리 바로 아래에서 작업 공간을 담는 디렉터리 이름이다.
+var workspaceRootNames = map[string]bool{"tasks": true, "sessions": true, "drafts": true}
+
+// restrictTrafficDir 은 traffic(dir, f는 연 기술자)을 맞춘다. 에이전트 uid는 CA 인증서까지 지나가기만 하고, 나머지는
+// 서버 전용이다.
+func restrictTrafficDir(dir string, f *os.File) error {
+	if err := ensureServerOnlyContainer(dir, f); err != nil {
+		return err
+	}
+	return eachEntry(f, func(child *os.File, info fs.FileInfo, name string) error {
+		if name != traffic.CADirName || !info.IsDir() {
+			return restrictTree(child, info)
+		}
+		if err := ensureServerOnlyContainer(filepath.Join(dir, name), child); err != nil {
+			return err
+		}
+		return eachEntry(child, func(file *os.File, fileInfo fs.FileInfo, fileName string) error {
+			if fileName == traffic.CACertFileName && fileInfo.Mode().IsRegular() && isServerOwned(fileInfo) {
+				return file.Chmod(0o644)
+			}
+			return restrictTree(file, fileInfo)
+		})
+	})
+}
+
+// ensureServerOnlyContainer 는 dir(f는 연 기술자)을 모든 uid가 지나가기만 하는 디렉터리로 두고, 안에 새로 생기는
+// 항목은 서버 전용이 되게 기본 ACL을 건다.
+func ensureServerOnlyContainer(dir string, f *os.File) error {
+	if err := agent.EnsureContainerDir(dir); err != nil {
+		return fmt.Errorf("prepare %s for agent uid separation: %w", dir, err)
+	}
+	return setServerOnlyDefault(f)
+}
+
+// restrictTree 는 f와, f가 서버 소유 디렉터리면 그 안 전체를 서버 전용으로 맞춘다.
+func restrictTree(f *os.File, info fs.FileInfo) error {
+	if err := agent.ShareOpened(f, info, 0, agent.WorkspaceServerOnly); err != nil {
+		return err
+	}
+	if !info.IsDir() || !isServerOwned(info) {
+		return nil
+	}
+	if err := setServerOnlyDefault(f); err != nil {
+		return err
+	}
+	return eachEntry(f, func(child *os.File, childInfo fs.FileInfo, _ string) error {
+		return restrictTree(child, childInfo)
+	})
+}
+
+// setServerOnlyDefault 는 디렉터리 f에 서버 전용 기본 ACL을 건다.
+func setServerOnlyDefault(f *os.File) error {
+	if err := agent.SetACL(f, agent.ACLDefault, agent.ServerOnlyDefaultACL()); err != nil {
+		return fmt.Errorf("set the server-only default ACL on %s: %w", f.Name(), err)
 	}
 	return nil
 }

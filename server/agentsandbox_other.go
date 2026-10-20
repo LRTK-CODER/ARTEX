@@ -13,4 +13,6 @@ func prepareWorkspaceRoots(string) error { return ErrAgentSandboxUnsupported }
 
 func applyWorkspaceACL(string, workspaceOwners) error { return ErrAgentSandboxUnsupported }
 
+func restrictDataDir(string) error { return ErrAgentSandboxUnsupported }
+
 func installShellDir(string, string) (string, error) { return "", ErrAgentSandboxUnsupported }
