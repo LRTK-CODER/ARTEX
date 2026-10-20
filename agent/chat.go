@@ -126,7 +126,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	if err != nil {
 		return "", err
 	}
-	dirs, err := ensureSessionDir(sessionWorkDir, def.ShareWritesWithGroup)
+	dirs, err := ensureSessionDir(sessionWorkDir, def.WorkspaceUID)
 	if err != nil {
 		return "", err
 	}

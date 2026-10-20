@@ -271,12 +271,13 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 		{name: "conversation run", def: convDef, uid: assignedUID("conversation_id", c.ID)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			want := []string{AgentUIDEnv + "=" + tc.uid, AgentGIDEnv + "=20000"}
+			// gid는 공용 gid(20000)가 아니라 uid와 같은 값이다(#182).
+			want := []string{AgentUIDEnv + "=" + tc.uid, AgentGIDEnv + "=" + tc.uid}
 			if tc.def.CommandErr != nil || strings.Join(tc.def.CommandEnv, " ") != strings.Join(want, " ") {
 				t.Fatalf("CommandEnv = %v, %v, want %v", tc.def.CommandEnv, tc.def.CommandErr, want)
 			}
-			if !tc.def.ShareWritesWithGroup {
-				t.Fatal("ShareWritesWithGroup = false with the sandbox on")
+			if got := strconv.Itoa(tc.def.WorkspaceUID); got != tc.uid {
+				t.Fatalf("WorkspaceUID = %s, want the run uid %s", got, tc.uid)
 			}
 		})
 	}
@@ -306,7 +307,7 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 
 	// 꺼져 있으면 지금과 같다. uid를 싣지 않고 막지도 않는다.
 	wireAgentAugment(pg, t.TempDir(), nil, nil)
-	if def := augment(t.Context(), agent.RunInfo{}); def.CommandEnv != nil || def.CommandErr != nil || def.ShareWritesWithGroup {
+	if def := augment(t.Context(), agent.RunInfo{}); def.CommandEnv != nil || def.CommandErr != nil || def.WorkspaceUID != 0 {
 		t.Fatalf("sandbox off: %+v", def)
 	}
 }

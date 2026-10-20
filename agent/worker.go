@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -270,31 +272,41 @@ func workerArtifactSpec(runDir string) string {
 // ensureRunDir 는 에이전트의 작업 디렉터리와 큰 출력 저장 위치를 base 아래에 만든다. "tasks/"는 대화 에이전트의
 // "sessions/<sessionID>"와 짝을 이룬다.
 //
-// share가 거짓이면(에이전트 uid 분리를 끈 기본값) 예전 배치다. planner·mainagent는 <base>/tasks/<taskID>, worker는
+// agentUID가 0이면(에이전트 uid 분리를 끈 기본값) 예전 배치다. planner·mainagent는 <base>/tasks/<taskID>, worker는
 // <base>/tasks/<taskID>/i<intentID>이고(intentID<=0이면 작업 디렉터리만) 큰 출력은 그 안의 cmd-output이다.
 // 만들기만 하고 실패는 무시한다. 쓰기가 쓸 수 없는 작업 디렉터리처럼 실패할 뿐이다. 0775는 기본 umask(022)에서
 // 예전과 같은 0755가 된다.
 //
-// share가 참이면(#165) runDirsShared를 따른다.
-func ensureRunDir(base string, taskID, intentID int64, share bool) (runDirs, error) {
-	if !share {
+// agentUID가 0이 아니면(#165, #182) sharedRunDirs 배치를 만들고, 그 작업의 uid에만 ACL로 권한을 준다. 작업 생성
+// 뒤 첨부(uploads)가 이미 있으면 읽기를 준다. 첨부는 uid를 받기 전에 올라올 수 있어서다.
+func ensureRunDir(base string, taskID, intentID int64, agentUID int) (runDirs, error) {
+	if agentUID == 0 {
 		dir := runDirPath(base, taskID, intentID)
 		_ = os.MkdirAll(dir, 0o775)
 		return runDirs{work: dir, toolOutput: filepath.Join(dir, ToolOutputDirName)}, nil
 	}
 	dirs := sharedRunDirs(base, taskID, intentID)
-	if err := os.MkdirAll(filepath.Join(base, "tasks"), 0o775); err != nil {
-		return dirs, fmt.Errorf("create tasks dir: %w", err)
-	}
-	// 작업 디렉터리는 서버만 쓴다. 예전 배치(그룹 쓰기)로 만들어진 것도 여기서 되돌린다. 그 안의 작업 공간·큰 출력
-	// 디렉터리를 경로로 다뤄도 되는 것은 이 디렉터리를 에이전트가 바꾸지 못하기 때문이다.
-	if err := ensureServerDir(runDirPath(base, taskID, 0)); err != nil {
+	taskDir := runDirPath(base, taskID, 0)
+	if err := EnsureContainerDir(filepath.Join(base, "tasks")); err != nil {
 		return dirs, err
 	}
-	if err := ensureSharedWorkDir(dirs.work); err != nil {
-		return dirs, err
+	// tasks/<taskID>는 서버만 쓴다. 그 안의 작업 공간·큰 출력 디렉터리를 경로로 다뤄도 되는 것은 이 디렉터리를
+	// 에이전트가 바꾸지 못하기 때문이다.
+	for _, step := range []struct {
+		dir    string
+		access WorkspaceAccess
+	}{
+		{dir: taskDir, access: WorkspaceRead},
+		{dir: dirs.work, access: WorkspaceWrite},
+		{dir: filepath.Dir(dirs.toolOutput), access: WorkspaceRead},
+		{dir: dirs.toolOutput, access: WorkspaceRead},
+	} {
+		if err := ensureACLDir(step.dir, agentUID, step.access, true); err != nil {
+			return dirs, err
+		}
 	}
-	if err := ensureToolOutputDir(dirs.toolOutput); err != nil {
+	uploads := filepath.Join(taskDir, UploadsDirName)
+	if err := ensureACLDir(uploads, agentUID, WorkspaceRead, false); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return dirs, err
 	}
 	return dirs, nil
@@ -310,11 +322,15 @@ type runDirs struct {
 // 작업 공간 권한 규칙도 이 이름을 쓴다.
 const ToolOutputDirName = "cmd-output"
 
+// UploadsDirName 은 사용자 첨부를 두는 디렉터리 이름이다(server의 chatUpload가 tasks/<taskID>·sessions/<sessionID>
+// 아래에 만든다). uid 분리를 켜면 tasks/<taskID>/uploads는 에이전트가 읽기만 한다.
+const UploadsDirName = "uploads"
+
 // taskWorkName 은 uid 분리를 켰을 때 planner·mainagent의 작업 디렉터리 이름이다(tasks/<taskID> 아래).
 const taskWorkName = "work"
 
 // IsTaskWorkspaceName 은 name이 uid 분리를 켰을 때 tasks/<taskID> 바로 아래의 에이전트 작업 디렉터리 이름(work,
-// i<intentID>)인지 본다. server의 작업 공간 권한 규칙이 이 이름에만 에이전트 그룹 쓰기를 준다. runDirPath가
+// i<intentID>)인지 본다. server의 작업 공간 권한 규칙이 이 이름에만 에이전트 쓰기를 준다. runDirPath가
 // 만드는 모양(앞에 0이 없는 양수)만 받는다.
 func IsTaskWorkspaceName(name string) bool {
 	if name == taskWorkName {
@@ -328,12 +344,14 @@ func IsTaskWorkspaceName(name string) bool {
 	return err == nil && id > 0 && strconv.FormatInt(id, 10) == digits
 }
 
-// sharedRunDirs 는 uid 분리를 켰을 때(#165)의 배치를 디렉터리를 만들지 않고 돌려준다.
+// sharedRunDirs 는 uid 분리를 켰을 때(#165, #182)의 배치를 디렉터리를 만들지 않고 돌려준다. 모두 서버 소유이고,
+// 그 작업의 uid만 ACL로 권한을 받는다.
 //
-//	tasks/<taskID>                      서버만 쓴다(에이전트 그룹은 읽고 지나가기만)
-//	tasks/<taskID>/work                 planner·mainagent 작업 디렉터리(에이전트 그룹 쓰기)
-//	tasks/<taskID>/i<intentID>          worker 작업 디렉터리(에이전트 그룹 쓰기)
-//	tasks/<taskID>/cmd-output/<이름>    큰 출력(서버만 쓴다)
+//	tasks/<taskID>                      작업 uid는 읽고 지나가기만
+//	tasks/<taskID>/work                 planner·mainagent 작업 디렉터리(작업 uid 읽기·쓰기)
+//	tasks/<taskID>/i<intentID>          worker 작업 디렉터리(작업 uid 읽기·쓰기)
+//	tasks/<taskID>/cmd-output/<이름>    큰 출력(작업 uid는 읽기만)
+//	tasks/<taskID>/uploads              첨부(작업 uid는 읽기만)
 //
 // 작업 디렉터리를 에이전트가 쓰지 못하게 두는 이유: 에이전트가 쓸 수 있으면 서버가 만든 i<intentID>를 옮기고 그
 // 자리에 링크를 둘 수 있다. sticky로 막으면 fs.protected_regular=2인 호스트에서 서버가 에이전트가 만든 파일을 다시
@@ -348,22 +366,26 @@ func sharedRunDirs(base string, taskID, intentID int64) runDirs {
 	return runDirs{work: filepath.Join(taskDir, name), toolOutput: filepath.Join(taskDir, ToolOutputDirName, name)}
 }
 
-// ensureSessionDir 는 대화 에이전트의 작업 디렉터리(sessions/<sessionID>)와 큰 출력 저장 위치를 만든다. share의
-// 뜻은 ensureRunDir와 같다. 켜면 큰 출력은 sessions/cmd-output/<sessionID>다(sessions/는 에이전트가 쓰지 못한다).
-// 첨부 파일 업로드가 작업 디렉터리를 먼저 만들었으면(그룹 쓰기 없음) 여기서 에이전트 그룹 쓰기를 맞춘다.
-func ensureSessionDir(dir string, share bool) (runDirs, error) {
-	if !share {
+// ensureSessionDir 는 대화 에이전트의 작업 디렉터리(sessions/<sessionID>)와 큰 출력 저장 위치를 만든다. agentUID의
+// 뜻은 ensureRunDir와 같다. 켜면 큰 출력은 sessions/cmd-output/<sessionID>다(sessions/와 sessions/cmd-output은
+// 모든 세션이 지나가는 공유 디렉터리라 에이전트가 쓰지 못한다). 첨부 업로드가 작업 디렉터리를 먼저 만들었어도
+// 여기서 그 세션의 uid에 쓰기를 준다.
+func ensureSessionDir(dir string, agentUID int) (runDirs, error) {
+	if agentUID == 0 {
 		_ = os.MkdirAll(dir, 0o775)
 		return runDirs{work: dir, toolOutput: filepath.Join(dir, ToolOutputDirName)}, nil
 	}
 	dirs := sharedSessionDirs(dir)
-	if err := os.MkdirAll(filepath.Dir(dir), 0o775); err != nil {
-		return dirs, fmt.Errorf("create sessions dir: %w", err)
-	}
-	if err := ensureSharedWorkDir(dir); err != nil {
+	if err := EnsureContainerDir(filepath.Dir(dir)); err != nil {
 		return dirs, err
 	}
-	if err := ensureToolOutputDir(dirs.toolOutput); err != nil {
+	if err := ensureACLDir(dir, agentUID, WorkspaceWrite, true); err != nil {
+		return dirs, err
+	}
+	if err := EnsureContainerDir(filepath.Dir(dirs.toolOutput)); err != nil {
+		return dirs, err
+	}
+	if err := ensureACLDir(dirs.toolOutput, agentUID, WorkspaceRead, true); err != nil {
 		return dirs, err
 	}
 	return dirs, nil
@@ -372,15 +394,6 @@ func ensureSessionDir(dir string, share bool) (runDirs, error) {
 // sharedSessionDirs 는 uid 분리를 켰을 때 대화 작업 디렉터리 dir의 배치를 만들지 않고 돌려준다.
 func sharedSessionDirs(dir string) runDirs {
 	return runDirs{work: dir, toolOutput: filepath.Join(filepath.Dir(dir), ToolOutputDirName, filepath.Base(dir))}
-}
-
-// ensureToolOutputDir 는 큰 출력 저장 위치 dir과 그 부모 cmd-output을 서버만 쓰는 디렉터리로 만든다. 부모의
-// 부모(tasks/<taskID>, sessions/)는 에이전트가 쓰지 못하는 디렉터리여야 한다.
-func ensureToolOutputDir(dir string) error {
-	if err := ensureServerDir(filepath.Dir(dir)); err != nil {
-		return err
-	}
-	return ensureServerDir(dir)
 }
 
 // runDirPath 는 끈 상태의 ensureRunDir가 만드는 작업 디렉터리 경로를 만들지 않고 돌려준다(intentID<=0이면
@@ -504,7 +517,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	if err != nil {
 		return "", WriteCounts{}, err
 	}
-	dirs, err := ensureRunDir(w.workDir, taskID, intent.ID, def.ShareWritesWithGroup)
+	dirs, err := ensureRunDir(w.workDir, taskID, intent.ID, def.WorkspaceUID)
 	if err != nil {
 		return "", WriteCounts{}, err
 	}

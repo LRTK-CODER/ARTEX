@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"math"
 	"net/http"
@@ -217,11 +218,70 @@ func (s *Server) pgDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	s.cancelConversation(c.ID)
 	s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == c.ID })
+	release, err := s.closeConversationWorkspace(c.ID)
+	if err != nil {
+		writeErr(w, http.StatusConflict, "대화 작업 공간을 닫지 못해 지우지 않았습니다: "+err.Error())
+		return
+	}
+	defer release()
 	if err := pg.DeleteConversation(c.ID); err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"deleted": c.ID})
+}
+
+// 대화를 지울 때 돌고 있는 차례가 끝나기를 기다리는 상한과 확인 간격이다. 멈춤 요청 뒤 norma는 도구 호출을 끊고
+// 차례를 끝내며 그 차례의 백그라운드 명령·셸을 죽인다. 보통 1초 안에 끝난다.
+const (
+	conversationStopWait = 30 * time.Second
+	conversationStopPoll = 50 * time.Millisecond
+)
+
+// closeConversationWorkspace 는 uid 분리를 켰을 때 대화 id를 지우기 전에 그 작업 공간(sessions/conv-<id>,
+// sessions/cmd-output/conv-<id>)을 서버 전용으로 닫는다(#182). 대화를 지우면 그 uid가 풀로 돌아가 다른 작업·세션에
+// 다시 할당되는데, 디렉터리는 남는다(지우기는 #179). 닫지 않으면 새 주인이 지운 대화의 작업 공간을 읽는다.
+//
+// 돌고 있는 차례가 있으면(호출자가 멈춤을 요청했다) 끝나기를 기다린 뒤 닫는다. 차례가 끝나야 그 uid로 도는 명령이
+// 없다. 닫은 뒤에는 대화를 지울 때까지 새 차례가 시작하지 못하게 바쁨 표시를 잡아 두고, 돌려주는 release로 놓는다.
+// 닫지 못하면(기다리다 시간이 다 됨, 링크가 놓임 등) 오류다. 호출자는 대화를 지우지 않으므로 uid도 돌아가지 않는다.
+// 꺼져 있으면 아무것도 하지 않는다.
+func (s *Server) closeConversationWorkspace(id int64) (func(), error) {
+	if s.sandbox == nil {
+		return func() {}, nil
+	}
+	key := s.convBusyKey(id)
+	release := func() {
+		s.chatMu.Lock()
+		delete(s.chatBusy, key)
+		s.chatMu.Unlock()
+	}
+	tick := time.NewTicker(conversationStopPoll)
+	defer tick.Stop()
+	deadline := time.Now().Add(conversationStopWait)
+	for {
+		s.chatMu.Lock()
+		busy := s.chatBusy[key]
+		if !busy {
+			s.chatBusy[key] = true
+		}
+		s.chatMu.Unlock()
+		if !busy {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("the running turn did not stop within %s", conversationStopWait)
+		}
+		<-tick.C
+	}
+	sessions := filepath.Join(s.m.dir, "sessions")
+	for _, dir := range []string{filepath.Join(sessions, key), filepath.Join(sessions, agent.ToolOutputDirName, key)} {
+		if err := agent.ShareDir(dir, 0, agent.WorkspaceServerOnly); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			release()
+			return nil, err
+		}
+	}
+	return release, nil
 }
 
 const maxConversationDeleteBatch = 100
@@ -277,10 +337,25 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		s.cancelConversation(id)
 		s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == id })
 	}
-	deleted, err := pg.DeleteConversations(ids)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
+	// 작업 공간을 닫지 못한 대화는 지우지 않는다(closeConversationWorkspace). 그 uid가 풀로 돌아가지 않는다.
+	closeErrs := map[int64]error{}
+	closed := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		release, err := s.closeConversationWorkspace(id)
+		if err != nil {
+			closeErrs[id] = err
+			continue
+		}
+		defer release()
+		closed = append(closed, id)
+	}
+	var deleted []int64
+	if len(closed) > 0 {
+		var err error
+		if deleted, err = pg.DeleteConversations(closed); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	deletedSet := make(map[int64]struct{}, len(deleted))
 	for _, id := range deleted {
@@ -290,7 +365,10 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 	for _, id := range ids {
 		_, ok := deletedSet[id]
 		item := conversationDeleteItem{ID: id, OK: ok}
-		if !ok {
+		switch {
+		case closeErrs[id] != nil:
+			item.Error = "대화 작업 공간을 닫지 못해 지우지 않았습니다: " + closeErrs[id].Error()
+		case !ok:
 			item.Error = "conversation not found"
 		}
 		items = append(items, item)

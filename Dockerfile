@@ -70,8 +70,9 @@ RUN cd /opt/playwright && npm ci --omit=dev \
 # 서버와 에이전트 명령을 돌릴 사용자. uid·gid는 호스트 볼륨 소유권을 맞출 때 쓰므로 고정한다(README "Docker 볼륨 소유권").
 ARG ARTEX_UID=10001
 # 에이전트 uid 분리(ARTEX_AGENT_UID/GID, 기본 꺼짐)를 켰을 때 에이전트 명령이 도는 사용자. 도우미의 허용 범위
-# (20000-29999) 안에 둔다. 서버(artex)는 이 그룹에 보조 그룹으로 속해 작업 공간을 함께 쓴다. 에이전트는 서버
-# 그룹(artex)에 속하지 않아 도우미(0750 root:artex)를 실행하지 못한다(README "에이전트 uid 분리").
+# (20000-29999) 안에 둔다. 작업 공간은 ACL로 나누므로(#182) 서버(artex)가 이 그룹에 속할 필요는 없지만, #182 이전에
+# 켜서 쓰던 작업 공간에 이 사용자가 남긴 파일을 서버가 그룹 권한으로 읽고 지울 수 있게 보조 그룹으로 둔다. 에이전트는
+# 서버 그룹(artex)에 속하지 않아 도우미(0750 root:artex)를 실행하지 못한다(README "에이전트 uid 분리").
 ARG ARTEX_AGENT_UID=20000
 RUN groupadd --system --gid "$ARTEX_UID" artex \
     && groupadd --system --gid "$ARTEX_AGENT_UID" artex-agent \

@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
@@ -195,7 +196,7 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 }
 
 // toolTestWorkspaceDir 는 시험 실행 작업 공간을 두는 데이터 디렉터리 아래 디렉터리다. 대화 작업 공간과 같은 곳이라
-// 에이전트 uid 분리(#165)를 켜도 에이전트 그룹이 쓸 수 있다.
+// 에이전트 uid 분리(#165)를 켜면 모든 uid가 지나갈 수 있고, 시험 작업 공간은 공용 uid에만 ACL로 연다.
 const toolTestWorkspaceDir = "sessions"
 
 // toolTestWorkspace 는 사용자 지정 도구 시험 실행에 쓸 빈 임시 작업 공간을 만든다. 실제 호출은 에이전트 작업
@@ -211,10 +212,9 @@ func (s *Server) toolTestWorkspace() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if s.sandbox.SharesWorkspace() {
-		// MkdirTemp는 0700으로 만든다. 그룹은 setgid인 부모에서 에이전트 그룹을 물려받는다. 부모는 에이전트가
-		// 쓰지 못해 방금 만든 디렉터리를 바꿔치기할 수 없으므로 경로로 바꿔도 된다.
-		if err := os.Chmod(dir, 0o770|os.ModeSetgid); err != nil {
+	if s.sandbox != nil {
+		// MkdirTemp는 0700으로 만든다. 시험 명령은 공용 uid로 돌므로(SharedEnv) 그 uid에만 쓰기를 준다(#182).
+		if err := agent.ShareDir(dir, s.sandbox.uid, agent.WorkspaceWrite); err != nil {
 			_ = os.RemoveAll(dir) // 빈 디렉터리다. 지우지 못해도 다음 시험에 영향이 없다
 			return "", err
 		}

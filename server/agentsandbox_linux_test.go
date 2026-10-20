@@ -17,144 +17,193 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// TestPrepareSharedWorkspace 는 작업 공간 공유 규칙(shareRuleFor)대로 권한이 맞춰지는지 본다. 에이전트 그룹 쓰기는
-// 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>/work, tasks/<tid>/i<iid>)와 그 안에만 있고, 그 위(tasks/<tid> 포함)와
-// drafts·큰 출력 디렉터리(cmd-output)·tasks/<tid> 아래 다른 디렉터리(uploads 등)는 읽고 지나가기만 한다. 끝에서 그룹
-// 쓰기가 있는 항목 전체(find -perm -g=w)가 허용 목록과 같은지도 본다. 예전 배치의 tasks/<tid> sticky·그룹 쓰기는 빠진다.
-// 작업 공간 밖을 가리키는 링크(파일·디렉터리)를 따라가지 않고,
-// 밖의 서버 파일을 하드 링크로 들여온 것도 바꾸지 않는다. 테스트 사용자는 다른 그룹으로 chown할 수 없을 수 있어
-// 자기 주 그룹을 에이전트 그룹으로 쓴다(그룹 변경 자체는 컨테이너 확인에서 본다).
-func TestPrepareSharedWorkspace(t *testing.T) {
-	gid := os.Getgid()
+// aclTagOrder 는 커널이 ACL 항목을 저장하는 순서다(종류, 같은 종류 안에서는 id 오름차순).
+var aclTagOrder = map[agent.ACLTag]int{agent.ACLUserOwner: 0, agent.ACLNamedUser: 1, agent.ACLGroupOwner: 2, agent.ACLNamedGroup: 3, agent.ACLMask: 4, agent.ACLOther: 5}
+
+// agentACL 은 서버 소유 항목에서 에이전트 uid가 perm을 받는 ACL을 커널 순서로 만든다. extraUsers는 더 넣을 이름 있는
+// 사용자 항목(rwx)이다.
+func agentACL(ownerPerm agent.ACLPerm, uid int, perm agent.ACLPerm, extraUsers ...int) agent.ACL {
+	acl := agent.ACL{{Tag: agent.ACLUserOwner, Perm: ownerPerm}, {Tag: agent.ACLNamedUser, ID: uint32(uid), Perm: perm},
+		{Tag: agent.ACLGroupOwner}, {Tag: agent.ACLMask, Perm: perm}, {Tag: agent.ACLOther}}
+	for _, u := range extraUsers {
+		acl = append(acl, agent.ACLEntry{Tag: agent.ACLNamedUser, ID: uint32(u), Perm: agent.ACLRead | agent.ACLWrite | agent.ACLExecute})
+	}
+	slices.SortFunc(acl, func(x, y agent.ACLEntry) int {
+		if c := aclTagOrder[x.Tag] - aclTagOrder[y.Tag]; c != 0 {
+			return c
+		}
+		return int(x.ID) - int(y.ID)
+	})
+	return acl
+}
+
+// readACLOf 는 path의 kind ACL을 읽는다. 없으면 nil이다.
+func readACLOf(t *testing.T, path string, kind agent.ACLKind) agent.ACL {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	acl, err := agent.GetACL(f, kind)
+	if errors.Is(err, agent.ErrNoACL) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return acl
+}
+
+// skipWithoutACL 은 t.TempDir()의 파일 시스템이 POSIX ACL을 지원하지 않으면 건너뛴다.
+func skipWithoutACL(t *testing.T) {
+	t.Helper()
+	if err := checkWorkspaceACL(filepath.Join(t.TempDir(), "acl-probe"), 20000, agent.SetACL); errors.Is(err, syscall.ENOTSUP) {
+		t.Skipf("temp dir file system does not support POSIX ACLs: %v", err)
+	} else if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestApplyWorkspaceACL 은 시작할 때 할당 표대로 작업 공간 ACL을 다시 거는지 본다(#182). 데이터 디렉터리와
+// tasks·sessions는 모든 uid가 지나가기만 하고, drafts는 서버 전용이다. 할당이 있는 작업·대화의 서버 소유 항목은
+// 그 uid에만 열리고(작업 공간은 읽기·쓰기, 그 밖은 읽기), 할당이 없는 것과 모르는 이름은 서버 전용으로 닫히며 안으로
+// 들어가지 않는다. 예전 공용 그룹 배치(#175)의 setgid·sticky·그룹 쓰기는 빠진다. 밖을 가리키는 링크를 따라가지
+// 않고, 밖의 서버 파일을 하드 링크로 들여온 것도 바꾸지 않는다. 데이터 디렉터리 경로가 링크여도 된다.
+func TestApplyWorkspaceACL(t *testing.T) {
+	skipWithoutACL(t)
+	const taskUID, convUID = 20001, 20002
+	server := os.Getuid()
+	rwx := agent.ACLRead | agent.ACLWrite | agent.ACLExecute
+	rw, rx, r := agent.ACLRead|agent.ACLWrite, agent.ACLRead|agent.ACLExecute, agent.ACLRead
 	base := t.TempDir()
-	dataDir := filepath.Join(base, "data")
+	realData := filepath.Join(base, "data")
+	dataDir := filepath.Join(base, "data-link")
 	outsideDir := filepath.Join(base, "outside")
 	outside := filepath.Join(outsideDir, "oauth.key")
 	mkdirWithMode(t, outsideDir, 0o700)
 	writeFileWithMode(t, outside, 0o600)
-	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "i3"), 0o755)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "i3", "notes.md"), 0o644)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "plan.md"), 0o664)
-	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "work"), 0o755)
-	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "uploads"), 0o775)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "uploads", "a.txt"), 0o664)
-	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "scans", "deep"), 0o777)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "scans", "deep", "s.txt"), 0o666)
-	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "i03"), 0o775)
-	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "conv-1", "cmd-output"), 0o755)
-	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3"), 0o777)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3", "output-1-1.txt"), 0o666)
-	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "cmd-output", "conv-1"), 0o777)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "stray.txt"), 0o666)
-	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "conv-1"), 0o755)
-	mkdirWithMode(t, filepath.Join(dataDir, "drafts", "d1", "uploads"), 0o777)
-	writeFileWithMode(t, filepath.Join(dataDir, "drafts", "d1", "uploads", "a.txt"), 0o666)
-	writeFileWithMode(t, filepath.Join(dataDir, "traffic.db"), 0o644)
-	if err := os.Symlink(outside, filepath.Join(dataDir, "tasks", "7", "key-link")); err != nil {
+	mkdirWithMode(t, realData, 0o777)
+	if err := os.Symlink(realData, dataDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outsideDir, filepath.Join(dataDir, "tasks", "8")); err != nil {
+	task := filepath.Join(realData, "tasks", "7")
+	mkdirWithMode(t, filepath.Join(task, "i3", "sub"), 0o777)
+	writeFileWithMode(t, filepath.Join(task, "i3", "sub", "deep.txt"), 0o666)
+	writeFileWithMode(t, filepath.Join(task, "i3", "tool"), fs.ModeSetuid|0o755)
+	mkdirWithMode(t, filepath.Join(task, "work"), fs.ModeSetgid|0o775)
+	writeFileWithMode(t, filepath.Join(task, "work", "notes.md"), 0o664)
+	writeFileWithMode(t, filepath.Join(task, "plan.md"), 0o664)
+	mkdirWithMode(t, filepath.Join(task, "uploads"), 0o775)
+	writeFileWithMode(t, filepath.Join(task, "uploads", "a.txt"), 0o664)
+	mkdirWithMode(t, filepath.Join(task, "cmd-output", "i3"), 0o777)
+	writeFileWithMode(t, filepath.Join(task, "cmd-output", "i3", "output-1-1.txt"), 0o666)
+	if err := os.Chmod(task, fs.ModeSetgid|fs.ModeSticky|0o775); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(task, "i3", "key-link")); err != nil {
 		t.Fatal(err)
 	}
 	hardLinked := filepath.Join(base, "server.key")
-	writeFileWithMode(t, hardLinked, 0o600)
-	if err := os.Link(hardLinked, filepath.Join(dataDir, "tasks", "7", "i3", "hard.key")); err != nil {
+	writeFileWithMode(t, hardLinked, 0o640)
+	if err := os.Link(hardLinked, filepath.Join(task, "i3", "hard.key")); err != nil {
 		t.Fatal(err)
 	}
-	// 그룹·다른 사용자 쓰기가 있는 데이터 디렉터리와 tasks/도 쓰기가 빠져야 한다. 에이전트 그룹이 나머지 항목이나
-	// 작업 공간을 바꿔치기하지 못하게.
-	if err := os.Chmod(dataDir, 0o777); err != nil {
+	mkdirWithMode(t, filepath.Join(realData, "tasks", "9"), 0o755)
+	writeFileWithMode(t, filepath.Join(realData, "tasks", "9", "secret.txt"), 0o644)
+	if err := os.Symlink(outsideDir, filepath.Join(realData, "tasks", "8")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(filepath.Join(dataDir, "tasks"), 0o777); err != nil {
-		t.Fatal(err)
-	}
-	// 예전 배치(그룹 쓰기·sticky)의 작업 디렉터리도 서버만 쓰는 디렉터리로 되돌아가야 한다.
-	if err := os.Chmod(filepath.Join(dataDir, "tasks", "7"), fs.ModeSetgid|fs.ModeSticky|0o775); err != nil {
+	writeFileWithMode(t, filepath.Join(realData, "tasks", "stray.txt"), 0o666)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "conv-1", "uploads"), 0o775)
+	writeFileWithMode(t, filepath.Join(realData, "sessions", "conv-1", "uploads", "f.txt"), 0o644)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-1"), 0o777)
+	writeFileWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-1", "out.txt"), 0o666)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "cmd-output", "conv-5"), 0o777)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "conv-5"), 0o775)
+	mkdirWithMode(t, filepath.Join(realData, "sessions", "tool-test-1"), 0o770)
+	mkdirWithMode(t, filepath.Join(realData, "drafts", "d1", "uploads"), 0o777)
+	writeFileWithMode(t, filepath.Join(realData, "traffic.db"), 0o644)
+	if err := os.Chmod(filepath.Join(realData, "tasks"), fs.ModeSetgid|0o777); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := prepareSharedWorkspace(dataDir, gid); err != nil {
+	if err := prepareWorkspaceRoots(dataDir); err != nil {
+		t.Fatal(err)
+	}
+	owners := workspaceOwners{tasks: map[int64]int{7: taskUID}, conversations: map[int64]int{1: convUID}}
+	if err := applyWorkspaceACL(dataDir, owners); err != nil {
 		t.Fatal(err)
 	}
 
-	setgid := fs.ModeSetgid
+	readDir := agentACL(rwx, taskUID, rx)
+	writeDir := agentACL(rwx, taskUID, rwx)
+	writeDefault := agentACL(rwx, taskUID, rwx, server)
+	convWrite := agentACL(rwx, convUID, rwx)
 	cases := []struct {
-		path string
-		want fs.FileMode
+		rel         string // realData 기준. 비면 realData
+		mode        fs.FileMode
+		access, def agent.ACL
 	}{
-		{path: dataDir, want: 0o715},
-		{path: filepath.Join(dataDir, "tasks"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "sessions"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "drafts"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "stray.txt"), want: 0o644},
-		{path: filepath.Join(dataDir, "tasks", "7"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "7", "plan.md"), want: 0o644},
-		{path: filepath.Join(dataDir, "tasks", "7", "work"), want: setgid | 0o775},
-		{path: filepath.Join(dataDir, "tasks", "7", "i3"), want: setgid | 0o775},
-		{path: filepath.Join(dataDir, "tasks", "7", "i3", "notes.md"), want: 0o664},
-		{path: filepath.Join(dataDir, "tasks", "7", "uploads"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "7", "uploads", "a.txt"), want: 0o644},
-		{path: filepath.Join(dataDir, "tasks", "7", "scans"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "7", "scans", "deep"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "7", "scans", "deep", "s.txt"), want: 0o644},
-		{path: filepath.Join(dataDir, "tasks", "7", "i03"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "sessions", "conv-1", "cmd-output"), want: setgid | 0o775},
-		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3", "output-1-1.txt"), want: 0o644},
-		{path: filepath.Join(dataDir, "sessions", "conv-1"), want: setgid | 0o775},
-		{path: filepath.Join(dataDir, "sessions", "cmd-output"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "sessions", "cmd-output", "conv-1"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "drafts", "d1"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "drafts", "d1", "uploads"), want: setgid | 0o755},
-		{path: filepath.Join(dataDir, "drafts", "d1", "uploads", "a.txt"), want: 0o644},
-		{path: filepath.Join(dataDir, "traffic.db"), want: 0o644},
-		{path: outsideDir, want: 0o700},
-		{path: outside, want: 0o600},
-		{path: hardLinked, want: 0o600},
+		{rel: "", mode: 0o711},
+		{rel: "tasks", mode: 0o711},
+		{rel: "sessions", mode: 0o711},
+		{rel: "drafts", mode: 0o700},
+		{rel: "drafts/d1", mode: 0o755},
+		{rel: "traffic.db", mode: 0o644},
+		{rel: "tasks/stray.txt", mode: 0o600},
+		{rel: "tasks/9", mode: 0o700},
+		{rel: "tasks/9/secret.txt", mode: 0o644},
+		{rel: "tasks/7", mode: 0o750, access: readDir, def: readDir},
+		{rel: "tasks/7/plan.md", mode: 0o640, access: agentACL(rw, taskUID, r)},
+		{rel: "tasks/7/work", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/work/notes.md", mode: 0o660, access: agentACL(rw, taskUID, rw)},
+		{rel: "tasks/7/i3", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/i3/sub", mode: 0o770, access: writeDir, def: writeDefault},
+		{rel: "tasks/7/i3/sub/deep.txt", mode: 0o660, access: agentACL(rw, taskUID, rw)},
+		{rel: "tasks/7/i3/tool", mode: 0o770, access: agentACL(rwx, taskUID, rwx)},
+		{rel: "tasks/7/uploads", mode: 0o750, access: readDir, def: readDir},
+		{rel: "tasks/7/uploads/a.txt", mode: 0o640, access: agentACL(rw, taskUID, r)},
+		{rel: "tasks/7/cmd-output", mode: 0o750, access: readDir, def: readDir},
+		{rel: "tasks/7/cmd-output/i3", mode: 0o750, access: readDir, def: readDir},
+		{rel: "tasks/7/cmd-output/i3/output-1-1.txt", mode: 0o640, access: agentACL(rw, taskUID, r)},
+		{rel: "sessions/conv-1", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
+		{rel: "sessions/conv-1/uploads", mode: 0o770, access: convWrite, def: agentACL(rwx, convUID, rwx, server)},
+		{rel: "sessions/conv-1/uploads/f.txt", mode: 0o660, access: agentACL(rw, convUID, rw)},
+		{rel: "sessions/cmd-output", mode: 0o711},
+		{rel: "sessions/cmd-output/conv-1", mode: 0o750, access: agentACL(rwx, convUID, rx), def: agentACL(rwx, convUID, rx)},
+		{rel: "sessions/cmd-output/conv-1/out.txt", mode: 0o640, access: agentACL(rw, convUID, r)},
+		{rel: "sessions/cmd-output/conv-5", mode: 0o700},
+		{rel: "sessions/conv-5", mode: 0o700},
+		{rel: "sessions/tool-test-1", mode: 0o700},
 	}
 	for _, tc := range cases {
-		info, err := os.Stat(tc.path)
+		p := filepath.Join(realData, filepath.FromSlash(tc.rel))
+		info, err := os.Lstat(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := info.Mode() & (fs.ModePerm | fs.ModeSetgid | fs.ModeSticky); got != tc.want {
-			t.Errorf("%s mode = %v, want %v", tc.path, got, tc.want)
+		if got := info.Mode() & (fs.ModePerm | fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky); got != tc.mode {
+			t.Errorf("%s mode = %v, want %v", tc.rel, got, tc.mode)
 		}
-	}
-
-	// 링크 자체의 권한 비트는 뜻이 없으므로 뺀다.
-	var groupWritable []string
-	err := filepath.WalkDir(dataDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+		if got := readACLOf(t, p, agent.ACLAccess); !slices.Equal(got, tc.access) {
+			t.Errorf("%s access ACL = %v, want %v", tc.rel, got, tc.access)
 		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&fs.ModeSymlink == 0 && info.Mode().Perm()&0o020 != 0 {
-			rel, err := filepath.Rel(dataDir, path)
-			if err != nil {
-				return err
+		if info.IsDir() {
+			if got := readACLOf(t, p, agent.ACLDefault); !slices.Equal(got, tc.def) {
+				t.Errorf("%s default ACL = %v, want %v", tc.rel, got, tc.def)
 			}
-			groupWritable = append(groupWritable, filepath.ToSlash(rel))
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	wantWritable := []string{
-		"sessions/conv-1",
-		"sessions/conv-1/cmd-output",
-		"tasks/7/i3",
-		"tasks/7/i3/notes.md",
-		"tasks/7/work",
+	for _, p := range []string{outsideDir, outside, hardLinked} {
+		if acl := readACLOf(t, p, agent.ACLAccess); acl != nil {
+			t.Errorf("%s outside the workspace got an ACL %v", p, acl)
+		}
 	}
-	if !slices.Equal(groupWritable, wantWritable) {
-		t.Errorf("group-writable entries = %q, want %q", groupWritable, wantWritable)
+	for p, want := range map[string]fs.FileMode{outsideDir: 0o700, outside: 0o600, hardLinked: 0o640} {
+		if info, err := os.Stat(p); err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s outside the workspace changed: %v, %v", p, info.Mode(), err)
+		}
 	}
 }
 
@@ -325,18 +374,23 @@ func TestShellMissingFailsClosed(t *testing.T) {
 }
 
 // TestToolTestWorkspace 는 사용자 지정 도구 시험 실행이 데이터 디렉터리가 아니라 sessions/ 아래 빈 임시 작업 공간에서
-// 도는지 본다. 켜면 에이전트 그룹이 쓸 수 있게(그룹 rwx, setgid) 맞춘다.
+// 도는지 본다. 켜면 시험 명령이 도는 공용 uid에만 ACL로 쓰기를 준다(#182).
 func TestToolTestWorkspace(t *testing.T) {
 	cases := []struct {
 		name    string
 		sandbox *AgentSandbox
 		want    fs.FileMode
+		access  agent.ACL
 	}{
 		{name: "off", want: 0o700},
-		{name: "on", sandbox: &AgentSandbox{}, want: fs.ModeSetgid | 0o770},
+		{name: "on", sandbox: &AgentSandbox{uid: 20000, gid: 20000}, want: 0o770,
+			access: agentACL(agent.ACLRead|agent.ACLWrite|agent.ACLExecute, 20000, agent.ACLRead|agent.ACLWrite|agent.ACLExecute)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.sandbox != nil {
+				skipWithoutACL(t)
+			}
 			dataDir := t.TempDir()
 			s := &Server{m: &Manager{dir: dataDir}, sandbox: tc.sandbox}
 			ws, err := s.toolTestWorkspace()
@@ -352,6 +406,9 @@ func TestToolTestWorkspace(t *testing.T) {
 			}
 			if got := info.Mode() & (fs.ModePerm | fs.ModeSetgid); got != tc.want {
 				t.Fatalf("workspace mode = %v, want %v", got, tc.want)
+			}
+			if got := readACLOf(t, ws, agent.ACLAccess); !slices.Equal(got, tc.access) {
+				t.Fatalf("workspace ACL = %v, want %v", got, tc.access)
 			}
 		})
 	}

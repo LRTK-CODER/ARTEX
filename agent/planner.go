@@ -394,7 +394,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	if err != nil {
 		return false, "", err
 	}
-	dirs, err := ensureRunDir(p.workDir, taskID, 0, def.ShareWritesWithGroup)
+	dirs, err := ensureRunDir(p.workDir, taskID, 0, def.WorkspaceUID)
 	if err != nil {
 		return false, "", err
 	}

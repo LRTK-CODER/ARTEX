@@ -64,55 +64,6 @@ func enableKillCapability() error {
 	return nil
 }
 
-// setSharedUmask 는 서버가 만드는 작업 공간 디렉터리·파일에 그룹 쓰기를 남긴다(디렉터리 0775, 새 파일 0664).
-// 키 파일처럼 0600으로 만드는 파일에는 영향이 없다.
-func setSharedUmask() {
-	syscall.Umask(0o002)
-}
-
-// shareRule 은 작업 공간 항목에 더하고 뺄 권한이다.
-type shareRule struct {
-	add, remove fs.FileMode
-}
-
-// 작업 공간 공유 규칙. 에이전트 그룹 쓰기는 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>/work,
-// tasks/<tid>/i<iid>)와 그 안에만 준다. 그 위(데이터 디렉터리, tasks/·sessions/·drafts/, tasks/<tid>)와 drafts, 큰 출력
-// 디렉터리(cmd-output), tasks/<tid> 아래의 다른 디렉터리(첨부 uploads, 끈 상태에서 planner가 만든 디렉터리) 아래는
-// 에이전트 그룹이 읽고 지나가기만 한다. 작업 공간의 부모에 쓰기가 있으면 에이전트가
-// 서버 소유 작업 공간을 옮기고 그 자리에 링크를 둘 수 있다. 배치는 agent의 sharedRunDirs가 정본이다.
-var (
-	ruleDataDir       = shareRule{add: 0o010, remove: 0o062}                 // 그룹 통과만. 나머지 항목(트래픽 저장소 등)을 지키려고 그룹 읽기·쓰기를 뺀다
-	ruleContainer     = shareRule{add: fs.ModeSetgid | 0o050, remove: 0o022} // 그 아래 새 디렉터리가 에이전트 그룹을 물려받게 setgid
-	ruleReadOnlyFile  = shareRule{add: 0o040, remove: 0o022}
-	ruleTaskDir       = shareRule{add: fs.ModeSetgid | 0o050, remove: fs.ModeSticky | 0o022} // 예전 배치의 sticky·그룹 쓰기를 뺀다
-	ruleWorkspaceDir  = shareRule{add: fs.ModeSetgid | 0o070}
-	ruleWorkspaceFile = shareRule{add: 0o060}
-)
-
-// shareRuleFor 는 공유 디렉터리 top(tasks·sessions·drafts) 아래 depth 깊이(바로 아래가 1) 항목 name의 규칙과,
-// 그 아래가 에이전트 읽기 전용 영역인지를 돌려준다. readOnly는 위에서 이미 읽기 전용 영역에 들어왔는지다.
-func shareRuleFor(top string, depth int, name string, isDir, readOnly bool) (shareRule, bool) {
-	isSessionToolOutput := top == "sessions" && depth == 1 && isDir && name == agent.ToolOutputDirName
-	isTaskNonWorkspace := top == "tasks" && depth == 2 && isDir && !agent.IsTaskWorkspaceName(name)
-	readOnly = readOnly || top == "drafts" || isSessionToolOutput || isTaskNonWorkspace
-	switch {
-	case readOnly || (depth == 1 && !isDir):
-		// drafts와 uploads는 사용자 첨부, cmd-output은 서버가 쓰는 큰 출력이라 에이전트는 읽기만 한다. tasks/·sessions/
-		// 바로 아래 파일도 작업 공간 밖이다.
-		if isDir {
-			return ruleContainer, readOnly
-		}
-		return ruleReadOnlyFile, readOnly
-	case top == "tasks" && depth == 1:
-		return ruleTaskDir, false
-	case top == "tasks" && depth == 2 && !isDir:
-		return ruleReadOnlyFile, false // 예전 배치에서 planner가 tasks/<tid>에 둔 파일. 이제 작업 공간 밖이다
-	case isDir:
-		return ruleWorkspaceDir, false
-	}
-	return ruleWorkspaceFile, false
-}
-
 // aclCheckDirPrefix 는 ACL 자기 검사가 데이터 디렉터리에 잠깐 만드는 디렉터리 이름 앞부분이다.
 const aclCheckDirPrefix = ".acl-check-"
 
@@ -174,54 +125,131 @@ func workspaceACLError(dataDir string, uid int, err error) error {
 	return fmt.Errorf("write a POSIX ACL in the data directory %s: %w", dataDir, err)
 }
 
-// prepareSharedWorkspace 는 작업 공간을 에이전트 그룹(gid)과 함께 쓰도록 그룹과 권한을 맞춘다(규칙은 shareRuleFor).
-// 기능을 켜기 전에 서버가 만든 파일·디렉터리도 바꾼다. 바꾸지 않으면 기능을 켠 뒤 예전 작업을 이어 할 때 에이전트가
-// 자기 작업 공간에 쓰지 못한다.
+// prepareWorkspaceRoots 는 작업 공간을 담는 공유 디렉터리의 권한을 맞춘다(#182). 데이터 디렉터리와 tasks·sessions는
+// 소유 그룹·other가 지나가기만 하고(agent.EnsureContainerDir), drafts(작업 생성 전 첨부)는 서버 전용이다. drafts는
+// 파일 도구 Read(서버 uid)로만 읽는다. 예전 공용 그룹 배치(#175)의 그룹 읽기·쓰기와 setgid도 여기서 빠진다.
 //
-// 에이전트는 작업 공간 안의 항목을 언제든 링크로 바꿀 수 있다. 그래서 경로를 다시 풀지 않는다. 각 항목을 부모
-// 디렉터리의 파일 기술자 기준으로 O_NOFOLLOW로 열고, 연 기술자에만 fchown·fchmod한다. 링크, 서버 소유가 아닌 것
-// (에이전트가 만든 것), 하드 링크가 여럿인 파일, 일반 파일·디렉터리가 아닌 것은 건드리지 않는다. 걷는 도중
-// 사라졌거나 읽을 수 없는 항목은 건너뛴다. 에이전트가 서버 시작을 막지 못하게 하기 위해서다.
-func prepareSharedWorkspace(dataDir string, gid int) error {
+// 데이터 디렉터리 자체가 링크일 수 있어(설정한 -data 경로) 실제 경로로 바꿔 다룬다. 그 아래 이름은 에이전트가
+// 쓰지 못하는 데이터 디렉터리 바로 아래라 경로로 다뤄도 된다.
+func prepareWorkspaceRoots(dataDir string) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
+	resolved, err := filepath.EvalSymlinks(dataDir)
+	if err != nil {
+		return fmt.Errorf("resolve data dir: %w", err)
+	}
+	for _, dir := range []string{resolved, filepath.Join(resolved, "tasks"), filepath.Join(resolved, "sessions")} {
+		if err := agent.EnsureContainerDir(dir); err != nil {
+			return fmt.Errorf("prepare %s for agent uid separation: %w", dir, err)
+		}
+	}
+	drafts := filepath.Join(resolved, "drafts")
+	if err := os.Mkdir(drafts, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("create drafts dir: %w", err)
+	}
+	if err := agent.ShareDir(drafts, 0, agent.WorkspaceServerOnly); err != nil {
+		return fmt.Errorf("make %s server-only: %w", drafts, err)
+	}
+	return nil
+}
+
+// applyWorkspaceACL 은 tasks·sessions 아래 서버 소유 항목 전체에 할당 표(owners)대로 ACL을 다시 건다(#182). 시작할
+// 때 한 번 돈다. 실행 때 ensureRunDir·ensureSessionDir는 작업 공간 디렉터리만 맞추므로, 그 안에 이미 있는 서버 소유
+// 파일(파일 도구가 쓴 것, 예전 배치에서 공용 그룹으로 쓰던 것)과, 할당이 없는(지운 대화 등) 디렉터리는 여기서 맞춘다.
+//
+//	tasks/<tid>(할당 있음)                     작업 uid 읽기. work·i<iid>와 그 안은 읽기·쓰기, 나머지(uploads,
+//	                                           cmd-output 등)와 그 안은 읽기
+//	sessions/conv-<id>(할당 있음)              세션 uid 읽기·쓰기(그 안 포함)
+//	sessions/cmd-output                        모든 uid가 지나가기만(agent.EnsureContainerDir)
+//	sessions/cmd-output/conv-<id>(할당 있음)   세션 uid 읽기(그 안 포함)
+//	그 밖(할당 없음, 모르는 이름, 시험 작업 공간)  서버 전용. 안으로 들어가지 않는다
+//
+// 에이전트는 작업 공간 안의 항목을 언제든 링크로 바꿀 수 있어 경로를 다시 풀지 않는다. 각 항목을 부모 디렉터리의 파일
+// 기술자 기준으로 O_NOFOLLOW로 열고 그 기술자에만 쓴다. 에이전트가 만든 것(다른 uid), 하드 링크가 여럿인 파일, 링크,
+// 걷는 도중 사라졌거나 읽을 수 없는 항목은 건너뛴다(agent.ShareOpened). 에이전트가 서버 시작을 막지 못하게 하기
+// 위해서다. 예전 공용 uid(#175)가 만든 파일은 서버에 CAP_CHOWN이 없어 바꾸지 못한다. 새 작업 uid는 other 권한으로
+// 그 파일을 읽기만 한다(README "에이전트 uid 분리").
+func applyWorkspaceACL(dataDir string, owners workspaceOwners) error {
 	data, err := os.Open(dataDir)
 	if err != nil {
 		return fmt.Errorf("open data dir: %w", err)
 	}
 	defer data.Close()
-	if err := shareRequired(data, gid, ruleDataDir); err != nil {
-		return err
-	}
-	changed := 0
-	for _, name := range sharedWorkspaceDirs {
-		// 데이터 디렉터리는 에이전트가 쓰지 못하므로 바로 아래 이름은 경로로 만들어도 된다.
-		if err := os.Mkdir(filepath.Join(dataDir, name), 0o775); err != nil && !errors.Is(err, fs.ErrExist) {
-			return fmt.Errorf("create workspace dir: %w", err)
-		}
-		top, err := openNoFollow(data, name)
+	for _, top := range []string{"tasks", "sessions"} {
+		dir, err := openNoFollow(data, top)
 		if err != nil {
-			return fmt.Errorf("open workspace dir %s: %w", name, err)
+			return fmt.Errorf("open %s: %w", filepath.Join(dataDir, top), err)
 		}
-		err = shareRequired(top, gid, ruleContainer)
-		if err == nil {
-			err = shareTree(top, name, 1, false, gid, &changed)
-		}
-		top.Close()
+		err = eachEntry(dir, func(f *os.File, info fs.FileInfo, name string) error {
+			if top == "tasks" {
+				return shareTaskUnit(f, info, owners.taskUID(name))
+			}
+			if name == agent.ToolOutputDirName && info.IsDir() {
+				// sessions/cmd-output은 모든 세션이 지나가는 공유 디렉터리다. sessions/는 에이전트가 쓰지 못해 경로로 다뤄도 된다.
+				if err := agent.EnsureContainerDir(filepath.Join(dataDir, top, name)); err != nil {
+					return err
+				}
+				return eachEntry(f, func(out *os.File, outInfo fs.FileInfo, sid string) error {
+					return shareUnit(out, outInfo, owners.sessionUID(sid), agent.WorkspaceRead)
+				})
+			}
+			return shareUnit(f, info, owners.sessionUID(name), agent.WorkspaceWrite)
+		})
+		dir.Close()
 		if err != nil {
-			return fmt.Errorf("share workspace %s with group %d: %w", filepath.Join(dataDir, name), gid, err)
+			return fmt.Errorf("apply agent uid ACLs under %s: %w", filepath.Join(dataDir, top), err)
 		}
-	}
-	if changed > 0 {
-		log.Printf("[sandbox] 작업 공간 %d개 항목의 그룹을 %d로 맞췄다", changed, gid)
 	}
 	return nil
 }
 
-// shareTree 는 dir 바로 아래 항목을 규칙대로 맞추고, 서버 소유 디렉터리면 그 안으로 들어간다. readOnly는 dir이
-// 에이전트 읽기 전용 영역 안인지다(shareRuleFor).
-func shareTree(dir *os.File, top string, depth int, readOnly bool, gid int, changed *int) error {
+// shareTaskUnit 은 tasks/<tid>를 맞춘다. 할당이 없으면 서버 전용으로 닫고 안으로 들어가지 않는다.
+func shareTaskUnit(f *os.File, info fs.FileInfo, uid int) error {
+	if uid == 0 || !info.IsDir() {
+		return agent.ShareOpened(f, info, 0, agent.WorkspaceServerOnly)
+	}
+	if err := agent.ShareOpened(f, info, uid, agent.WorkspaceRead); err != nil {
+		return err
+	}
+	if !isServerOwned(info) {
+		return nil
+	}
+	return eachEntry(f, func(child *os.File, childInfo fs.FileInfo, name string) error {
+		access := agent.WorkspaceRead
+		if childInfo.IsDir() && agent.IsTaskWorkspaceName(name) {
+			access = agent.WorkspaceWrite
+		}
+		return shareTree(child, childInfo, uid, access)
+	})
+}
+
+// shareUnit 은 작업 단위 디렉터리(sessions/conv-<id>, sessions/cmd-output/conv-<id>) 하나를 맞춘다. 할당이 없으면
+// 서버 전용으로 닫고 안으로 들어가지 않는다.
+func shareUnit(f *os.File, info fs.FileInfo, uid int, access agent.WorkspaceAccess) error {
+	if uid == 0 || !info.IsDir() {
+		return agent.ShareOpened(f, info, 0, agent.WorkspaceServerOnly)
+	}
+	return shareTree(f, info, uid, access)
+}
+
+// shareTree 는 f와, f가 서버 소유 디렉터리면 그 안 전체를 access로 맞춘다. 에이전트가 만든 디렉터리 안으로는
+// 들어가지 않는다(그 안은 에이전트가 맡는다).
+func shareTree(f *os.File, info fs.FileInfo, uid int, access agent.WorkspaceAccess) error {
+	if err := agent.ShareOpened(f, info, uid, access); err != nil {
+		return err
+	}
+	if !info.IsDir() || !isServerOwned(info) {
+		return nil
+	}
+	return eachEntry(f, func(child *os.File, childInfo fs.FileInfo, _ string) error {
+		return shareTree(child, childInfo, uid, access)
+	})
+}
+
+// eachEntry 는 dir 바로 아래 항목마다 링크를 따라가지 않고 열어 fn을 부른다. 열 수 없는 항목(skippableOpenError)은
+// 건너뛴다.
+func eachEntry(dir *os.File, fn func(f *os.File, info fs.FileInfo, name string) error) error {
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", dir.Name(), err)
@@ -234,7 +262,10 @@ func shareTree(dir *os.File, top string, depth int, readOnly bool, gid int, chan
 			}
 			return fmt.Errorf("open %s: %w", filepath.Join(dir.Name(), name), err)
 		}
-		err = shareEntry(f, top, depth, name, readOnly, gid, changed)
+		info, err := f.Stat()
+		if err == nil {
+			err = fn(f, info, name)
+		}
 		f.Close()
 		if err != nil {
 			return err
@@ -243,36 +274,10 @@ func shareTree(dir *os.File, top string, depth int, readOnly bool, gid int, chan
 	return nil
 }
 
-func shareEntry(f *os.File, top string, depth int, name string, readOnly bool, gid int, changed *int) error {
-	info, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", f.Name(), err)
-	}
+// isServerOwned 는 info가 서버 uid 소유인지다.
+func isServerOwned(info fs.FileInfo) bool {
 	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(st.Uid) != os.Getuid() {
-		return nil // 에이전트가 만든 것(다른 uid)은 에이전트가 맡는다
-	}
-	switch {
-	case info.IsDir():
-	case info.Mode().IsRegular():
-		if st.Nlink != 1 {
-			return nil // 다른 곳의 서버 파일을 하드 링크로 들여왔을 수 있다
-		}
-	default:
-		return nil // FIFO·소켓 등
-	}
-	rule, childReadOnly := shareRuleFor(top, depth, name, info.IsDir(), readOnly)
-	result, err := shareOpened(f, info, gid, rule)
-	if err != nil {
-		return err
-	}
-	if result == shareChanged {
-		*changed++
-	}
-	if info.IsDir() {
-		return shareTree(f, top, depth+1, childReadOnly, gid, changed)
-	}
-	return nil
+	return ok && int(st.Uid) == os.Getuid()
 }
 
 // openNoFollow 는 dir 기준으로 name을 링크를 따라가지 않고 연다. O_NONBLOCK은 FIFO에서 멈추지 않게 한다.
@@ -293,65 +298,6 @@ func skippableOpenError(err error) bool {
 		}
 	}
 	return false
-}
-
-// shareResult 는 shareOpened가 한 일이다.
-type shareResult int
-
-const (
-	shareSkipped   shareResult = iota // 서버 소유가 아니어서 건너뛰었다
-	shareUnchanged                    // 이미 맞았다
-	shareChanged                      // 그룹이나 권한을 바꿨다
-)
-
-// specialModeBits 는 권한 비교에 넣는 특수 비트다.
-const specialModeBits = fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky
-
-// shareRequired 는 서버 소유여야 하는 디렉터리(데이터 디렉터리, tasks·sessions·drafts)를 규칙대로 맞춘다.
-// 서버 소유가 아니면 오류다.
-func shareRequired(f *os.File, gid int, rule shareRule) error {
-	info, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", f.Name(), err)
-	}
-	if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Getuid() || !info.IsDir() {
-		return fmt.Errorf("%s is not a directory owned by the server (uid %d); fix its ownership before enabling agent uid separation", f.Name(), os.Getuid())
-	}
-	if _, err := shareOpened(f, info, gid, rule); err != nil {
-		return fmt.Errorf("share %s with group %d: %w", f.Name(), gid, err)
-	}
-	return nil
-}
-
-// shareOpened 는 연 파일 f의 그룹을 gid로 바꾸고 권한에 rule.add를 더하고 rule.remove를 뺀다. 파일의
-// setuid·setgid는 지운다. 에이전트 그룹이 실행할 수 있는 서버 소유 setuid 파일은 서버 uid로 가는 길이다.
-// 디렉터리의 sticky는 rule.remove에 없으면 남긴다.
-func shareOpened(f *os.File, info fs.FileInfo, gid int, rule shareRule) (shareResult, error) {
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return shareSkipped, nil
-	}
-	current := info.Mode() & (fs.ModePerm | specialModeBits)
-	want := (info.Mode().Perm() | rule.add) &^ rule.remove
-	if info.IsDir() {
-		want |= info.Mode() & fs.ModeSticky &^ rule.remove
-	} else {
-		want &^= specialModeBits
-	}
-	if int(st.Gid) == gid && current == want {
-		return shareUnchanged, nil
-	}
-	if int(st.Gid) != gid {
-		// 서버가 그 그룹에 속하므로 root 없이 바꿀 수 있다(checkServerIdentity가 확인했다).
-		if err := f.Chown(-1, gid); err != nil {
-			return shareSkipped, err
-		}
-	}
-	// chown은 파일의 setgid 비트를 지울 수 있어 그 뒤에 권한을 맞춘다.
-	if err := f.Chmod(want); err != nil {
-		return shareSkipped, err
-	}
-	return shareChanged, nil
 }
 
 // installShellDir 는 셸 대체 디렉터리 dir을 확인하고, 없으면 만든다. dir 안의 "bash"는 도우미를 가리키는 링크다.

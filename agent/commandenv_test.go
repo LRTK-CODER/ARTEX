@@ -36,7 +36,7 @@ func TestChatStopsWhenRunHasNoAgentUID(t *testing.T) {
 	t.Cleanup(func() { ToolAugment = oldAugment })
 	errNoUID := errors.New("uid pool unreachable")
 	ToolAugment = func(context.Context, string) ([]actool.CoreTool, DeferredInfo, func()) {
-		return nil, DeferredInfo{ShareWritesWithGroup: true, CommandErr: errNoUID}, nil
+		return nil, DeferredInfo{CommandErr: errNoUID}, nil
 	}
 	var calls atomic.Int32
 	dir := t.TempDir()

@@ -333,3 +333,51 @@ func TestAgentUIDKeptThroughArchiveRestoreAndReturnedOnArchiveDelete(t *testing.
 		t.Fatalf("uid %d still assigned after archive delete", uid)
 	}
 }
+
+// ListAgentUIDs 는 할당한 uid를 소유자 종류와 함께 돌려주고, 지운 작업의 uid는 빠진다(시작 때 작업 공간 ACL 재적용,
+// #182). 다른 테스트가 같은 DB에 할당을 남길 수 있어 이 테스트가 만든 소유자만 본다.
+func TestListAgentUIDs(t *testing.T) {
+	d := openTestDB(t)
+	ctx := t.Context()
+	task, err := d.CreateTaskWithOptions("agent uid list", "agent uid list", TaskCreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.DeleteTask(task.ID) })
+	convID := newAgentUIDTestConversation(t, d)
+	taskUID, err := d.AcquireTaskAgentUID(ctx, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	convUID, err := d.AcquireConversationAgentUID(ctx, convID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	find := func() (got map[int]AgentUIDAssignment) {
+		t.Helper()
+		all, err := d.ListAgentUIDs(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = map[int]AgentUIDAssignment{}
+		for _, a := range all {
+			if a.TaskID == task.ID || a.ConversationID == convID {
+				got[a.UID] = a
+			}
+		}
+		return got
+	}
+	want := map[int]AgentUIDAssignment{
+		taskUID: {UID: taskUID, TaskID: task.ID},
+		convUID: {UID: convUID, ConversationID: convID},
+	}
+	if got := find(); len(got) != 2 || got[taskUID] != want[taskUID] || got[convUID] != want[convUID] {
+		t.Fatalf("ListAgentUIDs = %+v, want %+v", got, want)
+	}
+	if err := d.DeleteTask(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := find(); len(got) != 1 || got[convUID] != want[convUID] {
+		t.Fatalf("after task delete ListAgentUIDs = %+v, want only the conversation", got)
+	}
+}

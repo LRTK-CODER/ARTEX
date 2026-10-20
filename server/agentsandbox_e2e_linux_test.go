@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -54,7 +55,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		t.Skipf("%s=1 and a container with the sandbox helper are required", e2eEnv)
 	}
 	ctx := context.Background()
-	sharedUID := os.Getenv(AgentUIDEnv)
+	sharedUID, sharedGID := os.Getenv(AgentUIDEnv), os.Getenv(AgentGIDEnv)
 	helper := os.Getenv(e2eHelperEnv)
 	if helper == "" {
 		helper = "/app/" + SandboxHelperName
@@ -67,7 +68,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dataDir) }) // 정리 실패는 컨테이너가 사라지면 함께 없어진다
 	shellDir := dataDir + "-shell"
 	t.Cleanup(func() { _ = os.RemoveAll(shellDir) })
-	sb, err := EnableAgentSandbox(ctx, AgentSandboxConfig{UID: sharedUID, GID: os.Getenv(AgentGIDEnv), Helper: helper, ShellDir: shellDir, DataDir: dataDir})
+	sb, err := EnableAgentSandbox(ctx, AgentSandboxConfig{UID: sharedUID, GID: sharedGID, Helper: helper, ShellDir: shellDir, DataDir: dataDir})
 	if err != nil || sb == nil {
 		t.Fatalf("EnableAgentSandbox = %v, %v", sb, err)
 	}
@@ -78,12 +79,19 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 	if got := os.Getenv(AgentUIDEnv) + os.Getenv(AgentGIDEnv); got != "" {
 		t.Fatalf("shared agent uid/gid left in the server environment: %q", got)
 	}
-	// 작업·세션 실행은 할당한 uid로 돈다(#177). DB 없이 풀의 첫 두 uid를 작업 A·B의 uid로 쓴다(풀 사용자는 이미지에 있다).
-	uid, otherUID := strconv.Itoa(db.AgentUIDPoolFirst), strconv.Itoa(db.AgentUIDPoolFirst+1)
-	envA, envB := sb.identityEnv(db.AgentUIDPoolFirst), sb.identityEnv(db.AgentUIDPoolFirst+1)
-	ws := filepath.Join(dataDir, "sessions", "e2e")
-	if err := os.MkdirAll(ws, 0o775); err != nil {
-		t.Fatal(err)
+	// 작업·세션 실행은 할당한 uid와 같은 값의 gid로 돈다(#177, #182). DB 없이 풀의 첫 두 uid를 작업 A·B의 uid로
+	// 쓴다(풀 사용자는 이미지에 있다). 작업 공간은 각자의 uid에만 ACL로 열린다.
+	const uidA, uidB = db.AgentUIDPoolFirst, db.AgentUIDPoolFirst + 1
+	uid, otherUID := strconv.Itoa(uidA), strconv.Itoa(uidB)
+	envA, envB := identityEnv(uidA, uidA), identityEnv(uidB, uidB)
+	ws, wsB := filepath.Join(dataDir, "sessions", "e2e"), filepath.Join(dataDir, "sessions", "e2e-b")
+	for dir, owner := range map[string]int{ws: uidA, wsB: uidB} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := agent.ShareDir(dir, owner, agent.WorkspaceWrite); err != nil {
+			t.Fatal(err)
+		}
 	}
 	tasks, err := actool.NewManager("e2e")
 	if err != nil {
@@ -246,7 +254,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 	})
 	t.Run("workspace is shared both ways", func(t *testing.T) {
 		// 파일 도구가 쓴 뒤의 권한(0664, agent 패키지의 TestFileToolWritesShareWithGroup)과 같게 서버 uid로 쓴다.
-		// 그룹은 setgid 작업 공간에서 물려받는다.
+		// 작업 공간의 기본 ACL을 물려받아 작업 uid가 고치고, 에이전트가 만든 파일은 기본 ACL의 서버 uid 항목으로 서버가 고친다.
 		if err := os.WriteFile(filepath.Join(ws, "by-server.txt"), []byte("server\n"), 0o664); err != nil {
 			t.Fatal(err)
 		}
@@ -260,8 +268,88 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatalf("server edit of the agent's file: %v", err)
 		}
 	})
+	t.Run("startup re-applies ACLs to a legacy shared-group workspace", func(t *testing.T) {
+		// #175 배치를 흉내 낸다. 작업 공간은 공용 그룹(공용 gid)의 setgid 디렉터리이고, 공용 uid가 그 안에 파일을 만들었다.
+		gid, err := strconv.Atoi(sharedGID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		taskDir := filepath.Join(dataDir, "tasks", "70")
+		work := filepath.Join(taskDir, "work")
+		if err := os.MkdirAll(work, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustWriteE2E(t, filepath.Join(work, "notes.md"), "server notes\n")
+		for path, mode := range map[string]os.FileMode{taskDir: os.ModeSetgid | 0o755, work: os.ModeSetgid | 0o775, filepath.Join(work, "notes.md"): 0o664} {
+			if err := os.Chown(path, -1, gid); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, mode); err != nil {
+				t.Fatal(err)
+			}
+		}
+		shared := &actool.ToolContext{WorkingDir: work, Env: sb.SharedEnv()}
+		t.Log(runTool(t, bash, shared, map[string]any{"command": "umask 002; echo legacy > legacy.txt && mkdir legacydir && echo inner > legacydir/inner.txt && ls -ln . legacydir"}))
+
+		if err := prepareWorkspaceRoots(dataDir); err != nil {
+			t.Fatal(err)
+		}
+		if err := applyWorkspaceACL(dataDir, workspaceOwners{tasks: map[int64]int{70: uidA}}); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("getfacl", "-n", "-p", taskDir, work, filepath.Join(work, "notes.md"), filepath.Join(work, "legacy.txt")).CombinedOutput(); err == nil {
+			t.Logf("getfacl after re-apply:\n%s", out)
+		}
+		ownerCtx := &actool.ToolContext{WorkingDir: work, Env: envA}
+		out := runTool(t, bash, ownerCtx, map[string]any{"command": "id; cat notes.md legacy.txt legacydir/inner.txt; echo more >> notes.md && echo notes-ok; touch fresh && echo fresh-ok; echo x >> legacy.txt; touch legacydir/new; echo done"})
+		t.Logf("task uid %d in the re-applied legacy workspace:\n%s", uidA, out)
+		for _, want := range []string{"server notes", "legacy", "inner", "notes-ok", "fresh-ok", "legacy.txt: Permission denied", "legacydir/new': Permission denied"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("task uid output lacks %q: %q", want, out)
+			}
+		}
+		probe := fmt.Sprintf("id -u; ls %[1]s; cat %[1]s/legacy.txt; touch %[1]s/x; echo done", shellQuote(work))
+		for _, other := range []struct {
+			name string
+			tc   *actool.ToolContext
+		}{
+			{"task B", &actool.ToolContext{WorkingDir: wsB, Env: envB}},
+			{"shared uid", &actool.ToolContext{WorkingDir: dataDir, Env: sb.SharedEnv()}},
+		} {
+			out := runTool(t, bash, other.tc, map[string]any{"command": probe})
+			t.Logf("%s reaches for task A's re-applied workspace:\n%s", other.name, out)
+			if strings.Count(out, "Permission denied") < 3 || strings.Contains(out, "\nlegacy\n") {
+				t.Fatalf("%s reached task A's workspace: %q", other.name, out)
+			}
+		}
+	})
+	t.Run("a deleted conversation's workspace is closed to its uid", func(t *testing.T) {
+		// 대화를 지우면 uid가 풀로 돌아가 다른 작업·세션이 다시 받는다. 지우기 전에 닫으므로 같은 uid로도 들어가지 못한다.
+		srv := &Server{m: &Manager{dir: dataDir}, sandbox: sb, chatBusy: map[string]bool{}}
+		const conversationID = 77
+		dir := filepath.Join(dataDir, "sessions", srv.convBusyKey(conversationID))
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := agent.ShareDir(dir, uidA, agent.WorkspaceWrite); err != nil {
+			t.Fatal(err)
+		}
+		convCtx := &actool.ToolContext{WorkingDir: dir, Env: envA}
+		assertFirstLine(t, runTool(t, bash, convCtx, map[string]any{"command": "echo CONVERSATION-SECRET > s.txt && echo written"}), "written")
+		release, err := srv.closeConversationWorkspace(conversationID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+		probe := fmt.Sprintf("id -u; ls %[1]s; cat %[1]s/s.txt; touch %[1]s/x; echo done", shellQuote(dir))
+		out := runTool(t, bash, &actool.ToolContext{WorkingDir: dataDir, Env: envA}, map[string]any{"command": probe})
+		t.Logf("uid %d after the conversation's workspace was closed:\n%s", uidA, out)
+		if strings.Count(out, "Permission denied") < 3 || strings.Contains(out, "CONVERSATION-SECRET") {
+			t.Fatalf("the returned uid still reaches the deleted conversation's workspace: %q", out)
+		}
+	})
 	t.Run("runs of different tasks cannot reach each other's processes", func(t *testing.T) {
-		managedB := &actool.ToolContext{WorkingDir: ws, Tasks: tasks, Env: envB}
+		managedB := &actool.ToolContext{WorkingDir: wsB, Tasks: tasks, Env: envB}
 		assertFirstLine(t, runTool(t, bash, managedB, map[string]any{"command": "id -u"}), otherUID)
 		runTool(t, bash, managedB, map[string]any{"command": "exec sleep 305", "run_in_background": true})
 		waitAgentProcess(t, otherUID, "sleep 305", true)
@@ -510,4 +598,11 @@ func toolNames(tools []actool.CoreTool) []string {
 		names = append(names, tool.Name())
 	}
 	return names
+}
+
+func mustWriteE2E(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

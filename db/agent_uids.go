@@ -91,3 +91,28 @@ ORDER BY g LIMIT 1`, AgentUIDPoolFirst, AgentUIDPoolLast).Scan(&uid)
 	}
 	return uid, tx.Commit()
 }
+
+// AgentUIDAssignment 는 풀의 uid 하나와 그 소유자다. TaskID와 ConversationID 중 하나만 0이 아니다.
+type AgentUIDAssignment struct {
+	UID            int
+	TaskID         int64
+	ConversationID int64
+}
+
+// ListAgentUIDs 는 할당한 uid 전체를 uid 순서로 돌려준다. 서버가 시작할 때 작업 공간 ACL을 할당대로 다시 건다(#182).
+func (d *DB) ListAgentUIDs(ctx context.Context) ([]AgentUIDAssignment, error) {
+	rows, err := d.QueryContext(ctx, `SELECT uid, COALESCE(task_id, 0), COALESCE(conversation_id, 0) FROM agent_uids ORDER BY uid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AgentUIDAssignment
+	for rows.Next() {
+		var a AgentUIDAssignment
+		if err := rows.Scan(&a.UID, &a.TaskID, &a.ConversationID); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
