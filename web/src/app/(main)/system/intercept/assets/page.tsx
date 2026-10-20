@@ -38,20 +38,17 @@ const KIND_LABEL: Record<AssetInterceptKind, string> = Object.fromEntries(
 
 const KIND_GROUPS = ["정확히 일치", "접미사 일치", "부분 일치", "네트워크 대역"];
 
+// kindBadgeClass 는 일치 방식 묶음마다 배지 색을 정한다. 접미사 일치는 정확히 일치와 구분되게 따로 둔다.
+function kindBadgeClass(kind: AssetInterceptKind): string {
+  if (kind === "cidr") return "border-sky-400 text-sky-600";
+  if (kind === "suffix_domain") return "border-violet-400 text-violet-600";
+  if (kind.startsWith("fuzzy_")) return "border-amber-400 text-amber-600";
+  return "border-emerald-400 text-emerald-600";
+}
+
 function KindBadge({ kind }: { kind: AssetInterceptKind }) {
-  const fuzzy = kind.startsWith("fuzzy_");
-  const cidr = kind === "cidr";
   return (
-    <Badge
-      variant="outline"
-      className={
-        cidr
-          ? "border-sky-400 text-sky-600"
-          : fuzzy
-            ? "border-amber-400 text-amber-600"
-            : "border-emerald-400 text-emerald-600"
-      }
-    >
+    <Badge variant="outline" className={kindBadgeClass(kind)}>
       {KIND_LABEL[kind]}
     </Badge>
   );
