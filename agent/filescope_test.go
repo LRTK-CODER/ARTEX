@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -204,28 +205,72 @@ func TestFileToolsWithoutScopeRejectEverything(t *testing.T) {
 	t.Fatal("Read tool missing")
 }
 
+// TestSharedModeDropsDirectoryTools 는 에이전트 uid 분리(#165)를 켜면 디렉터리를 걷는 LS·Glob·Grep을 도구 목록에서
+// 빼고 나머지 파일 도구는 남기는지, 끄면 일곱 개가 모두 남는지 본다. 걷는 도구는 걷는 도중 바뀐 링크를 서버 uid로
+// 따라가므로 켠 상태에서는 에이전트가 Bash(에이전트 uid)로 같은 일을 한다.
+func TestSharedModeDropsDirectoryTools(t *testing.T) {
+	cases := []struct {
+		name  string
+		share bool
+		want  string
+	}{
+		{name: "off", share: false, want: "Edit,Glob,Grep,LS,MultiEdit,Read,Write"},
+		{name: "on", share: true, want: "Edit,MultiEdit,Read,Write"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var names []string
+			for _, tool := range confineFileTools(actool.DefaultTools(), FileScope{ShareWritesWithGroup: tc.share}) {
+				if _, isFileTool := fileToolAccesses[tool.Name()]; isFileTool {
+					names = append(names, tool.Name())
+				}
+			}
+			sort.Strings(names)
+			if got := strings.Join(names, ","); got != tc.want {
+				t.Fatalf("file tools = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFileScopeForRoles(t *testing.T) {
 	data := filepath.Join(string(filepath.Separator), "srv", "artex")
 	tmp := os.TempDir()
 	task := func(id string) string { return filepath.Join(data, "tasks", id) }
 	drafts := filepath.Join(data, "drafts")
+	task7 := fileScopeInput{DataDir: data, TaskID: 7, SourceTaskIDs: []int64{3}}
+	intent42 := fileScopeInput{DataDir: data, TaskID: 7, IntentID: 42, SourceTaskIDs: []int64{3}}
+	conv9 := fileScopeInput{DataDir: data, SessionDir: filepath.Join(data, "sessions", "conv-9")}
 	cases := []struct {
-		name string
-		role fileRole
-		in   fileScopeInput
-		want FileScope
+		name  string
+		role  fileRole
+		in    fileScopeInput
+		share bool // 에이전트 uid 분리(#165)를 켰는지
+		want  FileScope
 	}{
-		{"planner and mainagent", fileRoleTask, fileScopeInput{DataDir: data, TaskID: 7, SourceTaskIDs: []int64{3}},
+		{"planner and mainagent", fileRoleTask, task7, false,
 			FileScope{Writable: []string{task("7"), tmp}, Readable: []string{drafts, task("3")}}},
-		{"worker", fileRoleIntent, fileScopeInput{DataDir: data, TaskID: 7, IntentID: 42, SourceTaskIDs: []int64{3}},
+		{"worker", fileRoleIntent, intent42, false,
 			FileScope{Writable: []string{filepath.Join(task("7"), "i42"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
-		{"conversation", fileRoleConversation, fileScopeInput{DataDir: data, SessionDir: filepath.Join(data, "sessions", "conv-9")},
+		{"conversation", fileRoleConversation, conv9, false,
 			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), tmp}, Readable: []string{filepath.Join(data, "tasks"), drafts}}},
-		{"unknown role", fileRole("other"), fileScopeInput{DataDir: data}, FileScope{}},
+		{"unknown role", fileRole("other"), fileScopeInput{DataDir: data}, false, FileScope{}},
+		// 켜면 planner·mainagent는 tasks/<tid>/work에 쓰고 tasks/<tid>(첨부·의도·큰 출력)는 읽기만 한다.
+		{"planner and mainagent shared", fileRoleTask, task7, true,
+			FileScope{Writable: []string{filepath.Join(task("7"), "work"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
+		{"worker shared", fileRoleIntent, intent42, true,
+			FileScope{Writable: []string{filepath.Join(task("7"), "i42"), tmp}, Readable: []string{task("7"), drafts, task("3")}}},
+		// 켜면 대화의 큰 출력은 sessions/cmd-output/<sid>라 읽기에 더한다.
+		{"conversation shared", fileRoleConversation, conv9, true,
+			FileScope{Writable: []string{filepath.Join(data, "sessions", "conv-9"), tmp}, Readable: []string{filepath.Join(data, "tasks"), drafts, filepath.Join(data, "sessions", "cmd-output", "conv-9")}}},
+		{"unknown role shared", fileRole("other"), fileScopeInput{DataDir: data}, true, FileScope{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := fileScopeFor(tc.role, tc.in)
+			got := fileScopeFor(tc.role, tc.in).forSharing(tc.share)
+			if got.ShareWritesWithGroup != tc.share {
+				t.Errorf("ShareWritesWithGroup = %v, want %v", got.ShareWritesWithGroup, tc.share)
+			}
 			if strings.Join(got.Writable, "|") != strings.Join(tc.want.Writable, "|") || strings.Join(got.Readable, "|") != strings.Join(tc.want.Readable, "|") {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}

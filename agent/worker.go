@@ -267,50 +267,109 @@ func workerArtifactSpec(runDir string) string {
 	return "\n\n**Intermediate-artifact output convention**: scripts, payloads, captured response bodies, temporary data, and all other intermediate artifacts **must be written to this intent's dedicated working directory " + runDir + "** (already created, just write relative paths here, no need to mkdir manually) -- **do not write to /tmp and do not use any other absolute path**."
 }
 
-// ensureRunDir 는 에이전트의 작업 디렉터리를 base 아래에 만든다. planner·mainagent는 <base>/tasks/<taskID>,
-// worker는 <base>/tasks/<taskID>/i<intentID>다(intentID<=0이면 작업 디렉터리만). "tasks/"는 대화 에이전트의
+// ensureRunDir 는 에이전트의 작업 디렉터리와 큰 출력 저장 위치를 base 아래에 만든다. "tasks/"는 대화 에이전트의
 // "sessions/<sessionID>"와 짝을 이룬다.
 //
-// share가 거짓이면(에이전트 uid 분리를 끈 기본값) 예전처럼 만들기만 하고 실패는 무시한다. 쓰기가 쓸 수 없는
-// 작업 디렉터리처럼 실패할 뿐이다. 0775는 기본 umask(022)에서 예전과 같은 0755가 된다.
+// share가 거짓이면(에이전트 uid 분리를 끈 기본값) 예전 배치다. planner·mainagent는 <base>/tasks/<taskID>, worker는
+// <base>/tasks/<taskID>/i<intentID>이고(intentID<=0이면 작업 디렉터리만) 큰 출력은 그 안의 cmd-output이다.
+// 만들기만 하고 실패는 무시한다. 쓰기가 쓸 수 없는 작업 디렉터리처럼 실패할 뿐이다. 0775는 기본 umask(022)에서
+// 예전과 같은 0755가 된다.
 //
-// share가 참이면(#165) 에이전트 그룹이 쓸 수 있게 맞추고, 작업 디렉터리에는 sticky를 줘 에이전트가 서버가 만든
-// i<intentID>를 옮기거나 지우지 못하게 한다. 에이전트가 그 자리에 링크를 미리 두었으면 오류를 올린다.
-func ensureRunDir(base string, taskID, intentID int64, share bool) (string, error) {
-	dir := runDirPath(base, taskID, intentID)
+// share가 참이면(#165) runDirsShared를 따른다.
+func ensureRunDir(base string, taskID, intentID int64, share bool) (runDirs, error) {
 	if !share {
+		dir := runDirPath(base, taskID, intentID)
 		_ = os.MkdirAll(dir, 0o775)
-		return dir, nil
+		return runDirs{work: dir, toolOutput: filepath.Join(dir, ToolOutputDirName)}, nil
 	}
+	dirs := sharedRunDirs(base, taskID, intentID)
 	if err := os.MkdirAll(filepath.Join(base, "tasks"), 0o775); err != nil {
-		return dir, fmt.Errorf("create tasks dir: %w", err)
+		return dirs, fmt.Errorf("create tasks dir: %w", err)
 	}
-	if err := shareRunDir(runDirPath(base, taskID, 0), true); err != nil {
-		return dir, err
+	// 작업 디렉터리는 서버만 쓴다. 예전 배치(그룹 쓰기)로 만들어진 것도 여기서 되돌린다. 그 안의 작업 공간·큰 출력
+	// 디렉터리를 경로로 다뤄도 되는 것은 이 디렉터리를 에이전트가 바꾸지 못하기 때문이다.
+	if err := ensureServerDir(runDirPath(base, taskID, 0)); err != nil {
+		return dirs, err
 	}
-	if intentID > 0 {
-		if err := shareRunDir(dir, false); err != nil {
-			return dir, err
-		}
+	if err := ensureSharedWorkDir(dirs.work); err != nil {
+		return dirs, err
 	}
-	return dir, nil
+	if err := ensureToolOutputDir(dirs.toolOutput); err != nil {
+		return dirs, err
+	}
+	return dirs, nil
 }
 
-// ensureSessionDir 는 대화 에이전트의 작업 디렉터리(sessions/<sessionID>)를 만든다. share의 뜻은 ensureRunDir와
-// 같다. 부모 sessions/는 에이전트가 쓰지 못하므로 sticky는 주지 않는다. 첨부 파일 업로드가 이 디렉터리를
-// 먼저 만들었으면(그룹 쓰기 없음) 여기서 에이전트 그룹 쓰기를 맞춘다.
-func ensureSessionDir(dir string, share bool) error {
+// runDirs 는 에이전트 한 번 실행의 디렉터리다.
+type runDirs struct {
+	work       string // 작업 디렉터리(CWD)
+	toolOutput string // norma가 큰 도구 출력을 쓰는 곳(ToolOutputDir)
+}
+
+// ToolOutputDirName 은 큰 도구 출력을 두는 디렉터리 이름이다. uid 분리를 켜면 서버만 쓰는 디렉터리라 server의
+// 작업 공간 권한 규칙도 이 이름을 쓴다.
+const ToolOutputDirName = "cmd-output"
+
+// taskWorkName 은 uid 분리를 켰을 때 planner·mainagent의 작업 디렉터리 이름이다(tasks/<taskID> 아래).
+const taskWorkName = "work"
+
+// sharedRunDirs 는 uid 분리를 켰을 때(#165)의 배치를 디렉터리를 만들지 않고 돌려준다.
+//
+//	tasks/<taskID>                      서버만 쓴다(에이전트 그룹은 읽고 지나가기만)
+//	tasks/<taskID>/work                 planner·mainagent 작업 디렉터리(에이전트 그룹 쓰기)
+//	tasks/<taskID>/i<intentID>          worker 작업 디렉터리(에이전트 그룹 쓰기)
+//	tasks/<taskID>/cmd-output/<이름>    큰 출력(서버만 쓴다)
+//
+// 작업 디렉터리를 에이전트가 쓰지 못하게 두는 이유: 에이전트가 쓸 수 있으면 서버가 만든 i<intentID>를 옮기고 그
+// 자리에 링크를 둘 수 있다. sticky로 막으면 fs.protected_regular=2인 호스트에서 서버가 에이전트가 만든 파일을 다시
+// 쓰지 못한다(Write·Edit 실패). 큰 출력을 작업 공간 밖에 두는 이유: norma는 출력 파일을 예측 가능한 이름으로
+// 링크를 따라가며 쓴다. 에이전트가 그 이름으로 키 파일을 가리키는 링크를 미리 두면 서버 uid가 키를 덮어쓴다.
+func sharedRunDirs(base string, taskID, intentID int64) runDirs {
+	taskDir := runDirPath(base, taskID, 0)
+	name := taskWorkName
+	if intentID > 0 {
+		name = filepath.Base(runDirPath(base, taskID, intentID))
+	}
+	return runDirs{work: filepath.Join(taskDir, name), toolOutput: filepath.Join(taskDir, ToolOutputDirName, name)}
+}
+
+// ensureSessionDir 는 대화 에이전트의 작업 디렉터리(sessions/<sessionID>)와 큰 출력 저장 위치를 만든다. share의
+// 뜻은 ensureRunDir와 같다. 켜면 큰 출력은 sessions/cmd-output/<sessionID>다(sessions/는 에이전트가 쓰지 못한다).
+// 첨부 파일 업로드가 작업 디렉터리를 먼저 만들었으면(그룹 쓰기 없음) 여기서 에이전트 그룹 쓰기를 맞춘다.
+func ensureSessionDir(dir string, share bool) (runDirs, error) {
 	if !share {
 		_ = os.MkdirAll(dir, 0o775)
-		return nil
+		return runDirs{work: dir, toolOutput: filepath.Join(dir, ToolOutputDirName)}, nil
 	}
+	dirs := sharedSessionDirs(dir)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o775); err != nil {
-		return fmt.Errorf("create sessions dir: %w", err)
+		return dirs, fmt.Errorf("create sessions dir: %w", err)
 	}
-	return shareRunDir(dir, false)
+	if err := ensureSharedWorkDir(dir); err != nil {
+		return dirs, err
+	}
+	if err := ensureToolOutputDir(dirs.toolOutput); err != nil {
+		return dirs, err
+	}
+	return dirs, nil
 }
 
-// runDirPath 는 ensureRunDir가 만드는 경로를 디렉터리를 만들지 않고 돌려준다. 파일 도구 허용 경로 표가 쓴다.
+// sharedSessionDirs 는 uid 분리를 켰을 때 대화 작업 디렉터리 dir의 배치를 만들지 않고 돌려준다.
+func sharedSessionDirs(dir string) runDirs {
+	return runDirs{work: dir, toolOutput: filepath.Join(filepath.Dir(dir), ToolOutputDirName, filepath.Base(dir))}
+}
+
+// ensureToolOutputDir 는 큰 출력 저장 위치 dir과 그 부모 cmd-output을 서버만 쓰는 디렉터리로 만든다. 부모의
+// 부모(tasks/<taskID>, sessions/)는 에이전트가 쓰지 못하는 디렉터리여야 한다.
+func ensureToolOutputDir(dir string) error {
+	if err := ensureServerDir(filepath.Dir(dir)); err != nil {
+		return err
+	}
+	return ensureServerDir(dir)
+}
+
+// runDirPath 는 끈 상태의 ensureRunDir가 만드는 작업 디렉터리 경로를 만들지 않고 돌려준다(intentID<=0이면
+// tasks/<taskID>). 파일 도구 허용 경로 표가 쓴다.
 func runDirPath(base string, taskID, intentID int64) string {
 	dir := filepath.Join(base, "tasks", strconv.FormatInt(taskID, 10))
 	if intentID > 0 {
@@ -318,9 +377,6 @@ func runDirPath(base string, taskID, intentID int64) string {
 	}
 	return dir
 }
-
-// cmdOutDir is the SDK large-tool-output spill dir under an agent's run dir.
-func cmdOutDir(dir string) string { return filepath.Join(dir, "cmd-output") }
 
 func workerSystem(proxyAddr, caCert, dataDir, runDir string) string {
 	body := renderSystem("worker", workerDefaultTmpl, WorkerVars{ProxyAddr: proxyAddr, DataDir: dataDir, Now: nowStr()})
@@ -429,10 +485,11 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// 쪽이라 단일 mandate가 없고, worker는 있다. [전역 태세 overview]만 시작 user 메시지에 남긴다 —
 	// 그것은 격하 가능하고 stale를 견디며 눌려도 무방하다.
 	// 이번 의도의 전용 작업 디렉터리 <workDir>/tasks/<taskID>/i<intentID> 는 엔진 쪽에서 먼저 만든다.
-	runDir, err := ensureRunDir(w.workDir, taskID, intent.ID, def.ShareWritesWithGroup)
+	dirs, err := ensureRunDir(w.workDir, taskID, intent.ID, def.ShareWritesWithGroup)
 	if err != nil {
 		return "", WriteCounts{}, err
 	}
+	runDir := dirs.work
 	// The run-wide intent is not the current tool action. Do not forward it or
 	// inherit a parent run's background into the action reviewer.
 	ctx = intercept.WithReviewContext(ctx, runDir, intercept.ReviewBackground{})
@@ -504,9 +561,9 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 		// clamped(작업 deadline에 좁혀짐)일 때는 PromptByReason을 쓴다: 시간 초과=작업 시간에 다다름→작업 시간 초과 문구,
 		// 단계=좁혀진 창 안에서 단계가 먼저 소진→per-run 문구로 되돌린다. 비 clamped면 순수 per-run을 유지한다.
 		Settlement: settle,
-		// large tool output spills to cmd-output/ with a head + pointer (SDK tool.Capture);
-		// full output preserved on disk. 잘림 상한은 SDK 기본값(30000자)을 쓴다.
-		ToolOutputDir: cmdOutDir(runDir),
+		// 큰 도구 출력은 앞부분과 위치만 남기고 전체를 디스크에 둔다(SDK tool.Capture). 위치는 ensureRunDir가
+		// 정한다. 잘림 상한은 SDK 기본값(30000자)을 쓴다.
+		ToolOutputDir: dirs.toolOutput,
 		Compaction:    compactionConfig(w.compactionWindow()), // long tool-heavy runs stay within the window
 		Todos:         actool.NewTodoStore(),                  // 세션 단위 임시 할 일(TodoWrite). 순수 계획용이며 나가면 버려진다
 		NonStreaming:  w.nonStreaming(),                       // 이 profile이 비스트리밍을 고르면 Provider.Complete로 간다

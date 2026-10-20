@@ -31,7 +31,8 @@ services:
       # 에이전트 명령을 서버와 다른 uid로 실행한다(기본 꺼짐, README "에이전트 uid 분리"). 켜려면 .env에
       # ARTEX_AGENT_UID=20000, ARTEX_AGENT_GID=20000을 둔다. 켜면 raw 소켓이 필요한 스캔(nmap -sS, -O)은 쓸 수 없고 -sT를 쓴다.
       # 켤 때는 security_opt의 no-new-privileges를 쓰지 않고, cap_drop을 쓰면 SETUID·SETGID·KILL을 남긴다.
-      # 둘 중 하나라도 어기면 서버가 원인을 찍고 시작하지 않는다.
+      # 어기면 시작하지 않는다. no-new-privileges는 도우미가 원인을 찍고, cap_drop은 커널이 도우미 실행을 거부해
+      # "exec: /app/artex-sandbox: Operation not permitted" 한 줄만 남는다.
       ARTEX_AGENT_UID: ${ARTEX_AGENT_UID:-}
       ARTEX_AGENT_GID: ${ARTEX_AGENT_GID:-}
     ports:

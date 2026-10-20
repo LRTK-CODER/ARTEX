@@ -14,8 +14,9 @@ import (
 )
 
 // TestPrepareSharedWorkspace 는 작업 공간 공유 규칙(shareRuleFor)대로 권한이 맞춰지는지 본다. 에이전트 그룹 쓰기는
-// 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>, tasks/<tid>/i<iid>)와 그 안에만 있고, 그 위와 drafts는 읽고
-// 지나가기만 한다. tasks/<tid>에는 sticky가 붙는다. 작업 공간 밖을 가리키는 링크(파일·디렉터리)를 따라가지 않고,
+// 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>/work, tasks/<tid>/i<iid>)와 그 안에만 있고, 그 위(tasks/<tid> 포함)와
+// drafts·큰 출력 디렉터리(cmd-output)는 읽고 지나가기만 한다. 예전 배치의 tasks/<tid> sticky·그룹 쓰기는 빠진다.
+// 작업 공간 밖을 가리키는 링크(파일·디렉터리)를 따라가지 않고,
 // 밖의 서버 파일을 하드 링크로 들여온 것도 바꾸지 않는다. 테스트 사용자는 다른 그룹으로 chown할 수 없을 수 있어
 // 자기 주 그룹을 에이전트 그룹으로 쓴다(그룹 변경 자체는 컨테이너 확인에서 본다).
 func TestPrepareSharedWorkspace(t *testing.T) {
@@ -28,7 +29,11 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 	writeFileWithMode(t, outside, 0o600)
 	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "i3"), 0o755)
 	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "i3", "notes.md"), 0o644)
-	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "plan.md"), 0o644)
+	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "plan.md"), 0o664)
+	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "work"), 0o755)
+	mkdirWithMode(t, filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3"), 0o777)
+	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3", "output-1-1.txt"), 0o666)
+	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "cmd-output", "conv-1"), 0o777)
 	writeFileWithMode(t, filepath.Join(dataDir, "tasks", "stray.txt"), 0o666)
 	mkdirWithMode(t, filepath.Join(dataDir, "sessions", "conv-1"), 0o755)
 	mkdirWithMode(t, filepath.Join(dataDir, "drafts", "d1", "uploads"), 0o777)
@@ -53,12 +58,16 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 	if err := os.Chmod(filepath.Join(dataDir, "tasks"), 0o777); err != nil {
 		t.Fatal(err)
 	}
+	// 예전 배치(그룹 쓰기·sticky)의 작업 디렉터리도 서버만 쓰는 디렉터리로 되돌아가야 한다.
+	if err := os.Chmod(filepath.Join(dataDir, "tasks", "7"), fs.ModeSetgid|fs.ModeSticky|0o775); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := prepareSharedWorkspace(dataDir, gid); err != nil {
 		t.Fatal(err)
 	}
 
-	setgid, sticky := fs.ModeSetgid, fs.ModeSticky
+	setgid := fs.ModeSetgid
 	cases := []struct {
 		path string
 		want fs.FileMode
@@ -68,11 +77,17 @@ func TestPrepareSharedWorkspace(t *testing.T) {
 		{path: filepath.Join(dataDir, "sessions"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "drafts"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "tasks", "stray.txt"), want: 0o644},
-		{path: filepath.Join(dataDir, "tasks", "7"), want: setgid | sticky | 0o775},
-		{path: filepath.Join(dataDir, "tasks", "7", "plan.md"), want: 0o664},
+		{path: filepath.Join(dataDir, "tasks", "7"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "tasks", "7", "plan.md"), want: 0o644},
+		{path: filepath.Join(dataDir, "tasks", "7", "work"), want: setgid | 0o775},
 		{path: filepath.Join(dataDir, "tasks", "7", "i3"), want: setgid | 0o775},
 		{path: filepath.Join(dataDir, "tasks", "7", "i3", "notes.md"), want: 0o664},
+		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "tasks", "7", "cmd-output", "i3", "output-1-1.txt"), want: 0o644},
 		{path: filepath.Join(dataDir, "sessions", "conv-1"), want: setgid | 0o775},
+		{path: filepath.Join(dataDir, "sessions", "cmd-output"), want: setgid | 0o755},
+		{path: filepath.Join(dataDir, "sessions", "cmd-output", "conv-1"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "drafts", "d1"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "drafts", "d1", "uploads"), want: setgid | 0o755},
 		{path: filepath.Join(dataDir, "drafts", "d1", "uploads", "a.txt"), want: 0o644},

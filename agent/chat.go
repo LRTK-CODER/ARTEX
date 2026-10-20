@@ -122,7 +122,8 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
 	// 작업 디렉터리는 도구 모음을 정한 뒤에 만든다. 에이전트 uid 분리(#165)를 켰는지가 def에 있다.
-	if err := ensureSessionDir(sessionWorkDir, def.ShareWritesWithGroup); err != nil {
+	dirs, err := ensureSessionDir(sessionWorkDir, def.ShareWritesWithGroup)
+	if err != nil {
 		return "", err
 	}
 
@@ -154,9 +155,9 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		MaxDuration:           maxDuration,
 		Compaction:            compactionConfig(c.window),
 		Todos:                 actool.NewTodoStore(),
-		// large tool output spills to cmd-output/ under the session dir.
+		// 큰 도구 출력을 둘 곳. 위치는 ensureSessionDir가 정한다.
 		// 잘림 상한은 SDK 기본값(tool.Capture의 30000자)을 쓴다.
-		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
+		ToolOutputDir: dirs.toolOutput,
 		// 단계 한도에 걸리면 → SDK가 마무리를 돈다: 요약 한 줄을 낸다. 프롬프트와 마무리 회합 수는 이 agent key 기준으로
 		// 백오피스에서 편집할 수 있다(사용자 지정 agent는 각자 한 벌. 비우거나 0이면 범용 기본값 10회).
 		Settlement:   wrapupSettlement(agentKey, nil),

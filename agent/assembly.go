@@ -68,9 +68,8 @@ func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) 
 	}
 	out, def.FindingGuidance = findingWorkflowTools(agentKey, out)
 	// 파일 도구는 호출한 쪽이 withFileScope로 실은 허용 경로 안에서만 돈다. 싣지 않았으면 모든 경로를 거부한다.
-	scope := fileScopeFrom(ctx)
+	scope := fileScopeFrom(ctx).forSharing(def.ShareWritesWithGroup)
 	scope.Readable = append(append([]string{}, scope.Readable...), def.SkillDirs...)
-	scope.ShareWritesWithGroup = def.ShareWritesWithGroup
 	out = confineFileTools(out, scope)
 	for i, t := range out {
 		out[i] = guardPanic(t)

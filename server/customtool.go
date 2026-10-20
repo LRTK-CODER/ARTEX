@@ -3,11 +3,14 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -420,27 +423,11 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 // returns combined stdout+stderr (with a timeout/exit note). Standalone + testable.
 // sandbox가 켜져 있으면 도우미로 감싸 에이전트 uid로 실행한다.
 func execPython(ctx context.Context, interp, key, code string, params map[string]any, workDir string, sessionEnv []string, timeout time.Duration, sandbox *AgentSandbox) (string, error) {
-	toolsDir := filepath.Join(workDir, ".tools")
-	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
-		return "", err
-	}
-	f, err := os.CreateTemp(toolsDir, key+"-*.py")
+	tmp, cleanup, err := writeToolScript(workDir, key, code)
 	if err != nil {
 		return "", err
 	}
-	tmp := f.Name()
-	defer os.Remove(tmp)
-	if _, err := f.WriteString(code); err != nil {
-		f.Close()
-		return "", err
-	}
-	// CreateTemp는 0600으로 만든다. uid 분리를 켜면 python이 에이전트 uid로 돌아 그룹 읽기가 있어야 연다.
-	// 끈 상태에서도 그룹(서버 그룹)에 읽기만 더하는 것이라 달라지는 것이 없다.
-	if err := f.Chmod(0o640); err != nil {
-		f.Close()
-		return "", err
-	}
-	f.Close()
+	defer cleanup()
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -466,6 +453,50 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 		body += "\n[exit: " + err.Error() + "]"
 	}
 	return body, nil
+}
+
+// toolScriptDir 는 python 도구 코드를 두는 작업 디렉터리 아래 디렉터리다.
+const toolScriptDir = ".tools"
+
+// writeToolScript 는 code를 workDir/.tools 아래 새 파일에 쓰고 그 경로와 지우는 함수를 돌려준다.
+//
+// 작업 디렉터리 안에서는 os.Root로 만들고 지운다. 에이전트 uid 분리(#165)를 켜면 에이전트가 작업 공간에 .tools를
+// 밖(키 디렉터리 등)을 가리키는 링크로 미리 둘 수 있다. 경로로 만들면 서버 uid가 그 링크를 따라 밖에 파일을 만들고
+// 지운다. 작업 디렉터리 자체는 서버가 정한 경로이고 그 부모는 에이전트가 쓰지 못한다.
+// 파일은 0640으로 만든다. uid 분리를 켜면 python이 에이전트 uid로 돌아 그룹 읽기가 있어야 연다. 끈 상태에서도
+// 그룹(서버 그룹)에 읽기만 더하는 것이라 달라지는 것이 없다.
+func writeToolScript(workDir, key, code string) (string, func(), error) {
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		return "", nil, err
+	}
+	root, err := os.OpenRoot(workDir)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := root.Mkdir(toolScriptDir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+		root.Close()
+		return "", nil, err
+	}
+	// 이름은 CreateTemp처럼 무작위로 짓고 O_EXCL로 만든다. 같은 이름이 있으면 실패한다.
+	rel := filepath.Join(toolScriptDir, key+"-"+rand.Text()+".py")
+	f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
+	if err != nil {
+		root.Close()
+		return "", nil, err
+	}
+	cleanup := func() {
+		_ = root.Remove(rel) // 지우지 못하면 .tools에 스크립트가 남을 뿐이다
+		root.Close()
+	}
+	_, err = f.WriteString(code)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return filepath.Join(workDir, rel), cleanup, nil
 }
 
 // 사용자 지정 python 도구가 서버 환경에서 물려받는 변수. 도구 코드는 LLM이 고른 인자로 돌고 대상 데이터를 다루므로,
