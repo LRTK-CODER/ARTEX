@@ -85,7 +85,9 @@ jobs:
             dist/artex-linux-${{ matrix.goarch }}/artex
             dist/artex-linux-${{ matrix.goarch }}/artex-sandbox
 
-  # 3. 모든 zip을 모아 GitHub Release를 만든다
+  # 3. 모든 zip을 모아 GitHub Release를 초안으로 만든다. immutable releases라 발행 뒤에는 자산을 붙일 수 없으므로,
+  #    소유자가 SHA256SUMS를 오프라인 키로 서명해 SHA256SUMS.sig를 붙인 뒤 손으로 발행한다(README "릴리스").
+  #    서명 키는 GitHub에 두지 않는다. 초안은 releases/latest에 나오지 않아 발행 전에는 셀프 업데이트가 보지 못한다.
   release:
     needs: binaries
     runs-on: ubuntu-latest
@@ -106,6 +108,7 @@ jobs:
             dist/*.zip
             dist/SHA256SUMS
           generate_release_notes: true
+          draft: true
 
   # ④ 다중 아키텍처 이미지를 이 포크의 GHCR(ghcr.io/lrtk-coder/artex)로 push한다.
   #    binaries가 만든 Linux 바이너리를 다시 쓰고, 이미지에는 도구와 바이너리만 넣는다.

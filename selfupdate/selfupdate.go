@@ -44,7 +44,10 @@ type Paths struct {
 	Dir     string // 실행 파일이 있는 디렉터리
 	Current string // 현재 실행 중인 바이너리        artex      / artex.exe
 	New     string // 임시 저장한 새 버전            artex.new  / artex.new.exe
-	Sum     string // 새 버전의 sha256(hex)  artex.new.sha256 / artex.new.exe.sha256
+	Zip     string // 새 버전을 꺼낸 배포 패키지      artex.new.zip
+	Sums    string // 배포 패키지를 다루는 서명된 SHA256SUMS 원본  artex.new.SHA256SUMS
+	SumsSig string // Sums의 ed25519 서명            artex.new.SHA256SUMS.sig
+	Sum     string // 이전 버전이 쓰던 새 버전 sha256 파일. 더 쓰지 않고 남은 것을 지우기만 한다
 	Old     string // 바이너리 교체 전에 백업한 이전 버전      artex.old  / artex.old.exe
 	Marker  string // 업데이트 상태 마커            artex.upgrade.json
 }
@@ -61,6 +64,11 @@ func ResolvePaths() (Paths, error) {
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved
 	}
+	return pathsFor(exe), nil
+}
+
+// pathsFor 는 실행 파일 exe를 기준으로 업데이트 경로를 유도한다.
+func pathsFor(exe string) Paths {
 	dir := filepath.Dir(exe)
 	name := filepath.Base(exe)
 	ext := filepath.Ext(name) // Windows에서는 ".exe", Unix에서는 보통 비어 있다
@@ -71,16 +79,19 @@ func ResolvePaths() (Paths, error) {
 		Dir:     dir,
 		Current: exe,
 		New:     join(".new"),
+		Zip:     join(".new") + ".zip",
+		Sums:    join(".new") + "." + sumsAsset,
+		SumsSig: join(".new") + "." + sigAsset,
 		Sum:     join(".new") + ".sha256",
 		Old:     join(".old"),
 		Marker:  filepath.Join(dir, stem+".upgrade.json"),
-	}, nil
+	}
 }
 
 // marker 는 바이너리 교체 한 번의 진행 상황을 기록한다. 새 버전이 시작되지 않을 때 자동 롤백을 일으키는 데 쓴다.
 type marker struct {
 	From     string `json:"from"`     // 업데이트 전 버전
-	To       string `json:"to"`       // 대상 버전
+	To       string `json:"to"`       // 대상 버전. Bootstrap이 서명된 SHA256SUMS에서 이 버전의 배포 패키지를 찾는다
 	Attempts int    `json:"attempts"` // 바이너리 교체 뒤 시작을 시도한 횟수
 	StagedAt int64  `json:"staged_at"`
 }
@@ -105,11 +116,13 @@ func writeMarker(path string, m marker) error {
 	return writeFilePrivate(path, b)
 }
 
-// cleanStaged 는 임시 저장본을 지운다. 바이너리 교체 성공, 검증 실패, 사용자 취소가 모두 이 함수를 지난다. 남은
-// artex.new가 다음 시작 때 다시 시도되지 않게 하기 위해서다.
+// cleanStaged 는 임시 저장본과 그 검증 자료를 지운다. 바이너리 교체 성공, 검증 실패, 사용자 취소가 모두 이 함수를
+// 지난다. 남은 artex.new가 다음 시작 때 다시 시도되지 않게 하기 위해서다. 지우기 실패는 다음 시작의 검증이
+// 다시 거르므로 무시한다.
 func cleanStaged(p Paths) {
-	_ = os.Remove(p.New)
-	_ = os.Remove(p.Sum)
+	for _, f := range []string{p.New, p.Zip, p.Sums, p.SumsSig, p.Sum} {
+		_ = os.Remove(f)
+	}
 }
 
 // CompareVersions 는 두 버전 번호를 비교해 -1/0/1(a<b / a==b / a>b)을 돌려준다.

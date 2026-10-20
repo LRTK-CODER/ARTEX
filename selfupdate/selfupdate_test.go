@@ -17,25 +17,20 @@ import (
 // 바이너리 자신을 가리켜, 돌리자마자 go test의 실행 파일 이름이 바뀐다.
 func testPaths(t *testing.T) Paths {
 	t.Helper()
-	dir := t.TempDir()
-	return Paths{
-		Dir:     dir,
-		Current: filepath.Join(dir, "artex"),
-		New:     filepath.Join(dir, "artex.new"),
-		Sum:     filepath.Join(dir, "artex.new.sha256"),
-		Old:     filepath.Join(dir, "artex.old"),
-		Marker:  filepath.Join(dir, "artex.upgrade.json"),
-	}
+	return pathsFor(filepath.Join(t.TempDir(), "artex"))
 }
 
 // fakeBin 은 artex를 흉내 내는 실행 가능한 셸 스크립트를 쓴다. smokeTest는 -h로 띄워 종료 코드만 보므로
 // 스크립트로 충분하고, 진짜 바이너리를 컴파일하는 것보다 훨씬 빠르다.
 func fakeBin(t *testing.T, path, marker string, exitCode int) {
 	t.Helper()
-	script := "#!/bin/sh\necho " + marker + "\nexit " + itoa(exitCode) + "\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(path, []byte(fakeScript(marker, exitCode)), 0o755); err != nil {
 		t.Fatalf("가짜 바이너리 %s 쓰기: %v", path, err)
 	}
+}
+
+func fakeScript(marker string, exitCode int) string {
+	return "#!/bin/sh\necho " + marker + "\nexit " + itoa(exitCode) + "\n"
 }
 
 func itoa(n int) string {
@@ -45,17 +40,11 @@ func itoa(n int) string {
 	return string(rune('0' + n))
 }
 
-// stage 는 bin을 "임시 저장돼 바이너리 교체를 기다리는" 상태로 배치한다. artex.new와 그 체크섬을 써 둔다.
+// stage 는 stagedVersion 가짜 바이너리를 "임시 저장돼 바이너리 교체를 기다리는" 상태로 배치한다. Stage가 남기는
+// 것과 같이 artex.new, 배포 패키지, 테스트 키로 서명한 SHA256SUMS와 서명, 마커를 써 둔다.
 func stage(t *testing.T, p Paths, marker string, exitCode int) {
 	t.Helper()
-	fakeBin(t, p.New, marker, exitCode)
-	sum, err := fileSHA256(p.New)
-	if err != nil {
-		t.Fatalf("체크섬 계산: %v", err)
-	}
-	if err := os.WriteFile(p.Sum, []byte(sum), 0o644); err != nil {
-		t.Fatalf("체크섬 쓰기: %v", err)
-	}
+	stageSigned(t, p, newRelease(t, stagedVersion, fakeScript(marker, exitCode), testPriv))
 }
 
 func readAll(t *testing.T, path string) string {
@@ -126,15 +115,19 @@ func TestResolvePathsNaming(t *testing.T) {
 	}
 }
 
-func TestVerifyStagedRejectsTamperedBinary(t *testing.T) {
+// TestVerifyStagedReplacesTamperedBinary 는 artex.new를 바꿔치기해도 설치되는 것은 서명된 배포 패키지 안의
+// 바이너리인지 본다. artex.new 자체는 서명이 다루지 않는다.
+func TestVerifyStagedReplacesTamperedBinary(t *testing.T) {
 	requireUnix(t)
 	p := testPaths(t)
 	stage(t, p, "new", 0)
 
-	// 체크섬을 쓴 뒤 파일을 바꿔 다운로드 손상·바꿔치기를 흉내 낸다.
 	fakeBin(t, p.New, "tampered", 0)
-	if err := verifyStaged(p); err == nil {
-		t.Fatal("SHA256 불일치로 거부돼야 하는데 통과했다")
+	if err := verifyStaged(p, runningVersion, testKeys); err != nil {
+		t.Fatalf("verifyStaged: %v", err)
+	}
+	if got := readAll(t, p.New); !strings.Contains(got, "new") {
+		t.Fatalf("artex.new = %q, 서명된 패키지의 바이너리로 바뀌어야 함", got)
 	}
 }
 
@@ -143,7 +136,7 @@ func TestVerifyStagedRejectsUnrunnableBinary(t *testing.T) {
 	p := testPaths(t)
 	stage(t, p, "broken", 1) // 실행은 되지만 종료 코드가 0이 아니다
 
-	if err := verifyStaged(p); err == nil {
+	if err := verifyStaged(p, runningVersion, testKeys); err == nil {
 		t.Fatal("스모크 테스트 실패로 거부돼야 하는데 통과했다")
 	}
 }
@@ -153,11 +146,8 @@ func TestApplyStagedHappyPath(t *testing.T) {
 	p := testPaths(t)
 	fakeBin(t, p.Current, "old", 0)
 	stage(t, p, "new", 0)
-	if err := writeMarker(p.Marker, marker{From: "0.3.7", To: "0.3.8"}); err != nil {
-		t.Fatalf("마커 쓰기: %v", err)
-	}
 
-	action, st := applyStaged(p)
+	action, st := applyStaged(p, runningVersion, testKeys)
 	if action != Restart {
 		t.Fatalf("action = %v, 기대값 Restart", action)
 	}
@@ -173,8 +163,10 @@ func TestApplyStagedHappyPath(t *testing.T) {
 	if _, err := os.Stat(p.New); !os.IsNotExist(err) {
 		t.Error("바이너리 교체 뒤 artex.new는 없어야 함")
 	}
-	if _, err := os.Stat(p.Sum); !os.IsNotExist(err) {
-		t.Error("바이너리 교체 뒤 체크섬 파일은 정리돼야 함")
+	for _, f := range []string{p.Zip, p.Sums, p.SumsSig} {
+		if _, err := os.Stat(f); !os.IsNotExist(err) {
+			t.Errorf("바이너리 교체 뒤 %s은(는) 정리돼야 함", f)
+		}
 	}
 	// 마커는 남아 있어야 한다. 다음 시작(새 버전으로 실행)이 이것으로 횟수를 세고 필요하면 롤백한다.
 	if _, ok := readMarker(p.Marker); !ok {
@@ -187,9 +179,10 @@ func TestApplyStagedKeepsCurrentWhenVerifyFails(t *testing.T) {
 	p := testPaths(t)
 	fakeBin(t, p.Current, "old", 0)
 	stage(t, p, "new", 0)
-	fakeBin(t, p.New, "tampered", 0) // 체크섬을 깨뜨린다
+	// 서명된 목록의 해시와 다른 배포 패키지로 바꿔 다운로드 손상·바꿔치기를 흉내 낸다.
+	writeTestZip(t, p.Zip, map[string]string{"artex": fakeScript("tampered", 0)})
 
-	action, st := applyStaged(p)
+	action, st := applyStaged(p, runningVersion, testKeys)
 	if action != Continue {
 		t.Fatalf("검증 실패 시 action = %v, 기대값 Continue", action)
 	}

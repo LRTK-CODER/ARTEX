@@ -63,6 +63,7 @@ go run ./cmd/artex -addr :8787 -proxy 127.0.0.1:8788   # 백엔드만 실행
 ./dev.sh                                         # 백엔드(:8787)+프록시(:8788)+프런트 dev(:5173) 함께
 ./build.sh                                       # 현재 플랫폼 단일 바이너리(프런트 내장)
 ./build.sh --release                             # 전체 플랫폼 교차 컴파일+패키징
+go run ./cmd/artex-release-sign sign -key <키> SHA256SUMS   # 릴리스 SHA256SUMS 서명(README "릴리스")
 ```
 
 프런트엔드(`web/`에서):
