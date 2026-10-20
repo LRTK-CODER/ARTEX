@@ -374,6 +374,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	// 자산 커버리지 기능이 꺼져 있으면 add_task_scope/list_untested_assets를 뺀다(프롬프트에 넣지 않는다).
 	base := append(tsx.DropCoverageTools(tsx.PlannerTools()), actool.DefaultTools()...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts)})
+	ctx = withFileScope(ctx, fileScopeFor(fileRoleTask, fileScopeInput{DataDir: p.workDir, TaskID: taskID, SourceTaskIDs: sourceTaskIDs(ts)}))
 	tools, def, cleanup := AugmentTools(ctx, "planner", base)
 	defer cleanup()
 	// 핵심 태세(방금 끝난 의도 + 미리 가져온 전체 그래프)는 이제 [이번 라운드 user 입력]에 넣는다(아래 input 참고).

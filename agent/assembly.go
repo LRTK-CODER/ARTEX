@@ -21,6 +21,9 @@ type DeferredInfo struct {
 	GlobalNames     []string          // MCP names to list in the system-prompt block
 	Unlock          *actool.UnlockSet // shared call-gate; nil when no MCP tools
 	UnlockSkill     func(skillName string)
+	// SkillDirs 는 이 에이전트에게 보이는 스킬의 디렉터리다. 파일 도구가 SKILL.md의 참조 파일을 읽을 수 있게
+	// 읽기 허용에 더한다.
+	SkillDirs []string
 }
 
 // ToolAugment, if set, returns the EXTRA tools an agent should see beyond its
@@ -61,6 +64,10 @@ func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) 
 		out = ToolResolve(ctx, agentKey, out)
 	}
 	out, def.FindingGuidance = findingWorkflowTools(agentKey, out)
+	// 파일 도구는 호출한 쪽이 withFileScope로 실은 허용 경로 안에서만 돈다. 싣지 않았으면 모든 경로를 거부한다.
+	scope := fileScopeFrom(ctx)
+	scope.Readable = append(append([]string{}, scope.Readable...), def.SkillDirs...)
+	out = confineFileTools(out, scope)
 	for i, t := range out {
 		out[i] = guardPanic(t)
 	}

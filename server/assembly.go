@@ -175,6 +175,13 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			Unlock:      unlock,
 			UnlockSkill: unlockSkill,
 		}
+		if reg != nil {
+			for _, s := range reg.List() {
+				if s.Dir != "" {
+					def.SkillDirs = append(def.SkillDirs, s.Dir)
+				}
+			}
+		}
 		return extra, def, cleanup
 	}
 }

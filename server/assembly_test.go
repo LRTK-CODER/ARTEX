@@ -81,10 +81,14 @@ func TestAssembleVisibleSkill(t *testing.T) {
 	t.Cleanup(func() { _ = pg.ToggleSkillVisibility(ag.ID, skillName, false) })
 
 	// after: the Skill meta-tool is packed in
-	extra, _, cleanup = agent.ToolAugment(context.Background(), "planner")
+	extra, def, cleanup := agent.ToolAugment(context.Background(), "planner")
 	defer cleanup()
 	if !hasSkillTool(extra) {
 		t.Fatalf("expected the Skill meta-tool after making the skill visible")
+	}
+	// 보이는 스킬의 디렉터리를 알려 파일 도구가 그 안의 참조 파일을 읽을 수 있게 한다(#169).
+	if want := filepath.Join(skillDir, skillName); len(def.SkillDirs) != 1 || def.SkillDirs[0] != want {
+		t.Fatalf("SkillDirs = %v, want [%s]", def.SkillDirs, want)
 	}
 
 	// AugmentTools appends extra to base without filtering base

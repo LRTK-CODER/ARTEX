@@ -273,11 +273,17 @@ func workerArtifactSpec(runDir string) string {
 // symmetrically with the chat agent's "sessions/<sessionID>". Best-effort mkdir — on
 // failure, writes fail the same way an unwritable CWD would.
 func ensureRunDir(base string, taskID, intentID int64) string {
+	dir := runDirPath(base, taskID, intentID)
+	_ = os.MkdirAll(dir, 0o755)
+	return dir
+}
+
+// runDirPath 는 ensureRunDir가 만드는 경로를 디렉터리를 만들지 않고 돌려준다. 파일 도구 허용 경로 표가 쓴다.
+func runDirPath(base string, taskID, intentID int64) string {
 	dir := filepath.Join(base, "tasks", strconv.FormatInt(taskID, 10))
 	if intentID > 0 {
 		dir = filepath.Join(dir, "i"+strconv.FormatInt(intentID, 10))
 	}
-	_ = os.MkdirAll(dir, 0o755)
 	return dir
 }
 
@@ -378,6 +384,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// (Read/Write/Edit/LS/Bash/Sleep)는 그대로 둔다.
 	base = append(base, defaultToolsExcept("MultiEdit", "Glob", "Grep")...)
 	ctx = WithRunInfo(ctx, RunInfo{TaskID: taskID, ExplorationID: explorationID(ts), IntentID: intent.ID})
+	ctx = withFileScope(ctx, fileScopeFor(fileRoleIntent, fileScopeInput{DataDir: w.workDir, TaskID: taskID, IntentID: intent.ID, SourceTaskIDs: sourceTaskIDs(ts)}))
 	tools, def, cleanup := AugmentTools(ctx, "worker", base)
 	defer cleanup()
 
