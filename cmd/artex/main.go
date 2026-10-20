@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -100,6 +101,18 @@ func run() int {
 	defer stop()
 	ctx, shutdown := shutdownContext(sigCtx)
 	defer shutdown(agent.AbortShutdown)
+
+	// 컨테이너는 바인드 마운트 소유권이 맞지 않으면 시작하지 못한다(이미지는 root가 아닌 사용자로 돈다).
+	// 단독 실행 파일은 키 디렉터리 기본값이 실행 파일 옆이라 쓰기 검사를 하면 예전 설치가 막힐 수 있어 컨테이너에서만 본다.
+	if selfupdate.InDocker() {
+		if err := server.CheckDirAccess(*dataDir, os.Getenv(server.KeyDirEnv)); err != nil {
+			log.Printf("[config] %v", err)
+			if errors.Is(err, fs.ErrPermission) {
+				log.Print(server.VolumeOwnershipHint(os.Getuid()))
+			}
+			return 1
+		}
+	}
 
 	mgr, err := server.NewManager(*dataDir, *proxy, secretEnv)
 	if err != nil {

@@ -76,9 +76,6 @@ const (
 
 var relCache = &releaseCache{}
 
-// runningInContainer 는 컨테이너 감지 함수다. 테스트에서 바꿔 끼우려고만 둔다.
-var runningInContainer = selfupdate.InDocker
-
 // errContainerUpdate 는 컨테이너에서 원클릭 업데이트·롤백을 요청했을 때의 안내다.
 // 이미지는 /app을 root 소유 읽기 전용으로 두므로 서버가 바이너리를 바꿀 수 없고, 바꿀 수 있다 해도
 // 컨테이너를 다시 만들면 이미지의 버전으로 돌아간다. 업데이트는 이미지 교체로만 한다.
@@ -218,7 +215,7 @@ func (h *updateHub) subscribe() (<-chan updateProgress, func()) {
 func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 	current := BuildVersion
 	mode := "binary"
-	if runningInContainer() {
+	if s.inContainer() {
 		mode = "docker"
 	}
 	boot := bootUpdateState()
@@ -276,7 +273,7 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 // 바로 202를 돌려주고 실제 일은 백그라운드 goroutine에서 한다. 전체 패키지 다운로드는 몇 분 걸릴 수 있어
 // 요청에 묶어 두면 리버스 프록시 시간 초과로 끊긴다. 진행률은 /api/update/stream으로 보낸다.
 func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
-	if runningInContainer() {
+	if s.inContainer() {
 		writeErr(w, http.StatusConflict, errContainerUpdate)
 		return
 	}
@@ -325,7 +322,7 @@ func (s *Server) updateApply(w http.ResponseWriter, r *http.Request) {
 
 // updateRollback 은 이전 버전(교체 전에 백업한 artex.old)으로 직접 되돌린다.
 func (s *Server) updateRollback(w http.ResponseWriter, r *http.Request) {
-	if runningInContainer() {
+	if s.inContainer() {
 		writeErr(w, http.StatusConflict, errContainerUpdate)
 		return
 	}

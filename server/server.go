@@ -25,6 +25,7 @@ import (
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/artex/report"
+	"github.com/Autumn-27/artex/selfupdate"
 	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
@@ -44,7 +45,10 @@ type Server struct {
 	ctx    context.Context
 
 	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // keyDir/jwt.key에서 읽거나 새로 만든 HS256 서명 키
+	// inContainer 는 컨테이너 안에서 도는지 알려 준다. New가 selfupdate.InDocker를 넣고, 테스트는 가짜를 넣는다.
+	// 컨테이너에서는 원클릭 업데이트·롤백을 거부한다(update.go).
+	inContainer func() bool
+	jwtKey      []byte // keyDir/jwt.key에서 읽거나 새로 만든 HS256 서명 키
 	// oauth 는 구독 OAuth 프로필의 TokenSource를 프로필마다 하나씩 들고 있다.
 	// oauth.key를 불러오지 못했으면 nil이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry
@@ -156,7 +160,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	if err != nil {
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, chatBusy: map[string]bool{},
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, inContainer: selfupdate.InDocker, jwtKey: key, chatBusy: map[string]bool{},
 		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},

@@ -160,12 +160,8 @@ func TestReleaseCacheDoesNotPoisonOnCallerCancel(t *testing.T) {
 // 컨테이너에서는 /app이 읽기 전용이고 서버가 root가 아니라 바이너리를 바꿀 수 없다. 적용·롤백 요청은
 // 다운로드나 파일 조작을 시작하기 전에 거부해야 한다(새 버전 확인은 그대로 둔다).
 func TestUpdateApplyAndRollbackRejectedInContainer(t *testing.T) {
-	orig := runningInContainer
-	runningInContainer = func() bool { return true }
-	t.Cleanup(func() { runningInContainer = orig })
-
-	// Server의 의존성을 비워 둔다. 거부 전에 manager·GitHub·파일 시스템에 손대면 nil 역참조로 실패한다.
-	s := &Server{}
+	// 컨테이너 감지 말고는 Server의 의존성을 비워 둔다. 거부 전에 manager·GitHub·파일 시스템에 손대면 nil 역참조로 실패한다.
+	s := &Server{inContainer: func() bool { return true }}
 	cases := []struct {
 		name    string
 		path    string

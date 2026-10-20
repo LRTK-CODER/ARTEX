@@ -57,7 +57,10 @@ prepare_docker_volumes(){
   info "볼륨 소유권을 컨테이너 사용자(uid ${ARTEX_CONTAINER_ID})에 맞춥니다…"
   docker compose run --rm --no-deps --user 0:0 --entrypoint sh artex -c "
     set -e
-    chown -R ${ARTEX_CONTAINER_ID}:${ARTEX_CONTAINER_ID} /app/data /app/keys
+    # 작업 공간이 크면 chown -R 이 오래 걸린다. 이미 모두 컨테이너 사용자 소유면 건너뛴다.
+    if [ -n \"\$(find /app/data /app/keys \\( ! -user ${ARTEX_CONTAINER_ID} -o ! -group ${ARTEX_CONTAINER_ID} \\) -print -quit)\" ]; then
+      chown -R ${ARTEX_CONTAINER_ID}:${ARTEX_CONTAINER_ID} /app/data /app/keys
+    fi
     chmod 700 /app/keys
     find /app/keys -type f -exec chmod 600 {} +
     chgrp -R ${ARTEX_CONTAINER_ID} /app/skills

@@ -138,7 +138,7 @@ docker compose pull artex && docker compose up -d --force-recreate artex
 
 ### Docker 볼륨 소유권
 
-예전 이미지는 root로 돌아서 `./data`·`./keys`가 root 소유다. 지금 이미지는 `artex`(uid·gid 10001)로 돌므로 그대로 두면 서버가 작업 공간이나 키를 쓰지 못해 시작하지 못한다. `./update.sh`(① Docker)와 `./install.sh`는 이미지를 받은 뒤 아래를 알아서 한다. 손으로 올릴 때는 compose 디렉터리에서 다음을 따른다.
+예전 이미지는 root로 돌아서 `./data`·`./keys`가 root 소유다. 지금 이미지는 `artex`(uid·gid 10001)로 돌므로 그대로 두면 서버가 작업 공간이나 키를 쓰지 못해 시작하지 못한다(로그에 `[config] 컨테이너 사용자(uid 10001)가 ./data·./keys를 읽거나 쓰지 못합니다`와 이 절을 가리키는 안내가 찍힌다). `./update.sh`(① Docker)와 `./install.sh`는 이미지를 받은 뒤 아래를 알아서 한다. 손으로 올릴 때는 compose 디렉터리에서 다음을 따른다.
 
 | 경로 | 맞출 상태 | 이유 |
 |---|---|---|

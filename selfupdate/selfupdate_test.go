@@ -501,7 +501,7 @@ func TestInContainerDetectsRuntimeMarkers(t *testing.T) {
 		{name: "Docker 표식 파일", files: map[string]string{".dockerenv": ""}, want: true},
 		{name: "Podman 표식 파일", files: map[string]string{"run/.containerenv": ""}, want: true},
 		{name: "cgroup v1의 docker 경로", files: map[string]string{"proc/1/cgroup": "12:pids:/docker/abc123\n"}, want: true},
-		{name: "cgroup v1의 containerd 경로", files: map[string]string{"proc/1/cgroup": "0::/system.slice/containerd.service\n"}, want: true},
+		{name: "cgroup v1의 containerd 경로", files: map[string]string{"proc/1/cgroup": "4:pids:/kubepods/besteffort/pod1234/containerd-abc123.scope\n"}, want: true},
 		{name: "호스트의 cgroup v2", files: map[string]string{"proc/1/cgroup": "0::/init.scope\n"}, want: false},
 		{name: "흔적 없음", files: nil, want: false},
 	}
