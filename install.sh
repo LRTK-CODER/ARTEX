@@ -42,6 +42,8 @@ install_docker(){
   prepare_key_volume
   info "이미지를 받아 시작합니다…"
   docker compose pull || true
+  # 이미지는 root 가 아닌 사용자로 돈다. 바인드 마운트를 그 사용자가 쓸 수 있게 맞춘다.
+  prepare_docker_volumes
   docker compose up -d
   ok "시작했습니다 → http://localhost:8787"
   info "로그 보기: docker compose logs -f artex"

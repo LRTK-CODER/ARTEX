@@ -61,6 +61,8 @@ update_docker(){
 
   info "새 이미지를 받습니다(artex만)…"
   docker compose pull artex
+  # 새 이미지는 root 가 아닌 사용자로 돈다. 예전 root 소유 볼륨을 그 사용자가 쓸 수 있게 맞춘다.
+  prepare_docker_volumes
   info "다시 만들어 시작합니다(artex가 다시 시작할 때 schema를 자동으로 마이그레이션합니다)…"
   docker compose up -d artex
   ok "업데이트를 마쳤습니다 → http://localhost:8787"

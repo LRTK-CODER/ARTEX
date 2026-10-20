@@ -491,3 +491,35 @@ func TestFetchLatestUsesForkReleases(t *testing.T) {
 		t.Errorf("TagName = %q, want v1.2.3", rel.TagName)
 	}
 }
+
+func TestInContainerDetectsRuntimeMarkers(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  bool
+	}{
+		{name: "Docker 표식 파일", files: map[string]string{".dockerenv": ""}, want: true},
+		{name: "Podman 표식 파일", files: map[string]string{"run/.containerenv": ""}, want: true},
+		{name: "cgroup v1의 docker 경로", files: map[string]string{"proc/1/cgroup": "12:pids:/docker/abc123\n"}, want: true},
+		{name: "cgroup v1의 containerd 경로", files: map[string]string{"proc/1/cgroup": "0::/system.slice/containerd.service\n"}, want: true},
+		{name: "호스트의 cgroup v2", files: map[string]string{"proc/1/cgroup": "0::/init.scope\n"}, want: false},
+		{name: "흔적 없음", files: nil, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for rel, body := range tc.files {
+				p := filepath.Join(root, rel)
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := inContainer(root); got != tc.want {
+				t.Errorf("inContainer = %v, 기대값 %v", got, tc.want)
+			}
+		})
+	}
+}

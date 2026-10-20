@@ -104,7 +104,7 @@ docker compose up -d          # ghcr.io/lrtk-coder/artex 이미지 + postgres �
 이미지는 이 포크의 릴리스 워크플로가 GHCR(`ghcr.io/lrtk-coder/artex`)에 올린다. 첫 push 뒤 GitHub 패키지 설정에서 공개 범위를 정한다. 비공개로 두면 받기 전에 `docker login ghcr.io`가 필요하다.
 
 이미지에는 자주 쓰는 도구(ripgrep/curl/vim/npm/nmap…)가 들어 있고, `./skills`·`./data`·`./keys`는 바인드 마운트로 보존된다.
-손으로 띄울 때는 `keys/`를 먼저 만든다: `mkdir -p keys && chmod 700 keys`(`install.sh`는 알아서 만든다).
+서버는 root가 아닌 `artex`(uid·gid 10001)로 돌고, 루트 파일 시스템은 읽기 전용이다(`docker-compose.yml`의 `read_only: true`). 손으로 띄울 때는 `docker compose up -d` 전에 [Docker 볼륨 소유권](#docker-볼륨-소유권)대로 바인드 마운트 소유권을 맞춘다(`install.sh`·`update.sh`는 알아서 맞춘다).
 
 ### 서버 키 디렉터리와 백업
 
@@ -135,6 +135,38 @@ docker compose cp artex:/app/oauth.key keys/   # 구독 로그인을 쓰지 않�
 chmod 600 keys/*.key
 docker compose pull artex && docker compose up -d --force-recreate artex
 ```
+
+### Docker 볼륨 소유권
+
+예전 이미지는 root로 돌아서 `./data`·`./keys`가 root 소유다. 지금 이미지는 `artex`(uid·gid 10001)로 돌므로 그대로 두면 서버가 작업 공간이나 키를 쓰지 못해 시작하지 못한다. `./update.sh`(① Docker)와 `./install.sh`는 이미지를 받은 뒤 아래를 알아서 한다. 손으로 올릴 때는 compose 디렉터리에서 다음을 따른다.
+
+| 경로 | 맞출 상태 | 이유 |
+|---|---|---|
+| `./data` | 10001:10001 소유 | 작업 공간. 서버가 쓴다 |
+| `./keys` | 10001:10001 소유, 디렉터리 0700, 키 파일 0600 | 서버 키. 서버만 읽는다 |
+| `./skills` | 소유자는 호스트 사용자 그대로, 그룹 10001, `g+rwX`, 디렉터리에 setgid | 호스트에서 `git pull`로 갱신하고, 화면·에이전트도 스킬을 만들고 고친다 |
+
+```bash
+docker compose pull artex
+docker compose stop artex
+# sudo 없이: 받은 이미지를 root로 한 번 띄워 바인드 마운트를 고친다
+docker compose run --rm --no-deps --user 0:0 --entrypoint sh artex -c '
+  set -e
+  chown -R 10001:10001 /app/data /app/keys
+  chmod 700 /app/keys
+  find /app/keys -type f -exec chmod 600 {} +
+  chgrp -R 10001 /app/skills
+  chmod -R g+rwX /app/skills
+  find /app/skills -type d -exec chmod g+s {} +'
+docker compose up -d artex
+```
+
+호스트에서 sudo를 쓸 수 있으면 같은 일을 이렇게 해도 된다: `sudo chown -R 10001:10001 data keys && sudo chmod 700 keys && sudo find keys -type f -exec chmod 600 {} + && sudo chgrp -R 10001 skills && sudo chmod -R g+rwX skills && sudo find skills -type d -exec chmod g+s {} +`.
+
+- 키를 아직 컨테이너 안(`/app/*.key`)에서 꺼내지 않은 예전 설치라면 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업)의 키 꺼내기를 먼저 한다.
+- 이전한 뒤 호스트 사용자는 `./data`·`./keys`를 sudo 없이 읽지 못한다. 백업은 `sudo`로 하거나 `docker compose cp`로 꺼낸다.
+- 컨테이너가 `./skills`에 새로 만든 스킬(화면·에이전트)은 10001 소유, 그룹 10001에 그룹 쓰기 권한이다. git이 추적하는 파일은 호스트 사용자 소유 그대로라 `git pull`은 그대로 된다. 컨테이너가 만든 스킬을 호스트에서 고치려면 sudo를 쓰거나, 호스트에 gid 10001 그룹을 만들어 사용자를 넣는다(`sudo groupadd -g 10001 artex && sudo usermod -aG artex "$USER"`, 다시 로그인한 뒤 적용).
+- nmap은 실행 파일에 `cap_net_raw`가 있어 root가 아니어도 SYN 스캔(`-sS`)과 OS 탐지가 된다.
 
 원격 MCP는 시스템 설정에서 `http`(Streamable HTTP) 또는 `sse`(이전 버전 SSE)를 고를 수 있다.
 이전 버전 SSE 서비스는 보통 `GET /sse`로 이벤트 스트림을 열고, 서비스가 돌려주는
@@ -189,7 +221,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 
 ### 방법 1: 화면 원클릭 업데이트(권장)
 
-**시스템 설정** 페이지(사이드바 '시스템 설정' → `/system/settings`)의 **버전과 업데이트** 카드에서 서버에 로그인하지 않고도 새 버전을 바로 확인하고 설치할 수 있다.
+**시스템 설정** 페이지(사이드바 '시스템 설정' → `/system/settings`)의 **버전과 업데이트** 카드에서 서버에 로그인하지 않고도 새 버전을 바로 확인하고 설치할 수 있다. 단독 실행 파일(Releases, 소스 컴파일) 배포에서만 쓴다. Docker는 아래 Docker 항목을 본다.
 
 '업데이트'를 누르면 현재 플랫폼의 배포 파일을 내려받아 Release의 `SHA256SUMS`와 대조하고, `-h`로 새 바이너리를 스모크 테스트한 뒤 `artex.new`로 임시 저장한다. 그다음 프로그램이 종료되면 `start.sh` / `start.bat`이 다시 띄우며 교체를 끝낸다. 화면은 새 버전이 올라올 때까지 기다렸다가 자동으로 새로 고친다.
 
@@ -197,7 +229,7 @@ ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 - **언제든 되돌릴 수 있다**: 이전 버전은 `artex.old`로 남고, 카드에 '이전 버전으로 롤백'이 있다. 단, 데이터베이스 구조는 되돌아가지 않는다.
 - **업데이트는 실행 중인 작업을 중단한다**: 업데이트가 곧 다시 시작이므로 쉴 때 한다.
 - **개발 빌드에는 업데이트를 주지 않는다**: 버전 번호가 `dev`이거나 `git describe`에 접미사가 붙으면 비활성화해, 정식 버전이 로컬에서 디버깅하는 바이너리를 덮어쓰지 않게 한다.
-- **Docker에서는 프로그램만 바꾸고 이미지는 바꾸지 않는다**: 이미지 안의 playwright / nmap 같은 도구는 함께 올라가지 않고, `docker compose up -d`로 컨테이너를 다시 만들면 이미지에 든 버전으로 돌아간다. 이미지까지 함께 올리려면 `docker compose pull artex && docker compose up -d artex`를 쓴다.
+- **Docker에서는 원클릭 업데이트를 쓰지 않는다**: 카드는 새 버전 알림만 보이고 적용·롤백 버튼 대신 이미지 교체 명령을 안내한다(API도 적용·롤백을 409로 거부한다). 이미지가 `/app`을 root 소유 읽기 전용으로 두고 서버를 root가 아닌 사용자로 돌려, 프롬프트 주입을 당한 에이전트가 서버 바이너리를 바꾸지 못하게 하기 때문이다. 아래 방법 2(①) 또는 방법 3으로 `docker compose pull artex && docker compose up -d artex`를 쓴다.
 - GitHub 접속에 프록시가 필요하면 같은 페이지에서 **전역 프록시**를 설정하면 업데이트 경로가 그것을 쓴다. 업데이트는 GitHub 도메인에서만 내려받고 HTTPS를 강제한다.
 
 ### 방법 2: 일괄 업데이트 스크립트
@@ -223,6 +255,7 @@ git pull                       # compose / 스크립트 업데이트(선택)
 # 키가 아직 컨테이너 안(/app/*.key)에 있는 예전 설치는 여기서 먼저 키를 ./keys 로 꺼낸다(서버 키 디렉터리와 백업 절 참고)
 # 버전 지정: .env 에 ARTEX_TAG=v0.2.0 설정, 설정하지 않으면 latest
 docker compose pull artex
+# root로 돌던 예전 이미지에서 처음 올릴 때는 여기서 볼륨 소유권을 맞춘다(Docker 볼륨 소유권 절 참고)
 docker compose up -d artex     # 새 이미지로 다시 시작 → schema 자동 마이그레이션
 docker image prune -f          # 옛 이미지 정리(선택)
 ```

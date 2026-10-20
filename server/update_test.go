@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,5 +154,43 @@ func TestReleaseCacheDoesNotPoisonOnCallerCancel(t *testing.T) {
 	}
 	if rel == nil || rel.TagName != "v0.3.8" {
 		t.Fatalf("결과 = %+v, 기대값 정상 결과", rel)
+	}
+}
+
+// 컨테이너에서는 /app이 읽기 전용이고 서버가 root가 아니라 바이너리를 바꿀 수 없다. 적용·롤백 요청은
+// 다운로드나 파일 조작을 시작하기 전에 거부해야 한다(새 버전 확인은 그대로 둔다).
+func TestUpdateApplyAndRollbackRejectedInContainer(t *testing.T) {
+	orig := runningInContainer
+	runningInContainer = func() bool { return true }
+	t.Cleanup(func() { runningInContainer = orig })
+
+	// Server의 의존성을 비워 둔다. 거부 전에 manager·GitHub·파일 시스템에 손대면 nil 역참조로 실패한다.
+	s := &Server{}
+	cases := []struct {
+		name    string
+		path    string
+		handler http.HandlerFunc
+	}{
+		{name: "적용", path: "/api/update/apply", handler: s.updateApply},
+		{name: "롤백", path: "/api/update/rollback", handler: s.updateRollback},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			tc.handler(rec, httptest.NewRequest(http.MethodPost, tc.path, nil))
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("상태 코드 = %d, 기대값 %d (본문 %s)", rec.Code, http.StatusConflict, rec.Body.String())
+			}
+			var body map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("응답 JSON: %v", err)
+			}
+			if !strings.Contains(body["error"], "docker compose pull") {
+				t.Errorf("오류 안내에 이미지 교체 명령이 없다: %q", body["error"])
+			}
+			if _, running := updHub.snapshot(); running {
+				t.Error("거부했는데 업데이트가 진행 중으로 표시된다")
+			}
+		})
 	}
 }
