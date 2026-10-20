@@ -1,3 +1,5 @@
+//go:build linux
+
 package server
 
 import (
@@ -10,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -17,8 +20,9 @@ import (
 	actool "github.com/Autumn-27/norma/tool"
 )
 
-// e2eEnv 를 1로 두면 TestAgentSandboxEndToEnd가 돈다. 도우미에 파일 cap이 있고 테스트 실행 파일에
-// cap_kill+p가 있는 컨테이너에서만 의미가 있다(README "에이전트 uid 분리", PR 본문의 컨테이너 확인 절차).
+// e2eEnv 를 1로 두면 TestAgentSandboxEndToEnd가 돈다. 도우미에 파일 cap이 있는 컨테이너에서, 서버처럼
+// "artex-sandbox launch -- <테스트 실행 파일>"로 CAP_KILL을 ambient로 받아 실행할 때만 의미가 있다(README
+// "에이전트 uid 분리", PR 본문의 컨테이너 확인 절차).
 const (
 	e2eEnv       = "ARTEX_SANDBOX_E2E"
 	e2eHelperEnv = "ARTEX_SANDBOX_E2E_HELPER"
@@ -62,13 +66,16 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dataDir) }) // 정리 실패는 컨테이너가 사라지면 함께 없어진다
-	sb, err := EnableAgentSandbox(ctx, AgentSandboxConfig{UID: uid, GID: os.Getenv(AgentGIDEnv), Helper: helper, DataDir: dataDir})
+	shellDir := dataDir + "-shell"
+	t.Cleanup(func() { _ = os.RemoveAll(shellDir) })
+	sb, err := EnableAgentSandbox(ctx, AgentSandboxConfig{UID: uid, GID: os.Getenv(AgentGIDEnv), Helper: helper, ShellDir: shellDir, DataDir: dataDir})
 	if err != nil || sb == nil {
 		t.Fatalf("EnableAgentSandbox = %v, %v", sb, err)
 	}
-	if !strings.HasPrefix(os.Getenv("PATH"), sb.ShellDir()+":") {
-		t.Fatalf("PATH does not start with the shell dir: %q", os.Getenv("PATH"))
+	if got := os.Getenv("PATH"); got != sb.ShellDir() {
+		t.Fatalf("PATH = %q, want only the shell dir %q", got, sb.ShellDir())
 	}
+	t.Logf("server caps after enable:\n%s", procCapLines(t, "/proc/self/status"))
 	ws := filepath.Join(dataDir, "sessions", "e2e")
 	if err := os.MkdirAll(ws, 0o775); err != nil {
 		t.Fatal(err)
@@ -83,8 +90,30 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 	bash := actool.NewBash()
 
 	t.Run("bash sync", func(t *testing.T) {
-		out := runTool(t, bash, syncCtx, map[string]any{"command": "id -u; id; umask; grep -E 'CapEff|NoNewPrivs' /proc/self/status"})
+		out := runTool(t, bash, syncCtx, map[string]any{"command": "id -u; id; umask; echo PATH=$PATH; grep -E 'CapEff|NoNewPrivs' /proc/self/status"})
 		assertFirstLine(t, out, uid)
+		// 도우미가 권한을 모두 버리고 no_new_privs를 켰는지, 원래 PATH를 되돌렸는지 본다.
+		for _, want := range []string{"CapEff:\t0000000000000000", "NoNewPrivs:\t1", "PATH=" + os.Getenv(AgentPathEnv) + "\n"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("agent shell lacks %q: %q", want, out)
+			}
+		}
+		if strings.Contains(out, sb.ShellDir()) {
+			t.Fatalf("agent PATH still has the shell dir: %q", out)
+		}
+	})
+	t.Run("server caps do not leak to unwrapped children", func(t *testing.T) {
+		// 서버가 감싸지 않고 띄우는 자식(ripgrep 등)과 같은 방식으로 절대 경로 명령을 띄운다.
+		out, err := exec.Command("/bin/grep", "^Cap", "/proc/self/status").CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		t.Logf("unwrapped child:\n%s", out)
+		for _, line := range []string{"CapInh:\t0000000000000000", "CapPrm:\t0000000000000000", "CapEff:\t0000000000000000", "CapAmb:\t0000000000000000"} {
+			if !strings.Contains(string(out), line) {
+				t.Fatalf("unwrapped child lacks %q", line)
+			}
+		}
 	})
 	t.Run("bash managed", func(t *testing.T) {
 		assertFirstLine(t, runTool(t, bash, managedCtx, map[string]any{"command": "id -u"}), uid)
@@ -126,6 +155,34 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertFirstLine(t, res.Flatten(), uid)
+	})
+	t.Run("custom tool test run", func(t *testing.T) {
+		// 시험 실행은 데이터 디렉터리가 아니라 sessions/ 아래 임시 작업 공간에서 돈다(pgTestCustomTool).
+		srv := &Server{m: &Manager{dir: dataDir}, sandbox: sb}
+		testWS, err := srv.toolTestWorkspace()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(testWS)
+		out, err := execPython(ctx, "python3", "test", "import os\nprint(os.getuid())\nopen('probe-py', 'w').write('x')\n", nil, testWS, nil, e2eWait, sb)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertFirstLine(t, out, uid)
+		res, err := srv.runCommandTool(ctx, json.RawMessage(`{"command":"id -u; ls . >/dev/null && touch probe-cmd && echo ok"}`), nil, &actool.ToolContext{WorkingDir: testWS})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertFirstLine(t, res.Flatten(), uid)
+		for _, name := range []string{"probe-py", "probe-cmd"} {
+			info, err := os.Stat(filepath.Join(testWS, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if owner := strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Uid), 10); owner != uid {
+				t.Fatalf("%s owner = %s, want agent uid %s", name, owner, uid)
+			}
+		}
 	})
 	t.Run("custom python tool", func(t *testing.T) {
 		out, err := execPython(ctx, "python3", "e2e", "import os\nprint(os.getuid())\n", nil, ws, nil, e2eWait, sb)
@@ -171,7 +228,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatalf("agent read the server key: %q", out)
 		}
 		// 읽기 전용 루트 파일 시스템이면 artex.new는 uid와 무관하게 "Read-only file system"으로 실패한다.
-		for _, want := range []string{"oauth.key: Permission denied", "environ: Permission denied", "cannot touch", SandboxHelperName + ": Permission denied"} {
+		for _, want := range []string{"oauth.key: Permission denied", "environ: Permission denied", "cannot touch", filepath.Base(helper) + ": Permission denied"} {
 			if !strings.Contains(out, want) {
 				t.Fatalf("agent command output lacks %q: %q", want, out)
 			}
@@ -212,7 +269,67 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatalf("nmap connect scan did not find the open port: %q", connect)
 		}
 		t.Log(runTool(t, bash, syncCtx, map[string]any{"command": "nmap -sS -Pn -p " + port + " 127.0.0.1"}))
+		// 도우미가 지운 NMAP_PRIVILEGED를 에이전트가 다시 줘도 raw 소켓은 열리지 않아야 한다(cap 0, no_new_privs).
+		syn := runTool(t, bash, syncCtx, map[string]any{"command": "NMAP_PRIVILEGED=1 nmap -sS -Pn -p " + port + " 127.0.0.1"})
+		t.Log(syn)
+		if !strings.Contains(syn, "raw socket") || strings.Contains(syn, port+"/tcp open") {
+			t.Fatalf("SYN scan with NMAP_PRIVILEGED=1 did not fail on the raw socket: %q", syn)
+		}
 	})
+	// 마지막에 둔다. 셸 대체 링크를 지운 뒤에는 어떤 경로도 명령을 실행하지 않아야 한다(서버 uid로 넘어가지 않는다).
+	t.Run("missing shell substitute fails closed", func(t *testing.T) {
+		if err := os.Remove(filepath.Join(sb.ShellDir(), "bash")); err != nil {
+			t.Fatal(err)
+		}
+		calls := map[string]func() actool.Result{
+			"bash sync": func() actool.Result {
+				return runToolResult(t, bash, syncCtx, map[string]any{"command": "id -u > fc-sync"})
+			},
+			"bash background": func() actool.Result {
+				return runToolResult(t, bash, managedCtx, map[string]any{"command": "id -u > fc-bg", "run_in_background": true})
+			},
+			"monitor": func() actool.Result {
+				return runToolResult(t, actool.NewMonitor(), managedCtx, map[string]any{"command": "id -u > fc-monitor"})
+			},
+			"shell_open": func() actool.Result {
+				return runToolResult(t, actool.NewShellOpen(), managedCtx, map[string]any{"command": "id -u > fc-shell"})
+			},
+			"command tool": func() actool.Result {
+				res, err := (&Server{}).runCommandTool(ctx, json.RawMessage(`{"command":"id -u > fc-cmd"}`), nil, syncCtx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return res
+			},
+		}
+		for name, call := range calls {
+			res := call()
+			t.Logf("%s: isError=%v %q", name, res.IsError, res.Flatten())
+			if !res.IsError {
+				t.Errorf("%s ran without the shell substitute", name)
+			}
+		}
+		matches, _ := filepath.Glob(filepath.Join(ws, "fc-*"))
+		if len(matches) != 0 {
+			t.Fatalf("commands ran: %v", matches)
+		}
+	})
+}
+
+// procCapLines 는 /proc/<pid>/status의 Cap 줄과 NoNewPrivs 줄을 돌려준다.
+func procCapLines(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "Cap") || strings.HasPrefix(line, "NoNewPrivs") {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func runToolResult(t *testing.T, tool actool.CoreTool, tc *actool.ToolContext, input map[string]any) actool.Result {

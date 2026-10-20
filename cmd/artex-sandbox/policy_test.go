@@ -88,6 +88,13 @@ func TestParseInvocation(t *testing.T) {
 			args: []string{"artex-sandbox", "exec", "--", "-x"},
 			want: invocation{mode: modeExec, program: "-x", argv: []string{"-x"}},
 		},
+		{
+			name: "launch",
+			args: []string{"/app/artex-sandbox", "launch", "--", "/app/start.sh", "-addr", ":8787"},
+			want: invocation{mode: modeLaunch, program: "/app/start.sh", argv: []string{"/app/start.sh", "-addr", ":8787"}},
+		},
+		{name: "launch without separator", args: []string{"artex-sandbox", "launch", "/app/start.sh"}, wantErr: true},
+		{name: "launch without command", args: []string{"artex-sandbox", "launch", "--"}, wantErr: true},
 		{name: "check", args: []string{"artex-sandbox", "check"}, want: invocation{mode: modeCheck}},
 		{name: "check with extra", args: []string{"artex-sandbox", "check", "x"}, wantErr: true},
 		{name: "exec without separator", args: []string{"artex-sandbox", "exec", "id"}, wantErr: true},

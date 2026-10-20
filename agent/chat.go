@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -112,8 +111,6 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// Per-session working directory: <workDir>/sessions/<sessionID>/
 	// Isolates file writes across conversations, mirroring how workers use i<intentID>/.
 	sessionWorkDir := filepath.Join(c.workDir, "sessions", sessionID)
-	// 0775: 에이전트 명령이 다른 uid로 돌면(#165) 그룹 쓰기가 있어야 쓴다. 기본 umask(022)에서는 예전처럼 0755다.
-	_ = os.MkdirAll(sessionWorkDir, 0o775)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, sessionWorkDir)
 
 	// Pure assistant: DefaultTools as the base; AugmentTools layers in the key's
@@ -124,6 +121,10 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	ctx = withFileScope(ctx, fileScopeFor(fileRoleConversation, fileScopeInput{DataDir: c.workDir, SessionDir: sessionWorkDir}))
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
+	// 작업 디렉터리는 도구 모음을 정한 뒤에 만든다. 에이전트 uid 분리(#165)를 켰는지가 def에 있다.
+	if err := ensureSessionDir(sessionWorkDir, def.ShareWritesWithGroup); err != nil {
+		return "", err
+	}
 
 	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir), def)
 	opts := agentcore.Options{

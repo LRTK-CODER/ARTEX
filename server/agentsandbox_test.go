@@ -129,51 +129,52 @@ func TestSandboxHelperSelfCheckPasses(t *testing.T) {
 	}
 }
 
-// TestInstallShellDirPrependsPATH 는 켰을 때 PATH 맨 앞이 셸 대체 디렉터리이고, norma처럼 이름 "bash"로
-// 찾으면 도우미를 가리키는 링크가 나오는지 본다. 디렉터리는 에이전트가 링크를 바꾸지 못하게 서버만 쓴다.
-func TestInstallShellDirPrependsPATH(t *testing.T) {
-	t.Setenv("PATH", "/usr/bin:/bin")
-	t.Setenv("TMPDIR", t.TempDir())
-	helper := writeFakeHelper(t, `exit 0`)
-	dir, err := installShellDir(helper)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := os.Getenv("PATH"), dir+string(os.PathListSeparator)+"/usr/bin:/bin"; got != want {
-		t.Fatalf("PATH = %q, want %q", got, want)
-	}
-	found, err := exec.LookPath("bash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if found != filepath.Join(dir, "bash") {
-		t.Fatalf("bash resolves to %q, want the shell dir link", found)
-	}
-	if target, err := os.Readlink(found); err != nil || target != helper {
-		t.Fatalf("bash link = %q, %v, want %q", target, err, helper)
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o700 {
-		t.Fatalf("shell dir perm = %o, want 700", perm)
-	}
-}
-
 func TestAgentSandboxWrapsCommand(t *testing.T) {
-	sb := &AgentSandbox{helper: "/app/artex-sandbox", uid: 20000, gid: 20001}
+	sb := &AgentSandbox{helper: "/app/artex-sandbox", uid: 20000, gid: 20001, agentPath: "/usr/bin:/bin"}
 	name, args := sb.Command("npx", []string{"-y", "@playwright/mcp"})
 	if name != "/app/artex-sandbox" || !reflect.DeepEqual(args, []string{"exec", "--", "npx", "-y", "@playwright/mcp"}) {
 		t.Fatalf("Command = %s %v", name, args)
 	}
 	// 사용자가 MCP 설정에 같은 이름을 적어도 서버 설정이 이긴다. 도우미가 범위를 다시 보지만 다른 uid를 고르게 두지 않는다.
 	env := stdioMCPEnv(map[string]string{"TOKEN": "t", AgentUIDEnv: "0"}, sb)
-	want := map[string]string{"TOKEN": "t", AgentUIDEnv: "20000", AgentGIDEnv: "20001"}
+	want := map[string]string{"TOKEN": "t", AgentUIDEnv: "20000", AgentGIDEnv: "20001", AgentPathEnv: "/usr/bin:/bin"}
 	if !reflect.DeepEqual(env, want) {
 		t.Fatalf("stdioMCPEnv = %v, want %v", env, want)
 	}
 	if got := stdioMCPEnv(map[string]string{"TOKEN": "t"}, nil); !reflect.DeepEqual(got, map[string]string{"TOKEN": "t"}) {
 		t.Fatalf("stdioMCPEnv(off) = %v", got)
+	}
+}
+
+// TestAgentSandboxLookPath 는 켰을 때 python 같은 도구를 서버 PATH(셸 대체 하나뿐)가 아니라 에이전트 명령의
+// PATH에서 찾는지 본다. 실행 권한이 없거나 디렉터리인 것, 상대 경로 항목은 고르지 않는다.
+func TestAgentSandboxLookPath(t *testing.T) {
+	bin, noExec, rel := t.TempDir(), t.TempDir(), "relbin"
+	writeExecutable(t, filepath.Join(bin, "python3"), 0o755)
+	writeExecutable(t, filepath.Join(noExec, "python3"), 0o644)
+	if err := os.Mkdir(filepath.Join(noExec, "python"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sb := &AgentSandbox{agentPath: strings.Join([]string{rel, noExec, bin}, string(os.PathListSeparator))}
+	t.Setenv("PATH", t.TempDir()) // 서버 PATH에는 없다
+	if got, err := sb.LookPath("python3"); err != nil || got != filepath.Join(bin, "python3") {
+		t.Fatalf("LookPath(python3) = %q, %v, want %q", got, err, filepath.Join(bin, "python3"))
+	}
+	if got, err := sb.LookPath("python"); !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("LookPath(python) = %q, %v, want exec.ErrNotFound", got, err)
+	}
+	var off *AgentSandbox
+	if _, err := off.LookPath("python3"); !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("off LookPath(python3) = %v, want the server PATH lookup to fail", err)
+	}
+}
+
+func writeExecutable(t *testing.T, path string, perm os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), perm); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, perm); err != nil {
+		t.Fatal(err)
 	}
 }

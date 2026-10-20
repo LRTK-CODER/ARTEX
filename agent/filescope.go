@@ -36,6 +36,8 @@ type FileScope struct {
 	Writable             []string
 	Readable             []string
 	ShareWritesWithGroup bool
+	// dataDir 는 서버 데이터 디렉터리다. 이 아래의 허용 디렉터리는 경로 중간에 링크가 끼어 있으면 허용하지 않는다(roots).
+	dataDir string
 }
 
 // fileRole 은 파일 도구 허용 경로를 정하는 에이전트 역할이다.
@@ -81,16 +83,19 @@ func fileScopeFor(role fileRole, in fileScopeInput) FileScope {
 		return FileScope{
 			Writable: []string{runDirPath(in.DataDir, in.TaskID, 0), tmp},
 			Readable: append([]string{drafts}, sources...),
+			dataDir:  in.DataDir,
 		}
 	case fileRoleIntent:
 		return FileScope{
 			Writable: []string{runDirPath(in.DataDir, in.TaskID, in.IntentID), tmp},
 			Readable: append([]string{runDirPath(in.DataDir, in.TaskID, 0), drafts}, sources...),
+			dataDir:  in.DataDir,
 		}
 	case fileRoleConversation:
 		return FileScope{
 			Writable: []string{in.SessionDir, tmp},
 			Readable: []string{filepath.Join(in.DataDir, "tasks"), drafts},
+			dataDir:  in.DataDir,
 		}
 	}
 	return FileScope{}
@@ -201,19 +206,6 @@ func (c *confinedFileTool) Call(ctx context.Context, in json.RawMessage, tc *act
 		}
 	}
 	return res, err
-}
-
-// addGroupWrite 는 norma가 0644로 만든 파일에 그룹 읽기·쓰기를 더한다. 작업 공간은 에이전트 그룹의 setgid
-// 디렉터리라서 그룹은 이미 에이전트 그룹이다. 링크는 따라가지 않는다(target은 링크를 푼 실제 경로다).
-func addGroupWrite(target string) error {
-	info, err := os.Lstat(target)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o060 == 0o060 {
-		return nil
-	}
-	return os.Chmod(target, info.Mode().Perm()|0o060)
 }
 
 // withPath 는 입력의 경로 키를 path로 바꾼 입력을 돌려준다. encoding/json은 대소문자가 다른 키도 같은
@@ -338,6 +330,10 @@ func realPath(p string) (string, error) {
 
 // allows 는 실제 경로 target이 허용 디렉터리 안인지 본다. 허용 디렉터리도 실제 경로로 풀어 비교한다
 // (macOS의 /tmp → /private/tmp 같은 링크). 아직 없는 허용 디렉터리는 건너뛴다.
+//
+// 데이터 디렉터리 아래의 허용 디렉터리는 데이터 디렉터리를 푼 경로 뒤에 링크가 없을 때만 허용한다. 에이전트
+// 명령이 다른 uid로 돌면(#165) 에이전트는 작업 공간(tasks/<tid>/i<iid> 등)을 키 디렉터리를 가리키는 링크로
+// 바꿔 둘 수 있다. 허용 디렉터리를 그 링크대로 풀면 서버 uid로 도는 파일 도구가 허용 목록 밖을 읽는다.
 func (s FileScope) allows(target string, isWrite bool) bool {
 	for _, root := range s.roots(isWrite) {
 		if isWithin(root, target) {
@@ -352,6 +348,13 @@ func (s FileScope) roots(isWrite bool) []string {
 	if !isWrite {
 		dirs = append(append([]string{}, s.Writable...), s.Readable...)
 	}
+	dataAbs, dataResolved := "", ""
+	if s.dataDir != "" {
+		if abs, err := filepath.Abs(s.dataDir); err == nil {
+			dataAbs = abs
+			dataResolved, _ = filepath.EvalSymlinks(abs) // 풀지 못하면 빈 값이라 데이터 디렉터리 아래는 모두 거부한다
+		}
+	}
 	out := make([]string, 0, len(dirs))
 	for _, d := range dirs {
 		if d == "" {
@@ -364,6 +367,12 @@ func (s FileScope) roots(isWrite bool) []string {
 		resolved, err := filepath.EvalSymlinks(abs)
 		if err != nil {
 			continue
+		}
+		if dataAbs != "" && isWithin(dataAbs, abs) {
+			rel, err := filepath.Rel(dataAbs, abs)
+			if err != nil || dataResolved == "" || resolved != filepath.Join(dataResolved, rel) {
+				continue
+			}
 		}
 		out = append(out, resolved)
 	}

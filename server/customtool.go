@@ -160,7 +160,18 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
 	defer cancel()
-	tc := &actool.ToolContext{WorkingDir: s.m.dir} // run in the project dir, like a real call
+	ws, err := s.toolTestWorkspace()
+	if err != nil {
+		writeErr(w, 500, "시험 실행 작업 공간을 만들지 못했습니다: "+err.Error())
+		return
+	}
+	defer func() {
+		// 정리 실패는 시험 결과와 무관하다. 남은 디렉터리는 sessions/ 아래 이름으로 알아볼 수 있게 기록만 한다.
+		if err := os.RemoveAll(ws); err != nil {
+			log.Printf("[custom-tool] 시험 실행 작업 공간을 지우지 못했다: %v", err)
+		}
+	}()
+	tc := &actool.ToolContext{WorkingDir: ws}
 	var res actool.Result
 	switch req.Kind {
 	case "command":
@@ -179,14 +190,43 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"output": res.Flatten(), "is_error": res.IsError})
 }
 
+// toolTestWorkspaceDir 는 시험 실행 작업 공간을 두는 데이터 디렉터리 아래 디렉터리다. 대화 작업 공간과 같은 곳이라
+// 에이전트 uid 분리(#165)를 켜도 에이전트 그룹이 쓸 수 있다.
+const toolTestWorkspaceDir = "sessions"
+
+// toolTestWorkspace 는 사용자 지정 도구 시험 실행에 쓸 빈 임시 작업 공간을 만든다. 실제 호출은 에이전트 작업
+// 공간에서 돌므로 시험도 그와 같게 한다. 데이터 디렉터리를 작업 디렉터리로 쓰면 시험 명령이 데이터 디렉터리
+// 전체를 보고, 기능을 켰을 때는 에이전트 uid가 그 안에 쓰거나 목록을 보지 못한다(데이터 디렉터리는 통과만 준다).
+// 호출자가 끝나면 지운다.
+func (s *Server) toolTestWorkspace() (string, error) {
+	parent := filepath.Join(s.m.dir, toolTestWorkspaceDir)
+	if err := os.MkdirAll(parent, 0o775); err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp(parent, "tool-test-")
+	if err != nil {
+		return "", err
+	}
+	if s.sandbox.SharesWorkspace() {
+		// MkdirTemp는 0700으로 만든다. 그룹은 setgid인 부모에서 에이전트 그룹을 물려받는다. 부모는 에이전트가
+		// 쓰지 못해 방금 만든 디렉터리를 바꿔치기할 수 없으므로 경로로 바꿔도 된다.
+		if err := os.Chmod(dir, 0o770|os.ModeSetgid); err != nil {
+			_ = os.RemoveAll(dir) // 빈 디렉터리다. 지우지 못해도 다음 시험에 영향이 없다
+			return "", err
+		}
+	}
+	return dir, nil
+}
+
 // ---------- Python 인터프리터(탐지 + 저장 + 덮어쓰기) ----------
 
 const settingPythonInterp = "python_interpreter"
 
-// detectPython finds a python interpreter absolute path (python3 preferred).
-func detectPython() string {
+// detectPython 은 python 인터프리터(python3 우선)의 절대 경로를 찾는다. 에이전트 uid 분리를 켜면 서버 PATH에는
+// 셸 대체만 있으므로 에이전트 명령의 PATH에서 찾는다(AgentSandbox.LookPath). 꺼져 있으면 서버 PATH다.
+func (s *Server) detectPython() string {
 	for _, c := range []string{"python3", "python"} {
-		if p, err := exec.LookPath(c); err == nil {
+		if p, err := s.sandbox.LookPath(c); err == nil {
 			return p
 		}
 	}
@@ -199,7 +239,7 @@ func (s *Server) pythonInterpreter() string {
 	if v, ok, _ := s.m.pg.GetSetting(settingPythonInterp); ok && strings.TrimSpace(v) != "" {
 		return strings.TrimSpace(v)
 	}
-	return detectPython()
+	return s.detectPython()
 }
 
 // seedPythonInterpreter stores the auto-detected interpreter on startup if unset
@@ -208,7 +248,7 @@ func (s *Server) seedPythonInterpreter() {
 	if v, ok, _ := s.m.pg.GetSetting(settingPythonInterp); ok && strings.TrimSpace(v) != "" {
 		return
 	}
-	if p := detectPython(); p != "" {
+	if p := s.detectPython(); p != "" {
 		_ = s.m.pg.SetSetting(settingPythonInterp, p)
 		log.Printf("[custom-tool] python 인터프리터 자동 탐지: %s", p)
 	}

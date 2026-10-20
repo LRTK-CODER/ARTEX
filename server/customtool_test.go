@@ -160,7 +160,7 @@ func TestDetectPython(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 unavailable")
 	}
-	if p := detectPython(); p == "" {
+	if p := (&Server{}).detectPython(); p == "" {
 		t.Fatal("detectPython returned empty despite python3 on PATH")
 	}
 }

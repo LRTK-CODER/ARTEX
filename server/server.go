@@ -3489,7 +3489,7 @@ func notifyDigestIntervalMin(pg *db.DB) int {
 
 // pgDetectPython re-runs interpreter detection, stores + returns it.
 func (s *Server) pgDetectPython(w http.ResponseWriter, r *http.Request) {
-	p := detectPython()
+	p := s.detectPython()
 	if p == "" {
 		writeErr(w, 404, "python을 찾지 못했습니다(python3·python 모두 PATH에 없습니다)")
 		return

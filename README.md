@@ -307,13 +307,14 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 Linux에서만 쓰는 기본 꺼짐 기능이다. 켜면 에이전트가 실행하는 명령(Bash 동기·백그라운드, shell_open, 사용자 지정 도구의 command·python, stdio MCP)이 서버와 다른 uid로 돈다. 프롬프트 주입을 당한 에이전트가 서버 키(`<키 디렉터리>/oauth.key`), 서버 프로세스 환경(`/proc/<서버 pid>/environ`의 DB DSN·API 키), 실행 파일 옆 업데이트 경로에 닿지 못하게 한다.
 
 - 켜기: 환경 변수 `ARTEX_AGENT_UID`·`ARTEX_AGENT_GID`를 함께 준다. 허용 범위는 20000-29999이고 도우미 코드에 고정돼 있다(0과 서버 자신의 uid·주 그룹은 거부한다). 서버는 그 그룹에 보조 그룹으로 속해야 한다.
-- 동작: 서버가 시작할 때 도우미 `artex-sandbox`(실행 파일 옆)로 자기 검사를 하고, PATH 맨 앞에 도우미를 가리키는 `bash`를 둔다. 도우미는 보조 그룹을 비우고 uid·gid를 바꾼 뒤 cap을 모두 버리고 `no_new_privs`를 켜고 umask 002로 진짜 bash(또는 명령)를 실행한다. 작업 공간(`<데이터 디렉터리>/tasks`, `sessions`, `drafts`)은 에이전트 그룹의 setgid 디렉터리로 바뀌어 서버와 에이전트가 서로 만든 파일을 읽고 고친다.
-- 켰는데 준비하지 못하면(Linux가 아님, 도우미가 없음, 파일 cap이 없음, `no-new-privileges`, 서버에 `CAP_KILL`이 없음) 원인을 찍고 시작하지 않는다. 조용히 꺼지지 않는다.
+- 동작: 서버가 시작할 때 도우미 `artex-sandbox`(실행 파일 옆)로 자기 검사를 하고, 서버의 PATH를 셸 대체 디렉터리(`<실행 파일 디렉터리>/artex-shell`) 하나로 바꾼다. 그 안의 `bash`는 도우미를 가리키는 링크다. 원래 PATH는 `ARTEX_AGENT_PATH`로 넘긴다. 도우미는 보조 그룹을 비우고 uid·gid를 바꾼 뒤 cap을 모두 버리고 `no_new_privs`를 켜고, 원래 PATH와 umask 002로 진짜 bash(또는 명령)를 실행한다. 셸 대체 링크가 없어지면 에이전트 명령은 bash를 찾지 못해 실패한다. 서버 uid로 실행되지 않는다.
+- 작업 공간: 에이전트 그룹은 작업 공간 디렉터리(`sessions/<id>`, `tasks/<id>`, `tasks/<id>/i<id>`)와 그 안에만 쓸 수 있다. 그 위(`<데이터 디렉터리>`, `tasks`, `sessions`, `drafts`)와 `drafts` 아래는 읽고 지나가기만 한다. 모두 에이전트 그룹의 setgid 디렉터리라 서버와 에이전트가 서로 만든 파일을 읽고 고친다. `tasks/<id>`에는 sticky 비트가 있어 에이전트가 서버가 만든 항목(의도 디렉터리 `i<id>`, `uploads`)을 옮기거나 지우지 못한다. 그래서 planner·mainagent의 Bash는 서버가 `tasks/<id>` 바로 아래에 쓴 파일을 고칠 수는 있지만 지우거나 옮기지는 못한다.
+- 켰는데 준비하지 못하면(Linux가 아님, 도우미가 없음, 파일 cap이 없음, `no-new-privileges`, 서버에 `CAP_KILL`이 없음, 셸 대체 디렉터리가 조건에 맞지 않음) 원인을 찍고 시작하지 않는다. 조용히 꺼지지 않는다. 셸 대체 디렉터리는 링크가 아니고, root나 서버 소유이고, 그룹·다른 사용자 쓰기가 없고, `bash`가 도우미를 가리켜야 한다.
 - 켜면 raw 소켓이 필요한 스캔(`nmap -sS`, `-O` 등)은 쓸 수 없다. `nmap -sT`(연결 스캔)를 쓴다. 도우미가 `NMAP_PRIVILEGED`를 지워 nmap이 연결 스캔을 기본으로 고른다.
 
-Docker: 이미지에 도우미(`0750 root:artex`, `cap_setuid,cap_setgid+ep`)와 에이전트 사용자 `artex-agent`(uid·gid 20000)가 들어 있다. `.env`에 `ARTEX_AGENT_UID=20000`, `ARTEX_AGENT_GID=20000`을 두고 `docker compose up -d`. `security_opt: [no-new-privileges:true]`를 쓰지 않고, `cap_drop`을 쓰면 `SETUID`·`SETGID`·`KILL`을 남긴다. 켠 뒤 `./data` 아래 작업 공간 디렉터리의 그룹은 20000이 된다.
+Docker: 이미지에 도우미(`0750 root:artex`, `cap_kill,cap_setuid,cap_setgid+ep`), 셸 대체 디렉터리 `/app/artex-shell`(root 소유), 에이전트 사용자 `artex-agent`(uid·gid 20000)가 들어 있다. `.env`에 `ARTEX_AGENT_UID=20000`, `ARTEX_AGENT_GID=20000`을 두고 `docker compose up -d`. 이 두 값이 있으면 엔트리포인트가 `artex-sandbox launch`로 `CAP_KILL`만 ambient에 올려 서버를 띄운다. 서버 실행 파일에는 파일 cap이 없다. 파일 cap이 있으면 커널이 secure-exec로 실행해 Go 런타임이 패닉 추적을 지우기 때문이다. 그래서 끈 상태는 이 기능이 없을 때와 같다. 켤 때 `GOTRACEBACK`을 환경 변수로 주면 도우미를 지나며 지워진다(기본값으로 돈다). `security_opt: [no-new-privileges:true]`를 쓰지 않고, `cap_drop`을 쓰면 `SETUID`·`SETGID`·`KILL`을 남긴다. 켠 뒤 `./data` 아래 작업 공간 디렉터리의 그룹은 20000이 된다.
 
-단일 바이너리(systemd): 에이전트 사용자를 만들고, 서버 사용자를 그 그룹에 넣고, root로 도우미에 cap을 준다. 서버에는 `CAP_KILL`을 준다. 다른 uid가 된 에이전트 프로세스를 시간 초과·TaskStop·shell_close에서 죽이는 데 필요하다. 서버 실행 파일에 파일 cap을 주지 않는 이유는 원클릭 업데이트로 바이너리가 바뀌면 cap이 사라지기 때문이다.
+단일 바이너리(systemd): 에이전트 사용자를 만들고, 서버 사용자를 그 그룹에 넣고, root로 도우미에 cap을 준다. 서버에는 `CAP_KILL`을 ambient로 준다. 다른 uid가 된 에이전트 프로세스를 시간 초과·TaskStop·shell_close에서 죽이는 데 필요하다. 서버 실행 파일에 파일 cap을 주지 않는 이유는 위의 패닉 추적 문제와, 원클릭 업데이트로 바이너리가 바뀌면 cap이 사라지기 때문이다. 셸 대체 디렉터리 `/opt/artex/artex-shell`은 처음 켤 때 서버가 0750으로 만든다(실행 파일 디렉터리에 서버 쓰기 권한이 있어야 한다. 없으면 아래처럼 root로 미리 만든다). 원클릭 업데이트는 `artex`만 바꾸고 도우미는 바꾸지 않는다. 도우미가 바뀐 릴리스에서는 아래 설치를 다시 한다.
 
 ```bash
 sudo groupadd --system --gid 20000 artex-agent
@@ -322,6 +323,8 @@ sudo usermod -aG artex-agent artex            # 서버를 돌리는 사용자
 cd /opt/artex                                  # artex와 artex-sandbox가 있는 디렉터리
 sudo chown root:artex artex-sandbox && sudo chmod 0750 artex-sandbox
 sudo setcap cap_setuid,cap_setgid+ep artex-sandbox
+# 선택: 실행 파일 디렉터리에 서버 쓰기 권한이 없으면 셸 대체 디렉터리를 미리 만든다
+sudo mkdir -m 0750 artex-shell && sudo ln -s /opt/artex/artex-sandbox artex-shell/bash && sudo chown -h root:artex artex-shell artex-shell/bash
 ```
 
 ```ini
@@ -344,9 +347,14 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-서버는 시작할 때 ambient `CAP_KILL`을 effective로만 남기고 ambient를 비운다. 도우미는 cap을 모두 버리므로 에이전트로 새지 않는다.
+서버는 시작할 때 `CAP_KILL`을 effective로만 남기고 ambient·inheritable을 비운다. 그래서 서버가 감싸지 않고 띄우는 자식(ripgrep 등)은 `CAP_KILL`을 물려받지 않는다. 도우미는 cap을 모두 버리므로 에이전트로 새지 않는다.
 
-한계: 파일 도구(Read/Write 등)는 여전히 서버 uid로 돈다. 이것은 작업 공간 경로 제한이 막는다(검사와 열기 사이의 링크 바꾸기 경쟁은 남는다). 에이전트 uid는 하나다(작업별 uid는 #166). 같은 커널·네트워크 이름공간을 쓰므로 서버 포트·트래픽 기록 프록시에는 그대로 닿는다. 에이전트가 자기 디렉터리를 0700으로 바꾸면 서버가 그 안을 지우지 못할 수 있다.
+한계:
+- 파일 도구(Read/Write 등)는 여전히 서버 uid로 돈다. 작업 공간 경로 제한이 막는다. 데이터 디렉터리 아래의 허용 디렉터리는 경로에 링크가 끼어 있으면 허용하지 않는다. 작업 공간 안에서 검사와 열기 사이에 링크를 바꾸는 경쟁은 남는다.
+- 서버 uid 코드가 경로로 작업 공간에 쓰는 곳(norma가 큰 출력을 `cmd-output`에 쓰기, python 도구 스크립트를 `.tools`에 쓰기)은 에이전트가 그 하위 디렉터리를 링크로 바꾸면 링크를 따라간다. 서버가 새 파일을 만들 뿐 기존 파일을 읽거나 권한을 바꾸지는 않는다.
+- 셸 대체 디렉터리를 실행 중에 바꾸려면 서버 uid나 root 권한이 필요하다. 시작할 때만 확인한다.
+- 에이전트 uid는 하나다(작업별 uid는 #166). 같은 커널·네트워크 이름공간을 쓰므로 서버 포트·트래픽 기록 프록시에는 그대로 닿는다. 데이터 디렉터리의 다른 사용자 읽기 권한이 있는 항목(대화 기록 `transcripts`, `archives`, `traffic`)은 에이전트도 읽는다. 기록 프록시 CA 개인 키(`traffic/_ca/mitmproxy-ca.pem`)는 서버만 읽는다(0600).
+- 에이전트가 자기 디렉터리를 0700으로 바꾸면 서버가 그 안을 지우지 못할 수 있다.
 
 ### 리버스 프록시 배포(HTTPS / 443만 열기)
 

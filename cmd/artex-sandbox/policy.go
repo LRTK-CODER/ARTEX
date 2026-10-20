@@ -9,9 +9,11 @@ import (
 )
 
 // 대상 uid·gid를 주는 환경 변수. 서버 설정과 같은 이름이라 서버 환경을 물려받은 자식이 그대로 읽는다.
+// pathEnv는 서버가 넘기는 원래 PATH다. 기능을 켜면 서버 자신의 PATH는 셸 대체 디렉터리 하나뿐이다.
 const (
-	uidEnv = "ARTEX_AGENT_UID"
-	gidEnv = "ARTEX_AGENT_GID"
+	uidEnv  = "ARTEX_AGENT_UID"
+	gidEnv  = "ARTEX_AGENT_GID"
+	pathEnv = "ARTEX_AGENT_PATH"
 )
 
 // 에이전트 uid·gid로 허용하는 범위. 도우미는 CAP_SETUID로 아무 uid나 될 수 있으므로, 서버가 넘긴 값을
@@ -63,9 +65,10 @@ func parseID(name, raw string) (int, error) {
 type mode string
 
 const (
-	modeShell mode = "shell" // argv[0]이 bash: 진짜 bash에 인자를 그대로 넘긴다
-	modeExec  mode = "exec"  // exec -- <명령>
-	modeCheck mode = "check" // 바꾼 뒤 상태만 찍는다
+	modeShell  mode = "shell"  // argv[0]이 bash: 진짜 bash에 인자를 그대로 넘긴다
+	modeExec   mode = "exec"   // exec -- <명령>
+	modeCheck  mode = "check"  // 바꾼 뒤 상태만 찍는다
+	modeLaunch mode = "launch" // launch -- <명령>: uid는 그대로 두고 CAP_KILL만 ambient로 올려 서버를 실행한다
 )
 
 // invocation 은 명령줄을 푼 결과다. program은 PATH에서 찾을 이름이거나 경로다. argv는 program에 넘길
@@ -76,7 +79,7 @@ type invocation struct {
 	argv    []string
 }
 
-var errUsage = errors.New("usage: artex-sandbox exec -- <command> [args...] | artex-sandbox check")
+var errUsage = errors.New("usage: artex-sandbox exec -- <command> [args...] | artex-sandbox launch -- <command> [args...] | artex-sandbox check")
 
 // parseInvocation 은 os.Args 전체를 받는다.
 func parseInvocation(args []string) (invocation, error) {
@@ -95,12 +98,12 @@ func parseInvocation(args []string) (invocation, error) {
 			return invocation{}, errUsage
 		}
 		return invocation{mode: modeCheck}, nil
-	case string(modeExec):
+	case string(modeExec), string(modeLaunch):
 		// "--"를 꼭 받는다. 명령 이름이 "-"로 시작해도 도우미 옵션으로 읽히지 않게 하기 위해서다.
 		if len(args) < 4 || args[2] != "--" || args[3] == "" {
 			return invocation{}, errUsage
 		}
-		return invocation{mode: modeExec, program: args[3], argv: args[3:]}, nil
+		return invocation{mode: mode(args[1]), program: args[3], argv: args[3:]}, nil
 	}
 	return invocation{}, errUsage
 }

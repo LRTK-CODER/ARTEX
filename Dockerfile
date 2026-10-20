@@ -9,6 +9,7 @@
 #   cd web && npm run build:static && cd ..
 #   mkdir -p server/webui && cp -r web/out server/webui/dist
 #   CGO_ENABLED=0 GOARCH=amd64 go build -tags embedui -o dist/amd64/artex ./cmd/artex
+#   CGO_ENABLED=0 GOARCH=amd64 go build -o dist/amd64/artex-sandbox ./cmd/artex-sandbox
 #   docker build -t artex:local .
 
 # Node는 공식 이미지에서 복사한다. 공식 이미지는 Node 릴리스 키로 서명을 검증한 tarball로
@@ -82,14 +83,18 @@ WORKDIR /app
 # 그래서 컨테이너에서는 원클릭 업데이트를 쓰지 않고 이미지 교체(docker compose pull && docker compose up -d)로만 올린다.
 # 미리 빌드한 해당 아키텍처 바이너리(dist/amd64/artex 또는 dist/arm64/artex)
 COPY --chmod=755 dist/${TARGETARCH}/artex /app/artex
-# 에이전트 uid 분리 도우미. 서버 그룹만 실행하고(0750 root:artex), 파일 cap으로 uid만 바꾼다. 허용 uid 범위는 도우미 코드에
-# 고정돼 있어 서버 uid가 이것으로 root가 될 수 없다. 서버 실행 파일의 cap_kill은 다른 uid가 된 에이전트 프로세스를
-# 시간 초과·TaskStop에서 죽이는 데 쓴다. permitted(+p)로만 주고 기능을 켰을 때 서버가 스스로 effective에 올린다.
-# effective 비트를 파일에 두지 않아 KILL을 뺀 컨테이너(cap_drop: ALL)에서도 기능을 끈 채로는 그대로 실행된다.
+# 에이전트 uid 분리 도우미. 서버 그룹만 실행하고(0750 root:artex), 파일 cap으로 uid를 바꾼다. 허용 uid 범위는 도우미 코드에
+# 고정돼 있어 서버 uid가 이것으로 root가 될 수 없다. cap_kill은 기능을 켰을 때 엔트리포인트의 "artex-sandbox launch"가
+# 서버에 ambient로 넘긴다(다른 uid가 된 에이전트 프로세스를 시간 초과·TaskStop에서 죽이는 데 쓴다). 서버 실행 파일에는
+# 파일 cap을 두지 않는다. 두면 커널이 secure-exec로 실행해 Go 런타임이 패닉 추적을 지운다(기능을 꺼도 그렇다).
+# 셸 대체 디렉터리(/app/artex-shell)는 기능을 켰을 때 서버의 PATH가 된다. 안의 bash는 도우미를 가리킨다. root 소유에
+# 읽기 전용 이미지 층이라 서버도 에이전트도 바꾸거나 지울 수 없다.
 COPY --chmod=750 dist/${TARGETARCH}/artex-sandbox /app/artex-sandbox
 RUN chown root:artex /app/artex-sandbox \
-    && setcap cap_setuid,cap_setgid+ep /app/artex-sandbox \
-    && setcap cap_kill+p /app/artex \
+    && setcap cap_kill,cap_setuid,cap_setgid+ep /app/artex-sandbox \
+    && mkdir -m 0750 /app/artex-shell \
+    && ln -s /app/artex-sandbox /app/artex-shell/bash \
+    && chown -h root:artex /app/artex-shell /app/artex-shell/bash \
     && apt-get purge -y libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
 # 감시 시작 스크립트: 비정상 종료면 다시 띄우고, SIGTERM을 artex에 전달한다. docker stop은 PID 1에만 신호를 보내므로
@@ -108,5 +113,7 @@ EXPOSE 8787 8788
 USER artex
 # umask 002: 컨테이너가 ./skills(그룹 artex, setgid)에 만든 스킬 파일도 그룹 쓰기가 되게 해 호스트 사용자와 함께 고친다.
 # 키 파일은 서버가 0600으로 만들므로 영향이 없다.
-ENTRYPOINT ["/bin/sh", "-c", "umask 002 && exec /app/start.sh \"$@\"", "start.sh"]
+# 에이전트 uid 분리를 켰을 때(ARTEX_AGENT_UID/GID)만 도우미의 launch로 CAP_KILL을 ambient에 올려 start.sh를 실행한다.
+# 끈 상태는 start.sh를 바로 실행한다(cap 없음).
+ENTRYPOINT ["/bin/sh", "-c", "umask 002 && if [ -n \"${ARTEX_AGENT_UID}${ARTEX_AGENT_GID}\" ]; then exec /app/artex-sandbox launch -- /app/start.sh \"$@\"; fi; exec /app/start.sh \"$@\"", "start.sh"]
 CMD ["-addr", ":8787", "-proxy", ":8788"]

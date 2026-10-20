@@ -130,7 +130,10 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
 	// 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID> 를 먼저 만든다.
-	mainDir := ensureRunDir(m.workDir, taskID, 0)
+	mainDir, err := ensureRunDir(m.workDir, taskID, 0, def.ShareWritesWithGroup)
+	if err != nil {
+		return "", err
+	}
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
 	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
 	opts := agentcore.Options{

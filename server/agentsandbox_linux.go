@@ -30,13 +30,15 @@ type capData struct {
 	inheritable uint32
 }
 
-// enableKillCapability 는 permitted에 있는 CAP_KILL을 모든 스레드의 effective에 올리고 ambient cap을 비운다.
+// enableKillCapability 는 permitted에 있는 CAP_KILL을 모든 스레드의 effective에 올리고 inheritable·ambient cap을 비운다.
 //
 // norma는 시간 초과·TaskStop·shell_close에서 프로세스 그룹에 SIGKILL을 보낸다. 에이전트 프로세스는 다른
-// uid라서 CAP_KILL 없이는 EPERM으로 실패해 프로세스가 남는다. Docker 이미지는 서버 실행 파일에 cap_kill+p를,
-// systemd는 AmbientCapabilities=CAP_KILL을 준다. effective 비트를 파일에 두지 않는 이유는 cap을 주지 않는
-// 환경(cap_drop: ALL)에서 실행 자체가 막히지 않게 하려는 것이다.
-// ambient를 비우는 이유: systemd가 준 ambient CAP_KILL이 서버가 띄우는 감싸지 않은 자식(ripgrep 등)에게 새지 않게 한다.
+// uid라서 CAP_KILL 없이는 EPERM으로 실패해 프로세스가 남는다. CAP_KILL은 ambient로 받는다. systemd는
+// AmbientCapabilities=CAP_KILL, Docker 이미지는 엔트리포인트가 "artex-sandbox launch"로 ambient에 올린 뒤
+// start.sh를 실행한다. 서버 실행 파일에 파일 cap을 두지 않는 이유: 파일 cap이 있으면 커널이 secure-exec로
+// 실행해 Go 런타임이 GOTRACEBACK=none을 강제하고, 패닉 때 goroutine 추적이 남지 않는다. ambient로만 받은
+// cap은 secure-exec를 일으키지 않는다.
+// inheritable·ambient를 비우는 이유: ambient CAP_KILL이 서버가 띄우는 감싸지 않은 자식(ripgrep 등)에게 새지 않게 한다.
 // capset은 스레드 단위라 AllThreadsSyscall로 모든 스레드에 적용한다(cgo로 빌드하면 ENOTSUP).
 func enableKillCapability() error {
 	hdr := capHeader{version: linuxCapabilityVersion3}
@@ -45,9 +47,10 @@ func enableKillCapability() error {
 		return fmt.Errorf("read server capabilities: %w", errno)
 	}
 	if data[0].permitted&(1<<capKill) == 0 {
-		return errors.New("the server has no CAP_KILL, so it cannot stop agent processes running as another uid (Docker image: setcap cap_kill+p on /app/artex and keep KILL in cap_add/cap_drop; systemd: AmbientCapabilities=CAP_KILL)")
+		return errors.New("the server has no CAP_KILL, so it cannot stop agent processes running as another uid (Docker image: the entrypoint starts the server through \"artex-sandbox launch\" when " + AgentUIDEnv + "/" + AgentGIDEnv + " are set; keep KILL in cap_add/cap_drop; systemd: AmbientCapabilities=CAP_KILL)")
 	}
 	data[0].effective |= 1 << capKill
+	data[0].inheritable, data[1].inheritable = 0, 0
 	hdr = capHeader{version: linuxCapabilityVersion3}
 	if _, _, errno := syscall.AllThreadsSyscall(syscall.SYS_CAPSET, uintptr(unsafe.Pointer(&hdr)), uintptr(unsafe.Pointer(&data[0])), 0); errno != 0 {
 		return fmt.Errorf("raise CAP_KILL on all threads (a cgo build cannot do this): %w", errno)
@@ -64,51 +67,77 @@ func setSharedUmask() {
 	syscall.Umask(0o002)
 }
 
-// prepareSharedWorkspace 는 작업 공간 디렉터리를 에이전트 그룹(gid)의 setgid 디렉터리로 맞춘다.
+// shareRule 은 작업 공간 항목에 더하고 뺄 권한이다.
+type shareRule struct {
+	add, remove fs.FileMode
+}
+
+// 작업 공간 공유 규칙. 에이전트 그룹 쓰기는 작업 공간 디렉터리(sessions/<sid>, tasks/<tid>, tasks/<tid>/i<iid>)와
+// 그 안에만 준다. 그 위(데이터 디렉터리, tasks/·sessions/·drafts/)와 drafts 아래는 에이전트 그룹이 읽고 지나가기만
+// 한다. 쓰기가 있으면 에이전트가 서버 소유 작업 공간을 옮기고 그 자리에 링크를 둘 수 있다.
+var (
+	ruleDataDir       = shareRule{add: 0o010, remove: 0o062}                 // 그룹 통과만. 나머지 항목(트래픽 저장소 등)을 지키려고 그룹 읽기·쓰기를 뺀다
+	ruleContainer     = shareRule{add: fs.ModeSetgid | 0o050, remove: 0o022} // 그 아래 새 디렉터리가 에이전트 그룹을 물려받게 setgid
+	ruleReadOnlyFile  = shareRule{add: 0o040, remove: 0o022}
+	ruleTaskWorkspace = shareRule{add: fs.ModeSetgid | fs.ModeSticky | 0o070} // sticky: 에이전트가 서버가 만든 i<iid>를 옮기지 못한다
+	ruleWorkspaceDir  = shareRule{add: fs.ModeSetgid | 0o070}
+	ruleWorkspaceFile = shareRule{add: 0o060}
+)
+
+// shareRuleFor 는 공유 디렉터리 top(tasks·sessions·drafts) 아래 depth 깊이(바로 아래가 1) 항목의 규칙이다.
+func shareRuleFor(top string, depth int, isDir bool) shareRule {
+	switch {
+	case top == "drafts" || (depth == 1 && !isDir):
+		// drafts는 작업 생성 전 첨부라 에이전트는 읽기만 한다. tasks/·sessions/ 바로 아래 파일도 작업 공간 밖이다.
+		if isDir {
+			return ruleContainer
+		}
+		return ruleReadOnlyFile
+	case depth == 1 && top == "tasks":
+		return ruleTaskWorkspace
+	case isDir:
+		return ruleWorkspaceDir
+	}
+	return ruleWorkspaceFile
+}
+
+// prepareSharedWorkspace 는 작업 공간을 에이전트 그룹(gid)과 함께 쓰도록 그룹과 권한을 맞춘다(규칙은 shareRuleFor).
+// 기능을 켜기 전에 서버가 만든 파일·디렉터리도 바꾼다. 바꾸지 않으면 기능을 켠 뒤 예전 작업을 이어 할 때 에이전트가
+// 자기 작업 공간에 쓰지 못한다.
 //
-// 데이터 디렉터리 자체는 그룹을 gid로 바꾸고 그룹 권한을 실행(통과)만 남긴다. 에이전트가 그 아래 작업 공간에
-// 닿아야 하지만, 그룹 쓰기가 남으면 트래픽 저장소 같은 나머지 항목을 지우거나 바꿔치기할 수 있다. 다른 사용자
-// 쓰기도 같은 이유로 지운다.
-//
-// sharedWorkspaceDirs는 그룹 읽기·쓰기와 setgid를 주고, 기능을 켜기 전에 서버가 만든 파일·디렉터리도 같은
-// 그룹·권한으로 바꾼다. 바꾸지 않으면 기능을 켠 뒤 예전 작업을 이어 할 때 에이전트가 자기 작업 공간에 쓰지
-// 못한다. 에이전트가 만든 것(다른 uid)은 건드리지 않는다.
+// 에이전트는 작업 공간 안의 항목을 언제든 링크로 바꿀 수 있다. 그래서 경로를 다시 풀지 않는다. 각 항목을 부모
+// 디렉터리의 파일 기술자 기준으로 O_NOFOLLOW로 열고, 연 기술자에만 fchown·fchmod한다. 링크, 서버 소유가 아닌 것
+// (에이전트가 만든 것), 하드 링크가 여럿인 파일, 일반 파일·디렉터리가 아닌 것은 건드리지 않는다. 걷는 도중
+// 사라졌거나 읽을 수 없는 항목은 건너뛴다. 에이전트가 서버 시작을 막지 못하게 하기 위해서다.
 func prepareSharedWorkspace(dataDir string, gid int) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	if err := shareWithGroup(dataDir, gid, 0o010, 0o062); err != nil {
+	data, err := os.Open(dataDir)
+	if err != nil {
+		return fmt.Errorf("open data dir: %w", err)
+	}
+	defer data.Close()
+	if err := shareRequired(data, gid, ruleDataDir); err != nil {
 		return err
 	}
 	changed := 0
 	for _, name := range sharedWorkspaceDirs {
-		root := filepath.Join(dataDir, name)
-		if err := os.MkdirAll(root, 0o775); err != nil {
+		// 데이터 디렉터리는 에이전트가 쓰지 못하므로 바로 아래 이름은 경로로 만들어도 된다.
+		if err := os.Mkdir(filepath.Join(dataDir, name), 0o775); err != nil && !errors.Is(err, fs.ErrExist) {
 			return fmt.Errorf("create workspace dir: %w", err)
 		}
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				// 에이전트가 자기 디렉터리를 0700으로 바꿨으면 읽지 못한다. 서버가 바꿀 것도 없으니 건너뛴다.
-				if errors.Is(err, fs.ErrPermission) {
-					return nil
-				}
-				return err
-			}
-			if d.Type()&fs.ModeSymlink != 0 {
-				return nil // 링크를 따라가면 작업 공간 밖 파일의 권한을 바꿀 수 있다
-			}
-			bits := fs.FileMode(0o060)
-			if d.IsDir() {
-				bits = 0o070 | fs.ModeSetgid
-			}
-			result, err := shareOwnedWithGroup(path, gid, bits, 0)
-			if result == shareChanged {
-				changed++
-			}
-			return err
-		})
+		top, err := openNoFollow(data, name)
 		if err != nil {
-			return fmt.Errorf("share workspace %s with group %d: %w", root, gid, err)
+			return fmt.Errorf("open workspace dir %s: %w", name, err)
+		}
+		err = shareRequired(top, gid, ruleContainer)
+		if err == nil {
+			err = shareTree(top, name, 1, gid, &changed)
+		}
+		top.Close()
+		if err != nil {
+			return fmt.Errorf("share workspace %s with group %d: %w", filepath.Join(dataDir, name), gid, err)
 		}
 	}
 	if changed > 0 {
@@ -117,11 +146,85 @@ func prepareSharedWorkspace(dataDir string, gid int) error {
 	return nil
 }
 
-// shareResult 는 shareOwnedWithGroup이 한 일이다.
+// shareTree 는 dir 바로 아래 항목을 규칙대로 맞추고, 서버 소유 디렉터리면 그 안으로 들어간다.
+func shareTree(dir *os.File, top string, depth, gid int, changed *int) error {
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", dir.Name(), err)
+	}
+	for _, name := range names {
+		f, err := openNoFollow(dir, name)
+		if err != nil {
+			if skippableOpenError(err) {
+				continue
+			}
+			return fmt.Errorf("open %s: %w", filepath.Join(dir.Name(), name), err)
+		}
+		err = shareEntry(f, top, depth, gid, changed)
+		f.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func shareEntry(f *os.File, top string, depth, gid int, changed *int) error {
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", f.Name(), err)
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(st.Uid) != os.Getuid() {
+		return nil // 에이전트가 만든 것(다른 uid)은 에이전트가 맡는다
+	}
+	switch {
+	case info.IsDir():
+	case info.Mode().IsRegular():
+		if st.Nlink != 1 {
+			return nil // 다른 곳의 서버 파일을 하드 링크로 들여왔을 수 있다
+		}
+	default:
+		return nil // FIFO·소켓 등
+	}
+	result, err := shareOpened(f, info, gid, shareRuleFor(top, depth, info.IsDir()))
+	if err != nil {
+		return err
+	}
+	if result == shareChanged {
+		*changed++
+	}
+	if info.IsDir() {
+		return shareTree(f, top, depth+1, gid, changed)
+	}
+	return nil
+}
+
+// openNoFollow 는 dir 기준으로 name을 링크를 따라가지 않고 연다. O_NONBLOCK은 FIFO에서 멈추지 않게 한다.
+func openNoFollow(dir *os.File, name string) (*os.File, error) {
+	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_NOCTTY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), filepath.Join(dir.Name(), name)), nil
+}
+
+// skippableOpenError 는 걷기를 멈추지 않고 건너뛸 열기 실패다. ELOOP는 링크, ENOENT는 그사이 사라진 항목,
+// EACCES는 읽을 수 없는 디렉터리(에이전트가 0700으로 바꾼 것 등), ENXIO는 소켓이다.
+func skippableOpenError(err error) bool {
+	for _, errno := range []syscall.Errno{syscall.ELOOP, syscall.ENOENT, syscall.EACCES, syscall.ENXIO} {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+	return false
+}
+
+// shareResult 는 shareOpened가 한 일이다.
 type shareResult int
 
 const (
-	shareSkipped   shareResult = iota // 서버 소유가 아니거나 링크라서 건너뛰었다
+	shareSkipped   shareResult = iota // 서버 소유가 아니어서 건너뛰었다
 	shareUnchanged                    // 이미 맞았다
 	shareChanged                      // 그룹이나 권한을 바꿨다
 )
@@ -129,47 +232,114 @@ const (
 // specialModeBits 는 권한 비교에 넣는 특수 비트다.
 const specialModeBits = fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky
 
-// shareWithGroup 은 서버 소유인 path의 그룹을 gid로 바꾸고 권한에 add를 더하고 remove를 뺀다. 서버 소유가 아니면 오류다.
-func shareWithGroup(path string, gid int, add, remove fs.FileMode) error {
-	result, err := shareOwnedWithGroup(path, gid, add, remove)
+// shareRequired 는 서버 소유여야 하는 디렉터리(데이터 디렉터리, tasks·sessions·drafts)를 규칙대로 맞춘다.
+// 서버 소유가 아니면 오류다.
+func shareRequired(f *os.File, gid int, rule shareRule) error {
+	info, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("share %s with group %d: %w", path, gid, err)
+		return fmt.Errorf("stat %s: %w", f.Name(), err)
 	}
-	if result == shareSkipped {
-		return fmt.Errorf("%s is not owned by the server (uid %d); fix its ownership before enabling agent uid separation", path, os.Getuid())
+	if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Getuid() || !info.IsDir() {
+		return fmt.Errorf("%s is not a directory owned by the server (uid %d); fix its ownership before enabling agent uid separation", f.Name(), os.Getuid())
+	}
+	if _, err := shareOpened(f, info, gid, rule); err != nil {
+		return fmt.Errorf("share %s with group %d: %w", f.Name(), gid, err)
 	}
 	return nil
 }
 
-// shareOwnedWithGroup 은 path가 서버 소유일 때만 그룹을 gid로 바꾸고 권한에 add를 더하고 remove를 뺀다.
-// 링크를 따라가지 않도록 Lstat으로 보고 링크는 건너뛴다.
-func shareOwnedWithGroup(path string, gid int, add, remove fs.FileMode) (shareResult, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return shareSkipped, err
-	}
+// shareOpened 는 연 파일 f의 그룹을 gid로 바꾸고 권한에 rule.add를 더하고 rule.remove를 뺀다. 파일의
+// setuid·setgid는 지운다. 에이전트 그룹이 실행할 수 있는 서버 소유 setuid 파일은 서버 uid로 가는 길이다.
+// 디렉터리의 sticky는 남긴다.
+func shareOpened(f *os.File, info fs.FileInfo, gid int, rule shareRule) (shareResult, error) {
 	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || info.Mode()&fs.ModeSymlink != 0 || int(st.Uid) != os.Getuid() {
+	if !ok {
 		return shareSkipped, nil
 	}
 	current := info.Mode() & (fs.ModePerm | specialModeBits)
-	// 파일의 setuid·setgid는 지운다. 에이전트 그룹이 실행할 수 있는 서버 소유 setuid 파일은 서버 uid로 가는 길이다.
-	want := (info.Mode().Perm() | add) &^ remove
+	want := (info.Mode().Perm() | rule.add) &^ rule.remove
 	if info.IsDir() {
 		want |= info.Mode() & fs.ModeSticky
+	} else {
+		want &^= specialModeBits
 	}
 	if int(st.Gid) == gid && current == want {
 		return shareUnchanged, nil
 	}
 	if int(st.Gid) != gid {
 		// 서버가 그 그룹에 속하므로 root 없이 바꿀 수 있다(checkServerIdentity가 확인했다).
-		if err := os.Lchown(path, -1, gid); err != nil {
+		if err := f.Chown(-1, gid); err != nil {
 			return shareSkipped, err
 		}
 	}
 	// chown은 파일의 setgid 비트를 지울 수 있어 그 뒤에 권한을 맞춘다.
-	if err := os.Chmod(path, want); err != nil {
+	if err := f.Chmod(want); err != nil {
 		return shareSkipped, err
 	}
 	return shareChanged, nil
+}
+
+// installShellDir 는 셸 대체 디렉터리 dir을 확인하고, 없으면 만든다. dir 안의 "bash"는 도우미를 가리키는 링크다.
+//
+// 이미 있으면(Docker 이미지에 root 소유로 들어 있거나 예전 시작이 만든 것) 고치지 않고 확인만 한다. 디렉터리가
+// 링크가 아니고, root나 서버 소유이고, 그룹·다른 사용자 쓰기가 없고, bash가 도우미를 가리키는 링크여야 한다.
+// 에이전트가 링크를 바꿔 서버 uid로 자기 코드를 실행시키지 못하게, 에이전트가 쓸 수 있는 곳에 두지 않는다.
+func installShellDir(dir, helper string) (string, error) {
+	if dir == "" {
+		return "", errors.New("no sandbox shell directory configured")
+	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve shell dir: %w", err)
+	}
+	link := filepath.Join(dir, "bash")
+	if err := os.Mkdir(dir, 0o750); err == nil {
+		if err := os.Symlink(helper, link); err != nil {
+			return "", fmt.Errorf("create shell link: %w", err)
+		}
+	} else if !errors.Is(err, fs.ErrExist) {
+		return "", fmt.Errorf("create shell dir %s (the server needs write access to the directory of the artex binary once, or create it as root: mkdir -m 0750 %s && ln -s %s %s): %w", dir, dir, helper, link, err)
+	}
+	if err := checkShellDir(dir, helper); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// checkShellDir 는 installShellDir의 조건을 확인한다.
+func checkShellDir(dir, helper string) error {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return fmt.Errorf("stat shell dir: %w", err)
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	switch {
+	case !info.IsDir():
+		return fmt.Errorf("shell dir %s is not a directory", dir)
+	case !ok || (st.Uid != 0 && int(st.Uid) != os.Getuid()):
+		return fmt.Errorf("shell dir %s must be owned by root or the server (uid %d)", dir, os.Getuid())
+	case info.Mode().Perm()&0o022 != 0:
+		return fmt.Errorf("shell dir %s is writable by group or others (mode %v); chmod 0750 it", dir, info.Mode().Perm())
+	}
+	link := filepath.Join(dir, "bash")
+	linkInfo, err := os.Lstat(link)
+	if err != nil {
+		return fmt.Errorf("shell dir %s has no bash link: %w", dir, err)
+	}
+	if linkInfo.Mode()&fs.ModeSymlink == 0 {
+		return fmt.Errorf("%s must be a symbolic link to the sandbox helper", link)
+	}
+	target, err := os.Stat(link)
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", link, err)
+	}
+	helperInfo, err := os.Stat(helper)
+	if err != nil {
+		return fmt.Errorf("stat sandbox helper: %w", err)
+	}
+	if !os.SameFile(target, helperInfo) {
+		dest, _ := os.Readlink(link) // 오류 문구에만 쓴다
+		return fmt.Errorf("%s points to %q, not the sandbox helper %s; remove %s and restart", link, dest, helper, dir)
+	}
+	return nil
 }

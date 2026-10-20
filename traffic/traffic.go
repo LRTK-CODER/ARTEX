@@ -210,6 +210,13 @@ func Open(dir, addr string) (*Traffic, error) {
 		db.Close()
 		return nil, err
 	}
+	// go-mitmproxy는 CA 개인 키와 인증서를 한 파일(mitmproxy-ca.pem)에 0644로 쓴다. 에이전트 명령이 다른 uid로
+	// 돌아도(#165) 이 키를 읽으면 기록 프록시를 흉내 낼 수 있다. 에이전트가 믿을 인증서는 CACertPath의 별도 파일이므로
+	// 키 파일은 서버만 읽게 둔다. _ca는 에이전트가 쓰지 못하는 디렉터리라 경로로 바꿔도 된다.
+	// 실패해도(예: 예전 root 컨테이너가 만든 파일) 프록시는 그대로 쓸 수 있으므로 멈추지 않고 기록한다.
+	if err := os.Chmod(filepath.Join(dir, "_ca", caKeyFile), 0o600); err != nil {
+		log.Printf("[traffic] CA 개인 키 권한을 0600으로 줄이지 못했다: %v", err)
+	}
 	// Upstream selection. By default (no global egress proxy set) targets are
 	// dialed DIRECTLY: go-mitmproxy's own default upstream uses
 	// http.ProxyFromEnvironment, so an HTTP_PROXY/HTTPS_PROXY in the environment
@@ -348,6 +355,9 @@ func ValidateProxyURL(raw string) (*url.URL, error) {
 	}
 	return u, nil
 }
+
+// caKeyFile 은 go-mitmproxy가 CA 개인 키와 인증서를 함께 쓰는 파일 이름이다(cert.SelfSignCA.caFile).
+const caKeyFile = "mitmproxy-ca.pem"
 
 // CACertPath returns the PEM CA cert clients must trust to verify HTTPS through
 // the MITM proxy (go-mitmproxy writes it here on first start).

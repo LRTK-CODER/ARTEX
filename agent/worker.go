@@ -267,16 +267,47 @@ func workerArtifactSpec(runDir string) string {
 	return "\n\n**Intermediate-artifact output convention**: scripts, payloads, captured response bodies, temporary data, and all other intermediate artifacts **must be written to this intent's dedicated working directory " + runDir + "** (already created, just write relative paths here, no need to mkdir manually) -- **do not write to /tmp and do not use any other absolute path**."
 }
 
-// ensureRunDir builds and creates an agent's working directory under base:
-// <base>/tasks/<taskID> for planner/main; <base>/tasks/<taskID>/i<intentID> for a
-// worker (intentID<=0 → task dir only). The "tasks/" segment groups per-task dirs
-// symmetrically with the chat agent's "sessions/<sessionID>". Best-effort mkdir — on
-// failure, writes fail the same way an unwritable CWD would.
-func ensureRunDir(base string, taskID, intentID int64) string {
+// ensureRunDir 는 에이전트의 작업 디렉터리를 base 아래에 만든다. planner·mainagent는 <base>/tasks/<taskID>,
+// worker는 <base>/tasks/<taskID>/i<intentID>다(intentID<=0이면 작업 디렉터리만). "tasks/"는 대화 에이전트의
+// "sessions/<sessionID>"와 짝을 이룬다.
+//
+// share가 거짓이면(에이전트 uid 분리를 끈 기본값) 예전처럼 만들기만 하고 실패는 무시한다. 쓰기가 쓸 수 없는
+// 작업 디렉터리처럼 실패할 뿐이다. 0775는 기본 umask(022)에서 예전과 같은 0755가 된다.
+//
+// share가 참이면(#165) 에이전트 그룹이 쓸 수 있게 맞추고, 작업 디렉터리에는 sticky를 줘 에이전트가 서버가 만든
+// i<intentID>를 옮기거나 지우지 못하게 한다. 에이전트가 그 자리에 링크를 미리 두었으면 오류를 올린다.
+func ensureRunDir(base string, taskID, intentID int64, share bool) (string, error) {
 	dir := runDirPath(base, taskID, intentID)
-	// 0775: 에이전트 명령이 다른 uid로 돌면(#165) 그룹 쓰기가 있어야 쓴다. 기본 umask(022)에서는 예전처럼 0755다.
-	_ = os.MkdirAll(dir, 0o775)
-	return dir
+	if !share {
+		_ = os.MkdirAll(dir, 0o775)
+		return dir, nil
+	}
+	if err := os.MkdirAll(filepath.Join(base, "tasks"), 0o775); err != nil {
+		return dir, fmt.Errorf("create tasks dir: %w", err)
+	}
+	if err := shareRunDir(runDirPath(base, taskID, 0), true); err != nil {
+		return dir, err
+	}
+	if intentID > 0 {
+		if err := shareRunDir(dir, false); err != nil {
+			return dir, err
+		}
+	}
+	return dir, nil
+}
+
+// ensureSessionDir 는 대화 에이전트의 작업 디렉터리(sessions/<sessionID>)를 만든다. share의 뜻은 ensureRunDir와
+// 같다. 부모 sessions/는 에이전트가 쓰지 못하므로 sticky는 주지 않는다. 첨부 파일 업로드가 이 디렉터리를
+// 먼저 만들었으면(그룹 쓰기 없음) 여기서 에이전트 그룹 쓰기를 맞춘다.
+func ensureSessionDir(dir string, share bool) error {
+	if !share {
+		_ = os.MkdirAll(dir, 0o775)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o775); err != nil {
+		return fmt.Errorf("create sessions dir: %w", err)
+	}
+	return shareRunDir(dir, false)
 }
 
 // runDirPath 는 ensureRunDir가 만드는 경로를 디렉터리를 만들지 않고 돌려준다. 파일 도구 허용 경로 표가 쓴다.
@@ -398,7 +429,10 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// 쪽이라 단일 mandate가 없고, worker는 있다. [전역 태세 overview]만 시작 user 메시지에 남긴다 —
 	// 그것은 격하 가능하고 stale를 견디며 눌려도 무방하다.
 	// 이번 의도의 전용 작업 디렉터리 <workDir>/tasks/<taskID>/i<intentID> 는 엔진 쪽에서 먼저 만든다.
-	runDir := ensureRunDir(w.workDir, taskID, intent.ID)
+	runDir, err := ensureRunDir(w.workDir, taskID, intent.ID, def.ShareWritesWithGroup)
+	if err != nil {
+		return "", WriteCounts{}, err
+	}
 	// The run-wide intent is not the current tool action. Do not forward it or
 	// inherit a parent run's background into the action reviewer.
 	ctx = intercept.WithReviewContext(ctx, runDir, intercept.ReviewBackground{})

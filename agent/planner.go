@@ -390,7 +390,10 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		situational += "\n\n**Task endgame wrap-up (special instruction this round, overriding the normal planning flow above)**:" + resolveTaskTimeoutWrapup("planner")
 	}
 	// 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID> 를 먼저 만든다.
-	taskDir := ensureRunDir(p.workDir, taskID, 0)
+	taskDir, err := ensureRunDir(p.workDir, taskID, 0, def.ShareWritesWithGroup)
+	if err != nil {
+		return false, "", err
+	}
 	ctx = intercept.WithReviewContext(ctx, taskDir, intercept.ReviewBackground{})
 	sysBody := plannerSystem(goal, p.workDir, taskDir)
 	if p.wantConstraints() {
