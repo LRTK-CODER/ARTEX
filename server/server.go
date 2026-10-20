@@ -48,7 +48,9 @@ type Server struct {
 	// inContainer 는 컨테이너 안에서 도는지 알려 준다. New가 selfupdate.InDocker를 넣고, 테스트는 가짜를 넣는다.
 	// 컨테이너에서는 원클릭 업데이트·롤백을 거부한다(update.go).
 	inContainer func() bool
-	jwtKey      []byte // keyDir/jwt.key에서 읽거나 새로 만든 HS256 서명 키
+	// sandbox 는 에이전트 uid 분리 설정이다(#165). nil이면 꺼져 있고 에이전트 명령은 서버 uid로 돈다.
+	sandbox *AgentSandbox
+	jwtKey  []byte // keyDir/jwt.key에서 읽거나 새로 만든 HS256 서명 키
 	// oauth 는 구독 OAuth 프로필의 TokenSource를 프로필마다 하나씩 들고 있다.
 	// oauth.key를 불러오지 못했으면 nil이고, 그때 OAuth 프로필은 쓸 수 없다.
 	oauth *oauthTokenRegistry
@@ -155,12 +157,13 @@ type triggeredRun struct {
 	mergeable bool   // true for finding/goal event triggers (merge by taskID)
 }
 
-func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDir string) *Server {
+// sandbox는 에이전트 uid 분리 설정이다. nil이면 꺼져 있다(EnableAgentSandbox).
+func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDir string, sandbox *AgentSandbox) *Server {
 	key, err := loadOrCreateJWTKey(keyDir, dataDir)
 	if err != nil {
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, inContainer: selfupdate.InDocker, jwtKey: key, chatBusy: map[string]bool{},
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, inContainer: selfupdate.InDocker, sandbox: sandbox, jwtKey: key, chatBusy: map[string]bool{},
 		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
@@ -234,7 +237,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
-		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // 공개된 스킬·MCP와 트래픽·오케스트레이션 host 도구를 에이전트 도구 모음에 넣는다
+		wireAgentAugment(m.pg, s.skillDir, s.hostTools, s.sandbox) // 공개된 스킬·MCP와 트래픽·오케스트레이션 host 도구를 에이전트 도구 모음에 넣는다
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg) // 내장 도구 표: 에이전트별 필터 + 설명·schema 덮어쓰기 + 기본값 넣기
 		seedPrompts(m.pg)          // 내장 에이전트 기본 프롬프트 본문을 agent_prompts에 시드한다(비어 있을 때만)
@@ -3486,7 +3489,7 @@ func notifyDigestIntervalMin(pg *db.DB) int {
 
 // pgDetectPython re-runs interpreter detection, stores + returns it.
 func (s *Server) pgDetectPython(w http.ResponseWriter, r *http.Request) {
-	p := detectPython()
+	p := s.detectPython()
 	if p == "" {
 		writeErr(w, 404, "python을 찾지 못했습니다(python3·python 모두 PATH에 없습니다)")
 		return

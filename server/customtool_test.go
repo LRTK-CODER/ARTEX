@@ -96,7 +96,7 @@ print("port=" + str(a["port"]))
 `
 	out, err := execPython(context.Background(), interp, "test", code,
 		map[string]any{"target": "example.com", "port": float64(8080)},
-		t.TempDir(), nil, 10*time.Second)
+		t.TempDir(), nil, 10*time.Second, nil)
 	if err != nil {
 		t.Fatalf("execPython error: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestDetectPython(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 unavailable")
 	}
-	if p := detectPython(); p == "" {
+	if p := (&Server{}).detectPython(); p == "" {
 		t.Fatal("detectPython returned empty despite python3 on PATH")
 	}
 }

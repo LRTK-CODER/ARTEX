@@ -389,8 +389,12 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	if tc.Final {
 		situational += "\n\n**Task endgame wrap-up (special instruction this round, overriding the normal planning flow above)**:" + resolveTaskTimeoutWrapup("planner")
 	}
-	// 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID> 를 먼저 만든다.
-	taskDir := ensureRunDir(p.workDir, taskID, 0)
+	// 이 작업의 작업 디렉터리를 먼저 만든다(끄면 <workDir>/tasks/<taskID>, 켜면 그 아래 work).
+	dirs, err := ensureRunDir(p.workDir, taskID, 0, def.ShareWritesWithGroup)
+	if err != nil {
+		return false, "", err
+	}
+	taskDir := dirs.work
 	ctx = intercept.WithReviewContext(ctx, taskDir, intercept.ReviewBackground{})
 	sysBody := plannerSystem(goal, p.workDir, taskDir)
 	if p.wantConstraints() {
@@ -427,8 +431,8 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 		DeepSeekSearchModel:   p.webSearch.DeepSeekModel,
 		WebSearchProxy:        p.webSearch.Proxy,
 		BashEnv:               proxyEnv(p.proxyAddr, p.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
-		WorkingDir:            taskDir,                              // 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID>
-		ToolOutputDir:         cmdOutDir(taskDir),
+		WorkingDir:            taskDir,
+		ToolOutputDir:         dirs.toolOutput,
 		MaxTurns:              p.maxTurns, // 0 = unlimited (configurable in agent management)
 		MaxDuration:           maxDur,     // 0=제한 없음; deadline이 있으면=deadline까지 남은 시간
 		Compaction:            compactionConfig(p.compactionWindow()),

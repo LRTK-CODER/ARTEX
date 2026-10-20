@@ -129,8 +129,12 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	ctx = withFileScope(ctx, fileScopeFor(fileRoleTask, fileScopeInput{DataDir: m.workDir, TaskID: taskID, SourceTaskIDs: sourceTaskIDs(ts)}))
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
-	// 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID> 를 먼저 만든다.
-	mainDir := ensureRunDir(m.workDir, taskID, 0)
+	// 이 작업의 작업 디렉터리를 먼저 만든다(끄면 <workDir>/tasks/<taskID>, 켜면 그 아래 work).
+	dirs, err := ensureRunDir(m.workDir, taskID, 0, def.ShareWritesWithGroup)
+	if err != nil {
+		return "", err
+	}
+	mainDir := dirs.work
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
 	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
 	opts := agentcore.Options{
@@ -155,8 +159,8 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		DeepSeekSearchModel:   m.webSearch.DeepSeekModel,
 		WebSearchProxy:        m.webSearch.Proxy,
 		BashEnv:               proxyEnv(m.proxyAddr, m.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
-		WorkingDir:            mainDir,                              // 이 작업의 작업 디렉터리 <workDir>/tasks/<taskID>
-		ToolOutputDir:         cmdOutDir(mainDir),
+		WorkingDir:            mainDir,
+		ToolOutputDir:         dirs.toolOutput,
 		MaxTurns:              m.maxTurns,                             // 0 = unlimited (configurable in agent management)
 		Compaction:            compactionConfig(m.compactionWindow()), // long chats stay within the window
 		Todos:                 actool.NewTodoStore(),                  // 세션 단위 임시 할 일(TodoWrite). 순수 계획용이며 나가면 버려진다

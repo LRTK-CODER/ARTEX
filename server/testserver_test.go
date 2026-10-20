@@ -18,7 +18,7 @@ func newTestServer(t *testing.T, m *Manager, skillDir, dataDir, keyDir string) *
 	t.Helper()
 	restoreHooks := saveAgentHooks()
 	ctx, cancel := context.WithCancel(context.Background())
-	s := New(ctx, m, skillDir, dataDir, keyDir)
+	s := New(ctx, m, skillDir, dataDir, keyDir, nil)
 	t.Cleanup(func() {
 		cancel()
 		stopTaskRuntimes(s.engine)

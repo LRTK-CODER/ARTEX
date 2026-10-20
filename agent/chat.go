@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -112,7 +111,6 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// Per-session working directory: <workDir>/sessions/<sessionID>/
 	// Isolates file writes across conversations, mirroring how workers use i<intentID>/.
 	sessionWorkDir := filepath.Join(c.workDir, "sessions", sessionID)
-	_ = os.MkdirAll(sessionWorkDir, 0o755)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, sessionWorkDir)
 
 	// Pure assistant: DefaultTools as the base; AugmentTools layers in the key's
@@ -123,6 +121,11 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	ctx = withFileScope(ctx, fileScopeFor(fileRoleConversation, fileScopeInput{DataDir: c.workDir, SessionDir: sessionWorkDir}))
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
+	// 작업 디렉터리는 도구 모음을 정한 뒤에 만든다. 에이전트 uid 분리(#165)를 켰는지가 def에 있다.
+	dirs, err := ensureSessionDir(sessionWorkDir, def.ShareWritesWithGroup)
+	if err != nil {
+		return "", err
+	}
 
 	system, boundary := deferredSystem(chatSystem(agentKey, c.workDir, sessionWorkDir), def)
 	opts := agentcore.Options{
@@ -152,9 +155,9 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		MaxDuration:           maxDuration,
 		Compaction:            compactionConfig(c.window),
 		Todos:                 actool.NewTodoStore(),
-		// large tool output spills to cmd-output/ under the session dir.
+		// 큰 도구 출력을 둘 곳. 위치는 ensureSessionDir가 정한다.
 		// 잘림 상한은 SDK 기본값(tool.Capture의 30000자)을 쓴다.
-		ToolOutputDir: filepath.Join(sessionWorkDir, "cmd-output"),
+		ToolOutputDir: dirs.toolOutput,
 		// 단계 한도에 걸리면 → SDK가 마무리를 돈다: 요약 한 줄을 낸다. 프롬프트와 마무리 회합 수는 이 agent key 기준으로
 		// 백오피스에서 편집할 수 있다(사용자 지정 agent는 각자 한 벌. 비우거나 0이면 범용 기본값 10회).
 		Settlement:   wrapupSettlement(agentKey, nil),

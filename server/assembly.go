@@ -22,7 +22,8 @@ import (
 // hostTools, if set, returns runtime host tools (currently the traffic tools when
 // capture is on) to add to EVERY agent's base list — the DB tools table then
 // filters them per-agent binding. Empty/nil → no host tools this run (capture off).
-func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string)) {
+// sandbox가 nil이 아니면 stdio MCP를 에이전트 uid로 띄우고, 파일 도구가 쓴 파일에 그룹 쓰기를 준다.
+func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), sandbox *AgentSandbox) {
 	agent.ToolAugment = func(ctx context.Context, agentKey string) ([]actool.CoreTool, agent.DeferredInfo, func()) {
 		a, err := pg.GetAgentByKey(agentKey)
 		if err != nil || a == nil {
@@ -83,7 +84,7 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 				if !directVisible && !skillGated {
 					continue // neither directly visible nor referenced by a visible skill
 				}
-				cl, err := connectMCP(ctx, m)
+				cl, err := connectMCP(ctx, m, sandbox)
 				if err != nil {
 					log.Printf("[mcp] %s 연결 실패: %v", m.Name, err)
 					continue
@@ -170,10 +171,11 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			}
 		}
 		def := agent.DeferredInfo{
-			Deferred:    allNames,
-			GlobalNames: globalNames,
-			Unlock:      unlock,
-			UnlockSkill: unlockSkill,
+			Deferred:             allNames,
+			GlobalNames:          globalNames,
+			Unlock:               unlock,
+			UnlockSkill:          unlockSkill,
+			ShareWritesWithGroup: sandbox.SharesWorkspace(),
 		}
 		if reg != nil {
 			for _, s := range reg.List() {

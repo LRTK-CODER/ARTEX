@@ -166,7 +166,7 @@ docker compose up -d artex
 - 키를 아직 컨테이너 안(`/app/*.key`)에서 꺼내지 않은 예전 설치라면 [서버 키 디렉터리와 백업](#서버-키-디렉터리와-백업)의 키 꺼내기를 먼저 한다.
 - 이전한 뒤 호스트 사용자는 `./data`·`./keys`를 sudo 없이 읽지 못한다. 백업은 `sudo`로 하거나 `docker compose cp`로 꺼낸다.
 - 컨테이너가 `./skills`에 새로 만든 스킬(화면·에이전트)은 10001 소유, 그룹 10001에 그룹 쓰기 권한이다. git이 추적하는 파일은 호스트 사용자 소유 그대로라 `git pull`은 그대로 된다. 컨테이너가 만든 스킬을 호스트에서 고치려면 sudo를 쓰거나, 호스트에 gid 10001 그룹을 만들어 사용자를 넣는다(`sudo groupadd -g 10001 artex && sudo usermod -aG artex "$USER"`, 다시 로그인한 뒤 적용).
-- nmap은 실행 파일에 `cap_net_raw`가 있어 root가 아니어도 SYN 스캔(`-sS`)과 OS 탐지가 된다.
+- nmap은 실행 파일에 `cap_net_raw`가 있어 root가 아니어도 SYN 스캔(`-sS`)과 OS 탐지가 된다(에이전트 uid 분리를 켜면 쓸 수 없다. [에이전트 uid 분리](#에이전트-uid-분리) 참고).
 
 원격 MCP는 시스템 설정에서 `http`(Streamable HTTP) 또는 `sse`(이전 버전 SSE)를 고를 수 있다.
 이전 버전 SSE 서비스는 보통 `GET /sse`로 이벤트 스트림을 열고, 서비스가 돌려주는
@@ -301,6 +301,66 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 **동시 실행**: 작업마다 띄우는 work 에이전트 수는 '시스템 설정'에서 설정한다(기본값 3).
 
 **자주 쓰는 파라미터**: `./start.sh -addr :8787 -proxy :8788`(`-addr`는 프런트엔드+API, `-proxy`는 트래픽 기록 프록시). 시작 스크립트는 파라미터를 `artex`에 그대로 넘긴다.
+
+### 에이전트 uid 분리
+
+Linux에서만 쓰는 기본 꺼짐 기능이다. 켜면 에이전트가 실행하는 명령(Bash 동기·백그라운드, shell_open, 사용자 지정 도구의 command·python, stdio MCP)이 서버와 다른 uid로 돈다. 프롬프트 주입을 당한 에이전트가 서버 키(`<키 디렉터리>/oauth.key`), 서버 프로세스 환경(`/proc/<서버 pid>/environ`의 DB DSN·API 키), 실행 파일 옆 업데이트 경로에 닿지 못하게 한다.
+
+- 켜기: 환경 변수 `ARTEX_AGENT_UID`·`ARTEX_AGENT_GID`를 함께 준다. 허용 범위는 20000-29999이고 도우미 코드에 고정돼 있다(0과 서버 자신의 uid·주 그룹은 거부한다). 서버는 그 그룹에 보조 그룹으로 속해야 한다.
+- 동작: 서버가 시작할 때 도우미 `artex-sandbox`(실행 파일 옆)로 자기 검사를 하고, 서버의 PATH를 셸 대체 디렉터리(`<실행 파일 디렉터리>/artex-shell`) 하나로 바꾼다. 그 안의 `bash`는 도우미를 가리키는 링크다. 원래 PATH는 `ARTEX_AGENT_PATH`로 넘긴다. 도우미는 보조 그룹을 비우고 uid·gid를 바꾼 뒤 cap을 모두 버리고 `no_new_privs`를 켜고, 원래 PATH와 umask 002로 진짜 bash(또는 명령)를 실행한다. 셸 대체 링크가 없어지면 에이전트 명령은 bash를 찾지 못해 실패한다. 서버 uid로 실행되지 않는다.
+- 작업 공간: 켜면 planner·mainagent의 작업 디렉터리는 `tasks/<id>/work`다(끄면 예전처럼 `tasks/<id>`). 에이전트 그룹은 작업 공간 디렉터리(`sessions/<id>`, `tasks/<id>/work`, `tasks/<id>/i<id>`)와 그 안에만 쓸 수 있다. 그 위(`<데이터 디렉터리>`, `tasks`, `sessions`, `drafts`, `tasks/<id>`)와 `drafts` 아래, `tasks/<id>` 아래의 다른 디렉터리(첨부 `uploads`, 큰 출력 `cmd-output`, 끄고 쓰던 동안 생긴 디렉터리)와 그 안은 읽고 지나가기만 한다. 서버를 다시 시작해 권한을 맞출 때도 같다. 그래서 에이전트는 서버가 만든 작업 공간(`work`, `i<id>`)과 `uploads`를 옮기거나 그 자리에 링크를 두지 못하고, 첨부 파일을 고치지 못한다. 작업 공간은 에이전트 그룹의 setgid 디렉터리라 서버와 에이전트가 서로 만든 파일을 읽고 고친다. sticky 비트는 쓰지 않는다(`fs.protected_regular=2`인 호스트에서 서버가 에이전트가 만든 파일을 다시 쓰지 못하게 된다).
+- 큰 도구 출력: 켜면 norma가 큰 출력을 쓰는 곳은 작업 공간 밖의 서버 전용 디렉터리(`tasks/<id>/cmd-output/<work|i<id>>`, `sessions/cmd-output/<id>`)다. 에이전트는 읽기만 한다(Bash의 `sed`·`grep`, 파일 도구 Read). 끄면 예전처럼 작업 디렉터리 안의 `cmd-output`이다.
+- 파일 도구: 켜면 Read·Write·Edit·MultiEdit는 허용 디렉터리 안에서 대상 파일을 링크를 따라 밖으로 나가지 않게 연 뒤 그 파일만 다룬다. LS·Glob·Grep은 도구 목록에서 빠진다. 디렉터리를 걷는 도중 에이전트가 항목을 링크로 바꾸면 서버 uid가 따라가기 때문이다. 에이전트는 Bash(에이전트 uid)의 `rg`·`grep`·`find`·`ls`로 같은 일을 한다. Docker 이미지에는 넷 다 있다. 단일 바이너리는 호스트에 있는 것을 쓴다.
+- 켰는데 준비하지 못하면(Linux가 아님, 도우미가 없음, 파일 cap이 없음, `no-new-privileges`, 서버에 `CAP_KILL`이 없음, 셸 대체 디렉터리가 조건에 맞지 않음) 원인을 찍고 시작하지 않는다. 조용히 꺼지지 않는다. 셸 대체 디렉터리는 링크가 아니고, root나 서버 소유이고, 그룹·다른 사용자 쓰기가 없고, `bash`가 도우미를 가리켜야 한다.
+- 켜면 raw 소켓이 필요한 스캔(`nmap -sS`, `-O` 등)은 쓸 수 없다. `nmap -sT`(연결 스캔)를 쓴다. 도우미가 `NMAP_PRIVILEGED`를 지워 nmap이 연결 스캔을 기본으로 고른다.
+- 컨테이너 설정이 도우미의 파일 cap을 막으면(`cap_drop`으로 `SETUID`·`SETGID`·`KILL`을 뺌) 커널이 도우미 실행 자체를 거부해 엔트리포인트가 `exec: /app/artex-sandbox: Operation not permitted` 한 줄을 남기고 멈춘다. 이 줄이 보이면 `cap_drop`을 확인한다.
+
+Docker: 이미지에 도우미(`0750 root:artex`, `cap_kill,cap_setuid,cap_setgid+ep`), 셸 대체 디렉터리 `/app/artex-shell`(root 소유), 에이전트 사용자 `artex-agent`(uid·gid 20000)가 들어 있다. `.env`에 `ARTEX_AGENT_UID=20000`, `ARTEX_AGENT_GID=20000`을 두고 `docker compose up -d`. 이 두 값이 있으면 엔트리포인트가 `artex-sandbox launch`로 `CAP_KILL`만 ambient에 올려 서버를 띄운다. 서버 실행 파일에는 파일 cap이 없다. 파일 cap이 있으면 커널이 secure-exec로 실행해 Go 런타임이 패닉 추적을 지우기 때문이다. 그래서 끈 상태의 서버 실행은 이 기능이 없을 때와 같다. 다만 이미지에는 도우미가 들어 있고 서버 사용자 `artex`가 그 그룹에 속해(보조 그룹 `artex-agent`도 붙는다) 끈 상태에서도 같은 uid인 에이전트가 도우미를 실행할 수 있다. 이때 얻는 것(`launch`의 ambient `CAP_KILL`, `exec`로 20000-29999 uid 되기)은 컨테이너 안의 다른 프로세스가 모두 같은 uid라 거의 쓸모가 없다. 켜면 엔트리포인트(PID 1의 `start.sh`)와 그 자식이 ambient `CAP_KILL`을 가진다. 서버는 시작할 때 비우고, 에이전트 프로세스는 0이다. 켤 때 `GOTRACEBACK`을 환경 변수로 주면 도우미를 지나며 지워진다(기본값으로 돈다). `security_opt: [no-new-privileges:true]`를 쓰지 않고, `cap_drop`을 쓰면 `SETUID`·`SETGID`·`KILL`을 남긴다. 켠 뒤 `./data` 아래 작업 공간 디렉터리의 그룹은 20000이 된다.
+
+단일 바이너리(systemd): 에이전트 사용자를 만들고, 서버 사용자를 그 그룹에 넣고, root로 도우미에 cap을 준다. 서버에는 `CAP_KILL`을 ambient로 준다. 다른 uid가 된 에이전트 프로세스를 시간 초과·TaskStop·shell_close에서 죽이는 데 필요하다. 서버 실행 파일에 파일 cap을 주지 않는 이유는 위의 패닉 추적 문제와, 원클릭 업데이트로 바이너리가 바뀌면 cap이 사라지기 때문이다. 셸 대체 디렉터리 `/opt/artex/artex-shell`은 처음 켤 때 서버가 0750으로 만든다(실행 파일 디렉터리에 서버 쓰기 권한이 있어야 한다. 없으면 아래처럼 root로 미리 만든다). 원클릭 업데이트는 `artex`만 바꾸고 도우미는 바꾸지 않는다. 도우미가 바뀐 릴리스에서는 아래 설치를 다시 한다.
+
+```bash
+sudo groupadd --system --gid 20000 artex-agent
+sudo useradd --system --uid 20000 --gid artex-agent --create-home --shell /usr/sbin/nologin artex-agent
+sudo usermod -aG artex-agent artex            # 서버를 돌리는 사용자
+cd /opt/artex                                  # artex와 artex-sandbox가 있는 디렉터리
+sudo chown root:artex artex-sandbox && sudo chmod 0750 artex-sandbox
+sudo setcap cap_setuid,cap_setgid+ep artex-sandbox
+# 선택: 실행 파일 디렉터리에 서버 쓰기 권한이 없으면 셸 대체 디렉터리를 미리 만든다
+sudo mkdir -m 0750 artex-shell && sudo ln -s /opt/artex/artex-sandbox artex-shell/bash && sudo chown -h root:artex artex-shell artex-shell/bash
+```
+
+```ini
+# /etc/systemd/system/artex.service
+[Unit]
+Description=ARTEX
+After=network-online.target postgresql.service
+
+[Service]
+User=artex
+WorkingDirectory=/opt/artex
+ExecStart=/opt/artex/start.sh -addr :8787 -proxy 127.0.0.1:8788
+Environment=ARTEX_AGENT_UID=20000 ARTEX_AGENT_GID=20000
+EnvironmentFile=-/opt/artex/artex.env          # ARTEX_PG_DSN, API 키(0600)
+AmbientCapabilities=CAP_KILL
+# NoNewPrivileges=yes와 이를 켜는 설정(SystemCallFilter=, RestrictNamespaces= 등)을 쓰지 않는다. 도우미의 파일 cap이 무시된다.
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+서버는 시작할 때 `CAP_KILL`을 effective로만 남기고 ambient·inheritable을 비운다. 그래서 서버가 감싸지 않고 띄우는 자식(ripgrep 등)은 `CAP_KILL`을 물려받지 않는다. 도우미는 cap을 모두 버리므로 에이전트로 새지 않는다.
+
+한계:
+- 파일 도구(Read/Write/Edit/MultiEdit)는 여전히 서버 uid로 돈다. 작업 공간 경로 제한과 위의 열기 방식이 막는다. 켜면 LS·Glob·Grep 도구 대신 셸 명령을 쓴다.
+- 파일 도구의 허용 경로에는 모든 역할에 시스템 임시 디렉터리(`$TMPDIR`, 보통 `/tmp`)가 들어 있다(#169). 파일 도구는 서버 uid로 돌기 때문에, 켜도 임시 디렉터리 아래의 서버 전용 파일(발견 사항 내보내기 임시 파일, 다른 세션의 백그라운드 명령 출력 등)을 읽고 덮어쓸 수 있다. 에이전트 셸 명령은 이 파일에 닿지 못한다. 키 디렉터리(`ARTEX_KEY_DIR`)와 작업 공간(`-data`)을 임시 디렉터리 아래 두지 않는다.
+- 끈 상태(에이전트가 서버와 같은 uid)에서 큰 출력 디렉터리(`cmd-output`)에 생긴 링크는 켤 때 지우지 않는다. 켠 뒤 서버가 같은 이름으로 출력을 쓰면 그 링크를 따라간다. 끈 상태의 에이전트는 이미 키에 닿을 수 있었으므로, 켜기 전에 쓰던 작업이 있으면 켤 때 서버 키를 새로 만든다(키 파일을 지우고 다시 시작하면 새로 생기고, 웹 세션과 구독 로그인이 풀린다).
+- 서버 uid 코드가 작업 공간에 쓰는 다른 곳: python 도구 스크립트(`.tools`)는 작업 디렉터리 밖으로 나가는 링크를 따라가지 않고 무작위 이름으로 새로 만든다. 첨부 업로드와 웹 작업 공간 화면(`/api/workspace/*`)은 데이터 디렉터리 안에서만 링크를 따라간다(키 디렉터리는 데이터 디렉터리 밖이다). 그래서 에이전트가 작업 공간에 데이터 디렉터리 안의 다른 파일을 가리키는 링크를 두고 사용자가 웹 화면에서 그 파일을 고치면, 링크 대상이 바뀐다.
+- 에이전트는 다음 의도 이름(`tasks/<id>/i<다음 번호>`)을 미리 둘 수 없다(`tasks/<id>`에 쓰지 못한다). 기능을 켜기 전(에이전트가 서버와 같은 uid)에 그 자리에 링크나 파일이 생겼으면 그 의도는 "refusing"으로 실패하고 링크는 따라가지 않는다.
+- 셸 대체 디렉터리를 실행 중에 바꾸려면 서버 uid나 root 권한이 필요하다. 시작할 때만 확인한다.
+- 에이전트 uid는 하나다(작업별 uid는 #166). 같은 커널·네트워크 이름공간을 쓰므로 서버 포트·트래픽 기록 프록시에는 그대로 닿는다. 데이터 디렉터리의 다른 사용자 읽기 권한이 있는 항목(대화 기록 `transcripts`, `archives`, `traffic`)은 에이전트도 읽는다. 기록 프록시 CA 개인 키(`traffic/_ca/mitmproxy-ca.pem`)는 서버만 읽는다(0600).
+- 에이전트가 자기 디렉터리를 0700으로 바꾸면 서버가 그 안을 지우지 못할 수 있다.
 
 ### 리버스 프록시 배포(HTTPS / 443만 열기)
 
