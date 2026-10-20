@@ -89,11 +89,18 @@ func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, current
 	// (다른 장치로의 rename은 실패하고, /tmp는 흔히 별도 마운트 지점이다).
 	zipPath := p.Zip + ".part"
 	binPath := p.New + ".part"
+	wroteMarker := false
 	defer func() {
 		_ = os.Remove(zipPath)
 		_ = os.Remove(binPath)
-		if err != nil {
-			cleanStaged(p) // 반쯤 남은 검증 자료가 다음 임시 저장과 섞이지 않게 한다
+		if err == nil {
+			return
+		}
+		cleanStaged(p) // 반쯤 남은 검증 자료가 다음 임시 저장과 섞이지 않게 한다
+		// 이번에 쓴 마커만 지운다. 남기면 다음 시작이 교체하지 않은 바이너리를 "새 버전 시작"으로 센다.
+		// 쓰기 전에 실패했다면 있는 마커는 지난 업데이트의 롤백 보호이므로 건드리지 않는다.
+		if wroteMarker {
+			_ = os.Remove(p.Marker)
 		}
 	}()
 
@@ -134,6 +141,7 @@ func stageAt(ctx context.Context, c *http.Client, rel *Release, p Paths, current
 	}); err != nil {
 		return fmt.Errorf("업데이트 마커 쓰기: %w", err)
 	}
+	wroteMarker = true
 	if err := os.Rename(binPath, p.New); err != nil {
 		return fmt.Errorf("새 버전 임시 저장: %w", err)
 	}
@@ -333,15 +341,20 @@ func get(ctx context.Context, c *http.Client, rawURL string) (io.ReadCloser, err
 // 패키지 안 구조는 artex-<버전>-<os>-<arch>/artex이지만, 여기서는 전체 경로를 이어 붙이지 않고 **기본 이름**으로 찾는다.
 // 버전 번호가 패키지 이름에 한 번 나오므로 한 글자만 틀려도 업데이트 전체가 실패한다. 기본 이름으로 찾는 편이 변경에 강하다.
 func extractBinary(zipPath, dst string) error {
-	want := "artex"
-	if runtime.GOOS == "windows" {
-		want = "artex.exe"
-	}
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("배포 패키지 열기: %w", err)
 	}
 	defer zr.Close()
+	return extractBinaryFrom(&zr.Reader, dst)
+}
+
+// extractBinaryFrom 은 이미 연 배포 패키지에서 artex 실행 파일을 꺼낸다.
+func extractBinaryFrom(zr *zip.Reader, dst string) error {
+	want := "artex"
+	if runtime.GOOS == "windows" {
+		want = "artex.exe"
+	}
 
 	for _, entry := range zr.File {
 		if entry.FileInfo().IsDir() || !strings.EqualFold(path.Base(entry.Name), want) {

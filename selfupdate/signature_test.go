@@ -240,3 +240,60 @@ func TestApplyStagedRejects(t *testing.T) {
 		})
 	}
 }
+
+func fileSHA256(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// TestStageFailureRemovesOnlyItsOwnMarker 는 임시 저장이 실패하면 이번에 쓴 마커를 지우고, 마커를 쓰기 전에
+// 실패하면 지난 업데이트가 남긴 마커(롤백 보호)는 그대로 두는지 본다.
+func TestStageFailureRemovesOnlyItsOwnMarker(t *testing.T) {
+	requireUnix(t)
+	r := newRelease(t, stagedVersion, fakeScript("new", 0), testPriv)
+	previous := marker{From: "0.3.6", To: runningVersion, Attempts: 1}
+	cases := []struct {
+		name       string
+		zip        []byte
+		blockNew   bool // artex.new 자리에 비어 있지 않은 디렉터리를 두어 마지막 rename만 실패시킨다
+		wantMarker bool
+	}{
+		{"마지막 rename 실패", r.zip, true, false},
+		{"마커 쓰기 전 해시 불일치", append(bytes.Clone(r.zip), 0), false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := testPaths(t)
+			if err := writeMarker(p.Marker, previous); err != nil {
+				t.Fatal(err)
+			}
+			if tc.blockNew {
+				if err := os.MkdirAll(p.New+"/x", 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			bad := r
+			bad.zip = tc.zip
+			c, rel := serve(bad, r.sums, r.sig)
+			if err := stageAt(context.Background(), c, rel, p, runningVersion, testKeys, nil); err == nil {
+				t.Fatal("임시 저장이 실패해야 함")
+			}
+			m, ok := readMarker(p.Marker)
+			if ok != tc.wantMarker {
+				t.Fatalf("마커 있음 = %v (%+v), want %v", ok, m, tc.wantMarker)
+			}
+			if ok && m != previous {
+				t.Errorf("지난 업데이트의 마커가 바뀜: %+v", m)
+			}
+			for _, f := range []string{p.Zip, p.Sums, p.SumsSig} {
+				if _, err := os.Stat(f); !os.IsNotExist(err) {
+					t.Errorf("실패한 임시 저장의 %s이(가) 남음", f)
+				}
+			}
+		})
+	}
+}

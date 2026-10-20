@@ -74,11 +74,13 @@ func keygen(out string) error {
 	if err != nil {
 		return err
 	}
-	if err := pem.Encode(f, &pem.Block{Type: "PRIVATE KEY", Bytes: der}); err != nil {
-		_ = f.Close() // 쓰기 실패가 원래 오류다
-		return err
+	// 반쯤 쓴 키 파일을 남기면 다시 실행할 때 O_EXCL에 막히고, 쓸 수 없는 키가 남는다.
+	err = pem.Encode(f, &pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	if cerr := f.Close(); err == nil {
+		err = cerr
 	}
-	if err := f.Close(); err != nil {
+	if err != nil {
+		_ = os.Remove(out) // 원래 오류를 알리는 것이 먼저다
 		return err
 	}
 	fmt.Printf("개인 키: %s (오프라인에 보관한다)\n", out)

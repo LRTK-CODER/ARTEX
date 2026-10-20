@@ -101,7 +101,10 @@ jobs:
           path: dist
       - name: Generate checksums
         working-directory: dist
-        run: sha256sum *.zip > SHA256SUMS
+        # 내용을 job 로그에도 남긴다. 소유자가 서명하기 전에 초안의 SHA256SUMS가 CI가 만든 것과 같은지 대조한다
+        run: |
+          sha256sum *.zip > SHA256SUMS
+          cat SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |

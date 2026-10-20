@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -194,17 +195,28 @@ func verifyStaged(p Paths, currentVersion string, keys []ed25519.PublicKey) erro
 	if !ok {
 		return fmt.Errorf("서명된 %s에 %s이(가) 없음", sumsAsset, name)
 	}
-	got, err := fileSHA256(p.Zip)
+	// 해시를 계산한 핸들 그대로 압축을 푼다. 경로로 다시 열면 그 사이에 파일을 바꿔치기할 틈이 생긴다.
+	zf, err := os.Open(p.Zip)
+	if err != nil {
+		return fmt.Errorf("배포 패키지 열기: %w", err)
+	}
+	defer zf.Close()
+	h := sha256.New()
+	size, err := io.Copy(h, zf)
 	if err != nil {
 		return fmt.Errorf("배포 패키지 체크섬 계산: %w", err)
 	}
-	if !strings.EqualFold(want, got) {
+	if !strings.EqualFold(want, hex.EncodeToString(h.Sum(nil))) {
 		return errors.New("배포 패키지 SHA256이 서명된 목록과 일치하지 않음(손상 또는 변조)")
+	}
+	zr, err := zip.NewReader(zf, size)
+	if err != nil {
+		return fmt.Errorf("배포 패키지 열기: %w", err)
 	}
 	// artex.new 자체는 서명이 다루지 않으므로 해시를 확인한 패키지에서 다시 꺼낸 것으로 바꾼다.
 	part := p.New + ".part"
 	defer func() { _ = os.Remove(part) }() // 성공하면 이미 옮겨져 없고, 실패하면 남은 조각이다
-	if err := extractBinary(p.Zip, part); err != nil {
+	if err := extractBinaryFrom(zr, part); err != nil {
 		return err
 	}
 	if err := os.Rename(part, p.New); err != nil {
@@ -336,19 +348,6 @@ func HasBackup() bool {
 	}
 	_, err = os.Stat(p.Old)
 	return err == nil
-}
-
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func orUnknown(s string) string {

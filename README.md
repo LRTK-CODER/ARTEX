@@ -424,7 +424,13 @@ server {
 
 `v*` 태그를 밀면 릴리스 워크플로가 zip과 `SHA256SUMS`를 붙인 **초안** 릴리스를 만든다(Docker 이미지는 이때 바로 올라간다). 셀프 업데이트는 `SHA256SUMS.sig`가 바이너리에 고정한 공개 키(`selfupdate/release_keys.go`)로 검증될 때만 설치하므로, 소유자가 오프라인 개인 키로 서명해 붙인 뒤 발행한다. immutable releases가 켜져 있어 발행 뒤에는 자산을 붙일 수 없다. 개인 키는 저장소·GitHub Secret에 두지 않는다.
 
-1. 초안 릴리스에서 `SHA256SUMS`를 내려받는다.
+1. 초안 릴리스에서 `SHA256SUMS`를 내려받고, 릴리스 워크플로 `release` job 로그의 "Generate checksums" 단계에 찍힌 내용과 같은지 확인한다. 초안 자산은 발행 전까지 바꿀 수 있으므로, 다르면 서명하지 않는다.
+
+   ```bash
+   gh release download v1.2.3 -p SHA256SUMS
+   cat SHA256SUMS
+   ```
+
 2. 오프라인 기기에서 서명한다. 둘 중 하나를 쓴다. ed25519 서명은 결정적이라 둘의 결과는 같은 바이트다.
 
    ```bash
@@ -432,7 +438,12 @@ server {
    openssl pkeyutl -sign -inkey release.key -rawin -in SHA256SUMS -out SHA256SUMS.sig   # Go가 없을 때(OpenSSL 3)
    ```
 
-3. `SHA256SUMS.sig`를 초안에 붙이고 발행한다.
+3. 서명을 초안에 붙이고 발행한다.
+
+   ```bash
+   gh release upload v1.2.3 SHA256SUMS.sig
+   gh release edit v1.2.3 --draft=false
+   ```
 
 키 쌍 만들기(처음 한 번, 오프라인 기기에서):
 
