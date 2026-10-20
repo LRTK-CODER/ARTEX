@@ -130,6 +130,10 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	tools, def, cleanup := AugmentTools(ctx, "mainagent", base)
 	defer cleanup()
 	// 이 작업의 작업 디렉터리를 먼저 만든다(끄면 <workDir>/tasks/<taskID>, 켜면 그 아래 work).
+	bashEnv, err := def.commandEnv(proxyEnv(m.proxyAddr, m.proxyCACert))
+	if err != nil {
+		return "", err
+	}
 	dirs, err := ensureRunDir(m.workDir, taskID, 0, def.ShareWritesWithGroup)
 	if err != nil {
 		return "", err
@@ -158,7 +162,7 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 		DeepSeekSearchAPIKey:  m.webSearch.DeepSeekAPIKey,
 		DeepSeekSearchModel:   m.webSearch.DeepSeekModel,
 		WebSearchProxy:        m.webSearch.Proxy,
-		BashEnv:               proxyEnv(m.proxyAddr, m.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
+		BashEnv:               bashEnv, // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
 		WorkingDir:            mainDir,
 		ToolOutputDir:         dirs.toolOutput,
 		MaxTurns:              m.maxTurns,                             // 0 = unlimited (configurable in agent management)

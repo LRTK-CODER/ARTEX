@@ -45,15 +45,16 @@ for line in sys.stdin:
     sys.stdout.flush()
 `
 
-// TestAgentSandboxEndToEnd 는 uid 분리를 켠 실제 컨테이너에서 에이전트 명령의 모든 실행 경로가 에이전트 uid로
-// 돌고, 서버 비밀에 닿지 못하고, 시간 초과·TaskStop·shell_close가 에이전트 프로세스를 실제로 죽이는지 본다.
+// TestAgentSandboxEndToEnd 는 uid 분리를 켠 실제 컨테이너에서 에이전트 명령의 모든 실행 경로가 그 실행의 uid로
+// 돌고, 서버 비밀과 다른 실행의 프로세스에 닿지 못하고, uid를 싣지 못한 길은 실행되지 않고(#177), 시간 초과·
+// TaskStop·shell_close가 에이전트 프로세스를 실제로 죽이는지 본다.
 // 결과 출력은 t.Log로 남겨 PR의 컨테이너 확인 증거로 쓴다.
 func TestAgentSandboxEndToEnd(t *testing.T) {
 	if os.Getenv(e2eEnv) != "1" {
 		t.Skipf("%s=1 and a container with the sandbox helper are required", e2eEnv)
 	}
 	ctx := context.Background()
-	uid := os.Getenv(AgentUIDEnv)
+	sharedUID := os.Getenv(AgentUIDEnv)
 	helper := os.Getenv(e2eHelperEnv)
 	if helper == "" {
 		helper = "/app/" + SandboxHelperName
@@ -66,7 +67,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dataDir) }) // 정리 실패는 컨테이너가 사라지면 함께 없어진다
 	shellDir := dataDir + "-shell"
 	t.Cleanup(func() { _ = os.RemoveAll(shellDir) })
-	sb, err := EnableAgentSandbox(ctx, AgentSandboxConfig{UID: uid, GID: os.Getenv(AgentGIDEnv), Helper: helper, ShellDir: shellDir, DataDir: dataDir})
+	sb, err := EnableAgentSandbox(ctx, AgentSandboxConfig{UID: sharedUID, GID: os.Getenv(AgentGIDEnv), Helper: helper, ShellDir: shellDir, DataDir: dataDir})
 	if err != nil || sb == nil {
 		t.Fatalf("EnableAgentSandbox = %v, %v", sb, err)
 	}
@@ -74,6 +75,12 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		t.Fatalf("PATH = %q, want only the shell dir %q", got, sb.ShellDir())
 	}
 	t.Logf("server caps after enable:\n%s", procCapLines(t, "/proc/self/status"))
+	if got := os.Getenv(AgentUIDEnv) + os.Getenv(AgentGIDEnv); got != "" {
+		t.Fatalf("shared agent uid/gid left in the server environment: %q", got)
+	}
+	// 작업·세션 실행은 할당한 uid로 돈다(#177). DB 없이 풀의 첫 두 uid를 작업 A·B의 uid로 쓴다(풀 사용자는 이미지에 있다).
+	uid, otherUID := strconv.Itoa(db.AgentUIDPoolFirst), strconv.Itoa(db.AgentUIDPoolFirst+1)
+	envA, envB := sb.identityEnv(db.AgentUIDPoolFirst), sb.identityEnv(db.AgentUIDPoolFirst+1)
 	ws := filepath.Join(dataDir, "sessions", "e2e")
 	if err := os.MkdirAll(ws, 0o775); err != nil {
 		t.Fatal(err)
@@ -83,8 +90,8 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(tasks.Cleanup)
-	syncCtx := &actool.ToolContext{WorkingDir: ws}
-	managedCtx := &actool.ToolContext{WorkingDir: ws, Tasks: tasks}
+	syncCtx := &actool.ToolContext{WorkingDir: ws, Env: envA}
+	managedCtx := &actool.ToolContext{WorkingDir: ws, Tasks: tasks, Env: envA}
 	bash := actool.NewBash()
 
 	t.Run("bash sync", func(t *testing.T) {
@@ -162,28 +169,30 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer os.RemoveAll(testWS)
-		out, err := execPython(ctx, "python3", "test", "import os\nprint(os.getuid())\nopen('probe-py', 'w').write('x')\n", nil, testWS, nil, e2eWait, sb)
+		// 시험 실행은 작업·세션에 속하지 않아 공용 uid로 돈다(pgTestCustomTool의 ToolContext와 같다).
+		testTC := &actool.ToolContext{WorkingDir: testWS, Env: sb.SharedEnv()}
+		out, err := execPython(ctx, "python3", "test", "import os\nprint(os.getuid())\nopen('probe-py', 'w').write('x')\n", nil, testWS, testTC.Env, e2eWait, sb)
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertFirstLine(t, out, uid)
-		res, err := srv.runCommandTool(ctx, json.RawMessage(`{"command":"id -u; ls . >/dev/null && touch probe-cmd && echo ok"}`), nil, &actool.ToolContext{WorkingDir: testWS})
+		assertFirstLine(t, out, sharedUID)
+		res, err := srv.runCommandTool(ctx, json.RawMessage(`{"command":"id -u; ls . >/dev/null && touch probe-cmd && echo ok"}`), nil, testTC)
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertFirstLine(t, res.Flatten(), uid)
+		assertFirstLine(t, res.Flatten(), sharedUID)
 		for _, name := range []string{"probe-py", "probe-cmd"} {
 			info, err := os.Stat(filepath.Join(testWS, name))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if owner := strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Uid), 10); owner != uid {
-				t.Fatalf("%s owner = %s, want agent uid %s", name, owner, uid)
+			if owner := strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Uid), 10); owner != sharedUID {
+				t.Fatalf("%s owner = %s, want shared agent uid %s", name, owner, sharedUID)
 			}
 		}
 	})
 	t.Run("custom python tool", func(t *testing.T) {
-		out, err := execPython(ctx, "python3", "e2e", "import os\nprint(os.getuid())\n", nil, ws, nil, e2eWait, sb)
+		out, err := execPython(ctx, "python3", "e2e", "import os\nprint(os.getuid())\n", nil, ws, envA, e2eWait, sb)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +204,7 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		args, _ := json.Marshal([]string{script})
-		cl, err := connectMCP(ctx, &db.MCPServer{Name: "e2e", Transport: "stdio", Command: "python3", Args: args}, sb)
+		cl, err := connectMCP(ctx, &db.MCPServer{Name: "e2e", Transport: "stdio", Command: "python3", Args: args}, sb, envA)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,6 +258,68 @@ func TestAgentSandboxEndToEnd(t *testing.T) {
 		}
 		if err := os.WriteFile(filepath.Join(ws, "by-agent.txt"), []byte("server edit\n"), 0o644); err != nil {
 			t.Fatalf("server edit of the agent's file: %v", err)
+		}
+	})
+	t.Run("runs of different tasks cannot reach each other's processes", func(t *testing.T) {
+		managedB := &actool.ToolContext{WorkingDir: ws, Tasks: tasks, Env: envB}
+		assertFirstLine(t, runTool(t, bash, managedB, map[string]any{"command": "id -u"}), otherUID)
+		runTool(t, bash, managedB, map[string]any{"command": "exec sleep 305", "run_in_background": true})
+		waitAgentProcess(t, otherUID, "sleep 305", true)
+		pidB := agentProcesses(otherUID, "sleep 305")[0]
+		cmd := fmt.Sprintf("id -u; kill -0 %[1]s; cat /proc/%[1]s/environ; ls /proc/%[1]s/cwd/; ls /proc/%[1]s/fd/; echo done", pidB)
+		out := runTool(t, bash, syncCtx, map[string]any{"command": cmd})
+		assertFirstLine(t, out, uid)
+		for _, want := range []string{"Operation not permitted", "environ: Permission denied", "cwd/': Permission denied", "fd/': Permission denied"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("task A reached task B's process (lacks %q): %q", want, out)
+			}
+		}
+		for _, info := range tasks.List() {
+			runTool(t, actool.NewTaskStop(), managedB, map[string]any{"task_id": info.ID})
+		}
+		waitAgentProcess(t, otherUID, "sleep 305", false)
+	})
+	t.Run("monitor does not run even with the run's uid", func(t *testing.T) {
+		// norma Monitor는 ToolContext.Env를 넘기지 않아 실행의 uid가 도우미에 닿지 않는다. 서버 환경에는 공용 uid도
+		// 없으므로 도우미가 거부하고 명령은 실행되지 않는다(fail closed). 켠 상태의 한계로 README에 적었다.
+		// norma Monitor가 Env를 넘기게 되면 이 경우는 할당 uid로 도는 것을 기대하도록 바꾼다.
+		res := runToolResult(t, actool.NewMonitor(), managedCtx, map[string]any{"command": "id -u > mon-uid"})
+		t.Logf("monitor: isError=%v %q", res.IsError, res.Flatten())
+		id, ok := strings.CutPrefix(res.Flatten(), "Started monitor ")
+		if !ok {
+			t.Fatalf("monitor did not start a task: %q", res.Flatten())
+		}
+		id, _, _ = strings.Cut(id, ".")
+		info, done := tasks.Wait(ctx, id, e2eWait)
+		if !done {
+			t.Fatalf("monitor task %s did not finish", id)
+		}
+		out, err := tasks.Output(id, 4096)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("monitor task: status=%s output=%q", info.Status, out)
+		if info.Status != actool.TaskFailed || !strings.Contains(out, AgentUIDEnv+" is not set") {
+			t.Fatalf("monitor task = %s %q, want failed with the helper refusal", info.Status, out)
+		}
+		if _, err := os.Stat(filepath.Join(ws, "mon-uid")); !os.IsNotExist(err) {
+			t.Fatalf("monitor command ran: %v", err)
+		}
+	})
+	t.Run("a run without its uid does not run", func(t *testing.T) {
+		// 배선이 빠진 길(실행의 uid가 없는 ToolContext·python 환경)은 공용 uid로 떨어지지 않고 도우미가 거부한다.
+		bare := &actool.ToolContext{WorkingDir: ws}
+		res := runToolResult(t, bash, bare, map[string]any{"command": "id -u > nouid-bash"})
+		t.Logf("bash without uid: isError=%v %q", res.IsError, res.Flatten())
+		out, err := execPython(ctx, "python3", "e2e", "import os\nopen('nouid-py', 'w').write(str(os.getuid()))\n", nil, ws, nil, e2eWait, sb)
+		t.Logf("python without uid: %q, %v", out, err)
+		for _, got := range []string{res.Flatten(), out} {
+			if !strings.Contains(got, AgentUIDEnv+" is not set") {
+				t.Fatalf("output lacks the helper refusal: %q", got)
+			}
+		}
+		if matches, _ := filepath.Glob(filepath.Join(ws, "nouid-*")); len(matches) != 0 {
+			t.Fatalf("commands ran without a uid: %v", matches)
 		}
 	})
 	t.Run("nmap connect scan works and syn scan does not", func(t *testing.T) {

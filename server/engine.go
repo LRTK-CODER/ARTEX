@@ -92,9 +92,13 @@ func retryableWorkerModelError(reason harness.TerminalReason, err error) bool {
 // (re)installed at runtime (LLM configured from the UI); the loops always run
 // but idle until an LLM is set.
 type Engine struct {
-	m        *Manager
-	sandbox  *AgentSandbox // 에이전트 uid 분리 설정(#165). nil이면 꺼져 있다
-	debounce time.Duration
+	m       *Manager
+	sandbox *AgentSandbox // 에이전트 uid 분리 설정(#165). nil이면 꺼져 있다
+	// taskUID 는 작업 uid를 받는다. nil이면 sandbox.TaskUID로 DB 풀에서 받는다. 테스트가 DB 일시 오류를 흉내 낼 때 바꾼다.
+	taskUID    func(ctx context.Context, taskID int64) (int, error)
+	uidBackoff agentUIDBackoff // 작업 uid를 일시 오류로 받지 못했을 때 다시 받는 간격과 시계
+	uidRetries sync.Map        // taskID -> *agentUIDRetry, uid를 다시 받는 중인 작업(작업마다 하나)
+	debounce   time.Duration
 
 	bc *Broadcaster // live activity pub/sub (SSE)
 
@@ -179,6 +183,7 @@ func (e *Engine) nextPlannerRound(taskID string) int {
 // for it (a long worker.Execute would otherwise keep going until it finishes).
 func (e *Engine) Pause(taskID string, cause error) {
 	e.paused.Store(taskID, true)
+	e.stopAgentUIDRetry(taskID)
 	e.cancelExec(taskID, cause)
 }
 
@@ -194,6 +199,7 @@ func (e *Engine) BeginDelete(taskID string) bool {
 	}
 	e.paused.Store(taskID, true)
 	e.deleteMu.Unlock()
+	e.stopAgentUIDRetry(taskID)
 	e.cancelExec(taskID, agent.AbortTaskDeleted)
 	return true
 }
@@ -748,10 +754,27 @@ func (e *Engine) ReadyFor(t *Task) bool {
 // Run starts the planner loop + N worker loops for a task. The loops always run
 // but no-op until an LLM is configured (so a task created while idle picks up
 // automatically once LLM is set from the UI).
+//
+// uid 분리를 켰으면 작업 uid를 먼저 받는다(reserveAgentUID). 일시 오류로 다시 받는 중이면 그 재시도가 받은 뒤
+// 루프를 시작하므로 여기서는 아무것도 하지 않는다. 이미 루프를 띄운 작업(다시 엶)은 uid를 받은 뒤라 확인을
+// 건너뛰고 계획 회차만 깨운다. 확인하면 그때의 DB 일시 오류로 재시도 루틴이 하나 더 뜨고 깨우기가 빠진다.
 func (e *Engine) Run(ctx context.Context, t *Task) {
+	if e.Started(t.ID) {
+		e.startTaskLoops(ctx, t)
+		return
+	}
+	if _, retrying := e.uidRetries.Load(t.ID); retrying {
+		return
+	}
 	if !e.reserveAgentUID(ctx, t) {
 		return
 	}
+	e.startTaskLoops(ctx, t)
+}
+
+// startTaskLoops 는 작업 uid를 받은 뒤 planner·worker 루프와 deadline 조정자를 띄운다. 이미 띄웠으면 계획 회차만
+// 깨운다.
+func (e *Engine) startTaskLoops(ctx context.Context, t *Task) {
 	workers := e.m.Workers()
 	e.deleteMu.RLock()
 	if e.IsDeleting(t.ID) {

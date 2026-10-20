@@ -145,7 +145,7 @@ func TestAgentChildProcessesDoNotInheritServerSecrets(t *testing.T) {
 				defer cancel()
 				// sh는 MCP 서버가 아니라서 핸드셰이크는 실패한다. 프로세스가 끝나 stdout이 닫힌 뒤에 오류가 오므로
 				// 그때는 env 파일이 다 써져 있다.
-				if c, err := connectMCP(ctx, &db.MCPServer{Name: "secret-env", Transport: "stdio", Command: "sh", Args: args, Env: env}, nil); err == nil {
+				if c, err := connectMCP(ctx, &db.MCPServer{Name: "secret-env", Transport: "stdio", Command: "sh", Args: args, Env: env}, nil, nil); err == nil {
 					c.Close()
 				}
 				b, err := os.ReadFile(out)

@@ -298,7 +298,22 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (s *Server) convBusyKey(id int64) string { return "conv-" + strconv.FormatInt(id, 10) }
+func (s *Server) convBusyKey(id int64) string {
+	return conversationSessionPrefix + strconv.FormatInt(id, 10)
+}
+
+// conversationSessionPrefix 는 대화형 세션 차례의 세션 키(convBusyKey, agent.RunInfo.SessionID) 앞부분이다.
+const conversationSessionPrefix = "conv-"
+
+// conversationIDFromSessionKey 는 convBusyKey가 만든 세션 키에서 대화 id를 꺼낸다. 그 모양이 아니면 false다.
+func conversationIDFromSessionKey(key string) (int64, bool) {
+	digits, ok := strings.CutPrefix(key, conversationSessionPrefix)
+	if !ok {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(digits, 10, 64)
+	return id, err == nil && id > 0
+}
 
 // pgConversationMessages returns steps after ?since=cursor plus whether a turn is
 // still running (so the client knows to keep polling). Same item shape as the task
@@ -552,19 +567,18 @@ func (s *Server) runConversationTurn(ctx context.Context, cancel context.CancelC
 	if a, err := pg.GetAgentByKey(c.AgentKey); err == nil && a != nil {
 		webSearch = a.WebSearch
 	}
-	// 대화형 세션은 세션마다 uid를 받는다(#166). 풀이 바닥났으면 기다리지 않고 이 차례를 원인과 함께 실패시킨다.
-	// 일시 오류는 이 차례를 막지 않고 다음 차례에서 다시 받는다(agentUIDBlocksRun).
+	// 대화형 세션은 세션마다 uid를 받는다(#166). 받지 못하면(풀 고갈, 일시 오류 모두) 기다리지 않고 이 차례를 원인과
+	// 함께 실패시킨다. uid 없이 돌지 않는다(#177). 작업과 달리 일시 오류에도 다시 시도하지 않는다. 차례는 사용자가
+	// 보낸 메시지 하나라 사용자가 오류를 보고 다시 보내면 다음 차례에서 다시 받는다. 여기서 기다리면 세션이 바쁜
+	// 상태로 남아 그동안 보낸 메시지도 막힌다.
 	if _, err := s.sandbox.ConversationUID(ctx, pg, c.ID); err != nil {
-		if !agentUIDBlocksRun(err) {
-			log.Printf("[conv %d] 에이전트 uid를 받지 못했으나 일시 오류로 보고 차례를 계속함: %v", c.ID, err)
-		} else {
-			finishReason = agentUIDUnavailableMessage + " " + err.Error()
-			if _, appendErr := pg.AppendConvActivity(c.ID, db.Activity{Worker: c.AgentKey, Kind: "text", IsError: true,
-				Summary: "(오류: " + agentUIDUnavailableMessage + " 쓰지 않는 작업이나 대화를 지운 뒤 다시 시도하세요)", Detail: err.Error()}); appendErr != nil {
-				log.Printf("[conv %d] append activity failed: %v", c.ID, appendErr)
-			}
-			return
+		log.Printf("[conv %d] 에이전트 uid를 받지 못해 차례를 멈춤: %v", c.ID, err)
+		finishReason = agentUIDUnavailableMessage + " " + err.Error()
+		if _, appendErr := pg.AppendConvActivity(c.ID, db.Activity{Worker: c.AgentKey, Kind: "text", IsError: true,
+			Summary: "(오류: " + agentUIDUnavailableMessage + " " + agentUIDRetryHint(err) + ")", Detail: err.Error()}); appendErr != nil {
+			log.Printf("[conv %d] append activity failed: %v", c.ID, appendErr)
 		}
+		return
 	}
 	sessionID := s.convBusyKey(c.ID) // "conv-<id>" transcript session
 	emit := func(rec db.Activity) {

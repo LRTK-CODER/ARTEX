@@ -122,6 +122,10 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
 	// 작업 디렉터리는 도구 모음을 정한 뒤에 만든다. 에이전트 uid 분리(#165)를 켰는지가 def에 있다.
+	bashEnv, err := def.commandEnv(proxyEnv(c.proxyAddr, c.proxyCACert))
+	if err != nil {
+		return "", err
+	}
 	dirs, err := ensureSessionDir(sessionWorkDir, def.ShareWritesWithGroup)
 	if err != nil {
 		return "", err
@@ -149,7 +153,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 		DeepSeekSearchAPIKey:  ws.DeepSeekAPIKey,
 		DeepSeekSearchModel:   ws.DeepSeekModel,
 		WebSearchProxy:        ws.Proxy,
-		BashEnv:               proxyEnv(c.proxyAddr, c.proxyCACert), // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
+		BashEnv:               bashEnv, // Bash 하위 명령은 기본으로 프록시+신뢰 CA를 탄다
 		WorkingDir:            sessionWorkDir,
 		MaxTurns:              maxTurns,
 		MaxDuration:           maxDuration,

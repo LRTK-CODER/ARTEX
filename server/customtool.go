@@ -174,7 +174,8 @@ func (s *Server) pgTestCustomTool(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[custom-tool] 시험 실행 작업 공간을 지우지 못했다: %v", err)
 		}
 	}()
-	tc := &actool.ToolContext{WorkingDir: ws}
+	// 시험 실행은 작업·세션에 속하지 않으므로 공용 에이전트 uid로 돈다(#177). 넣지 않으면 도우미가 uid가 없다며 거부한다.
+	tc := &actool.ToolContext{WorkingDir: ws, Env: s.sandbox.SharedEnv()}
 	var res actool.Result
 	switch req.Kind {
 	case "command":
@@ -421,7 +422,8 @@ func (s *Server) runScriptTool(ctx context.Context, key string, execRaw json.Raw
 // execPython writes the code to a temp .py under workDir/.tools, runs it via interp
 // with the params JSON on stdin + scalar params mirrored to TOOL_<NAME> env, and
 // returns combined stdout+stderr (with a timeout/exit note). Standalone + testable.
-// sandbox가 켜져 있으면 도우미로 감싸 에이전트 uid로 실행한다.
+// sandbox가 켜져 있으면 도우미로 감싸 sessionEnv(이 실행의 BashEnv)에 든 uid·gid로 실행한다. sessionEnv에 없으면
+// 도우미가 거부한다. 공용 uid로 떨어지지 않는다(#177).
 func execPython(ctx context.Context, interp, key, code string, params map[string]any, workDir string, sessionEnv []string, timeout time.Duration, sandbox *AgentSandbox) (string, error) {
 	tmp, cleanup, err := writeToolScript(workDir, key, code)
 	if err != nil {
@@ -435,7 +437,7 @@ func execPython(ctx context.Context, interp, key, code string, params map[string
 	c := exec.CommandContext(runCtx, name, args...)
 	c.Dir = workDir
 	c.Env = append(pythonToolEnviron(os.Environ()), sessionEnv...) // 세션 프록시 env
-	for k, v := range sandbox.Env() {                              // 허용 목록이 거르므로 도우미가 읽을 uid·gid를 따로 넣는다
+	for k, v := range sandbox.Env(nil) {                           // 허용 목록이 거르므로 도우미가 읽을 원래 PATH를 따로 넣는다
 		c.Env = append(c.Env, k+"="+v)
 	}
 	for k, v := range params { // 스칼라 파라미터를 TOOL_<NAME>으로 복사한다
