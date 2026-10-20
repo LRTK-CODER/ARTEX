@@ -3896,10 +3896,14 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			// taskDir = 에이전트의 작업 디렉터리(CWD). chatUpload가 저장하는 곳, ensureRunDir와 같다.
 			taskDir := filepath.Join(s.m.dir, "tasks", t.ID)
 			agentMsg := composeAgentMessage(agentMessage, req.Attachments, taskDir)
-			// 메인 에이전트도 작업 uid로 명령을 돌린다(#166). 받지 못하면 이 대화만 실패시키고 작업 상태는 그대로 둔다.
+			// 메인 에이전트도 작업 uid로 명령을 돌린다(#166). 풀이 바닥났으면 이 대화만 실패시키고 작업 상태는 그대로
+			// 둔다. 일시 오류는 대화를 막지 않고 다음에 다시 받는다(agentUIDBlocksRun).
 			if _, err := s.sandbox.TaskUID(ctx, s.m.pg, maTaskID); err != nil {
-				s.engine.emitActivity(t, db.Activity{Worker: "mainagent", Kind: "text", IsError: true, Summary: "(메인 에이전트 오류: " + agentUIDUnavailableMessage + ")", Detail: err.Error(), MainSeg: segPtr})
-				return
+				if agentUIDBlocksRun(err) {
+					s.engine.emitActivity(t, db.Activity{Worker: "mainagent", Kind: "text", IsError: true, Summary: "(메인 에이전트 오류: " + agentUIDUnavailableMessage + ")", Detail: err.Error(), MainSeg: segPtr})
+					return
+				}
+				log.Printf("[mainagent] task %s 에이전트 uid를 받지 못했으나 일시 오류로 보고 대화를 계속함: %v", t.ID, err)
 			}
 			s.engine.BeginLLMCall(t.ID)
 			_, err := ma.Chat(ctx, maTaskID, mainSeg, s.m.Assets(), t.Store, t.Goal, agentMsg, emit, t.Notify, resume, t.NotifyGoal, t.NotifyHint)
