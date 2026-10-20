@@ -26,6 +26,7 @@ import (
 	"github.com/Autumn-27/norma/compaction"
 	"github.com/Autumn-27/norma/llm"
 	acperm "github.com/Autumn-27/norma/permission"
+	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
 )
 
@@ -553,9 +554,12 @@ func TestConnection(ctx context.Context, c Config) (time.Duration, string, error
 		Provider:       prov,
 		SystemPrompt:   []string{"You are a connection test. Output exactly the two characters OK and nothing else — no thinking, no explanation, nothing more."},
 		PermissionMode: acperm.ModeBypass,
-		MaxTurns:       1,
-		MaxTokens:      8192,
-		NonStreaming:   !c.Stream, // 이 프로필의 실제 송수신 방식으로 연결을 테스트한다.
+		// nil이면 norma가 기본 파일·셸 도구를 붙인다. 연결 테스트에는 도구가 필요 없고, 붙이면 작업 공간 제한
+		// 없는 파일 도구가 생기므로(#169) 빈 목록을 준다.
+		Tools:        []actool.CoreTool{},
+		MaxTurns:     1,
+		MaxTokens:    8192,
+		NonStreaming: !c.Stream, // 이 프로필의 실제 송수신 방식으로 연결을 테스트한다.
 	}, "ping")
 	lat := time.Since(start)
 	if err != nil {

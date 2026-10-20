@@ -120,6 +120,7 @@ func (c *ChatAgent) Chat(ctx context.Context, agentKey, sessionID, message strin
 	// have no tools-table rows, so they always pass through.
 	base := actool.DefaultTools()
 	ctx = WithRunInfo(ctx, RunInfo{SessionID: sessionID})
+	ctx = withFileScope(ctx, fileScopeFor(fileRoleConversation, fileScopeInput{DataDir: c.workDir, SessionDir: sessionWorkDir}))
 	tools, def, cleanup := AugmentTools(ctx, agentKey, base)
 	defer cleanup()
 
