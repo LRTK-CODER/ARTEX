@@ -331,6 +331,23 @@ RETURNING id`, taskID, assetID).Scan(&detachedID)
 	return detachedID == assetID, nil
 }
 
+// schema.sql이 시스템 연결(trg_assets_task_links)과 옛 task_ids 이관에 남기는 출처 설명이다.
+// schema.sql의 SQL 문자열과 글자가 같아야 한다(TestTaskAssetLinkSummariesMatchSchema).
+const (
+	TaskAssetLinkSummaryAuto   = "작업 실행 중 자동 연결"
+	TaskAssetLinkSummaryLegacy = "이전 작업 자산 연결에서 옮김"
+)
+
+// ReplaceTaskAssetLinkSummary 는 source_summary가 from과 글자 그대로 같은 모든 작업-자산 연결의
+// 출처 설명을 to로 바꾸고, 바꾼 행 수를 돌려준다. 다른 설명과 출처 종류(source)는 건드리지 않는다.
+func (s *AssetStore) ReplaceTaskAssetLinkSummary(from, to string) (int64, error) {
+	res, err := s.db.Exec(`UPDATE task_asset_links SET source_summary=$2 WHERE source_summary=$1`, from, to)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *AssetStore) hydrateTaskAssetSources(taskID int64, assets []*Asset) error {
 	if len(assets) == 0 {
 		return nil
