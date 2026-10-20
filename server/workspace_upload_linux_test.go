@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// 에이전트 uid 분리(#165)를 켠 서버 umask(002)에서 작업 공간에 올린 파일은 0664다. 서버가 임시 파일에 쓴 뒤 이름을
-// 바꿔 넣어도(#176), 같은 작업 디렉터리의 다른 파일처럼 에이전트 그룹이 그 자리에서 고칠 수 있어야 한다.
+// 작업 공간에 올린 파일은 0666에서 umask(여기서는 002)를 뺀 0664다. 서버가 임시 파일에 쓴 뒤 이름을 바꿔 넣어도
+// (#176), 같은 작업 디렉터리의 다른 파일처럼 그룹 자리(uid 분리를 켜면 ACL mask, #182)에 쓰기가 남아야 한다.
 func TestWorkspaceUploadKeepsGroupWritableUnderSharedUmask(t *testing.T) {
 	previous := syscall.Umask(0o002)
 	t.Cleanup(func() { syscall.Umask(previous) })

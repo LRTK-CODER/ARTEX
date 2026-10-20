@@ -134,7 +134,7 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	if err != nil {
 		return "", err
 	}
-	dirs, err := ensureRunDir(m.workDir, taskID, 0, def.ShareWritesWithGroup)
+	dirs, err := ensureRunDir(m.workDir, taskID, 0, def.WorkspaceUID)
 	if err != nil {
 		return "", err
 	}

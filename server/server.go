@@ -91,6 +91,9 @@ type Server struct {
 	// cleared alongside chatBusy under chatMu. Aborting a run does NOT touch the P3
 	// trigger queue — the drain goroutine simply proceeds to the next queued fire.
 	chatCancel map[string]context.CancelCauseFunc
+	// stopTicker 는 대화를 지울 때 돌고 있는 차례가 끝났는지 다시 확인하는 박자를 준다(closeConversationWorkspace).
+	// 테스트가 박자를 직접 보내 "차례가 도는 동안 확인을 돌았다"를 시간 기다림 없이 확인하려고 이음매로 둔다.
+	stopTicker func() (ticks <-chan time.Time, stop func())
 
 	// triggerQ는 P3 트리거 실행을 에이전트별로 쌓아 둔다. 에이전트마다 하나인 "pump"가
 	// 에이전트 정책에서 나온 동시 실행 제한까지 실행을 띄운다: serial → 제한 1(+ 선택적
@@ -170,7 +173,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
-		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
+		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1), stopTicker: newStopTicker}
 	// OAuth 토큰 키는 jwt.key와 같은 키 디렉터리에 둔다(파일 관리자로 열람할 수 없는 곳).
 	s.oauth = loadOAuthTokenRegistry(m.pg, keyDir)
 	s.initSideQuestions()

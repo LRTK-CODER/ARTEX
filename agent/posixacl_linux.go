@@ -9,7 +9,9 @@ import (
 )
 
 // SetACL 은 연 파일 f에 kind ACL을 쓴다. 경로를 다시 풀지 않으므로(fsetxattr) 연 뒤 그 자리가 링크로 바뀌어도
-// f 자체에만 쓴다. 접근 ACL을 쓰면 커널이 모드의 그룹 자리를 mask(없으면 소유 그룹)로 바꾼다. 기본 ACL은
+// f 자체에만 쓴다. 링크를 거부하는 것은 여는 쪽의 책임이다. os.Open은 링크를 따라가 대상 파일에 쓰게 되므로
+// O_RDONLY|O_NOFOLLOW(디렉터리는 O_DIRECTORY도)로 연다. O_PATH로 연 기술자에는 EBADF로 실패한다.
+// 접근 ACL을 쓰면 커널이 모드의 그룹 자리를 mask(없으면 소유 그룹)로 바꾼다. 기본 ACL은
 // 디렉터리에만 쓸 수 있다. 소유자가 아니면 EPERM, 파일 시스템이 ACL을 지원하지 않으면 ENOTSUP(EOPNOTSUPP)를 올린다.
 func SetACL(f *os.File, kind ACLKind, acl ACL) error {
 	data, err := encodeACL(acl)

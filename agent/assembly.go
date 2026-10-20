@@ -25,9 +25,9 @@ type DeferredInfo struct {
 	// SkillDirs 는 이 에이전트에게 보이는 스킬의 디렉터리다. 파일 도구가 SKILL.md의 참조 파일을 읽을 수 있게
 	// 읽기 허용에 더한다.
 	SkillDirs []string
-	// ShareWritesWithGroup 은 파일 도구가 쓴 파일에 그룹 쓰기를 더할지다. 에이전트 명령이 다른 uid로 돌 때(#165)
-	// 서버 uid로 도는 Write가 만든 파일을 에이전트가 그룹 권한으로 고칠 수 있게 한다.
-	ShareWritesWithGroup bool
+	// WorkspaceUID 는 에이전트 uid 분리(#165)를 켰을 때 이 실행의 작업·세션 uid다. 0이면 꺼져 있다. 켜면 작업 공간을
+	// 그 uid에만 ACL로 열고(#182), 서버 uid로 도는 Write가 만든 파일을 그 uid가 고칠 수 있게 쓰기를 더한다.
+	WorkspaceUID int
 	// CommandEnv 는 이 실행의 에이전트 명령(Bash 동기·백그라운드, shell_open, 명령형·python 사용자 지정 도구)에 덧붙일
 	// 환경 변수(KEY=VALUE)다. uid 분리를 켜면 작업·세션에 할당한 uid·gid가 든다(#177).
 	CommandEnv []string
@@ -84,7 +84,7 @@ func AugmentTools(ctx context.Context, agentKey string, base []actool.CoreTool) 
 	}
 	out, def.FindingGuidance = findingWorkflowTools(agentKey, out)
 	// 파일 도구는 호출한 쪽이 withFileScope로 실은 허용 경로 안에서만 돈다. 싣지 않았으면 모든 경로를 거부한다.
-	scope := fileScopeFrom(ctx).forSharing(def.ShareWritesWithGroup)
+	scope := fileScopeFrom(ctx).forSharing(def.WorkspaceUID != 0)
 	scope.Readable = append(append([]string{}, scope.Readable...), def.SkillDirs...)
 	out = confineFileTools(out, scope)
 	for i, t := range out {

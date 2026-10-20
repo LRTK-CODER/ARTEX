@@ -114,7 +114,7 @@ func run() int {
 		}
 	}
 
-	// 에이전트 명령을 서버와 다른 uid로 실행한다(기본 꺼짐). PATH(셸 대체 디렉터리 하나로)와 umask를 바꾸므로 에이전트가 자식 프로세스를
+	// 에이전트 명령을 서버와 다른 uid로 실행한다(기본 꺼짐). 프로세스 PATH를 셸 대체 디렉터리 하나로 바꾸므로 에이전트가 자식 프로세스를
 	// 띄우기 전, 저장소를 열고 작업을 이어 실행하기 전에 한다. 켰는데 준비하지 못하면 조용히 끄지 않고 멈춘다.
 	// 켜면 EnableAgentSandbox가 프로세스 환경에서 공용 uid·gid를 지우므로 로그에 쓸 값을 먼저 읽는다.
 	sharedUID, sharedGID := os.Getenv(server.AgentUIDEnv), os.Getenv(server.AgentGIDEnv)
@@ -130,7 +130,7 @@ func run() int {
 		return 1
 	}
 	if sandbox != nil {
-		log.Printf("[sandbox] 에이전트 명령을 작업·세션마다 할당한 uid와 gid %s로 실행한다(공용 uid %s는 설정 화면 명령에만, 셸 대체 %s)", sharedGID, sharedUID, sandbox.ShellDir())
+		log.Printf("[sandbox] 에이전트 명령을 작업·세션마다 할당한 uid·gid로 실행한다(공용 uid %s·gid %s는 설정 화면 명령에만, 셸 대체 %s)", sharedUID, sharedGID, sandbox.ShellDir())
 	}
 
 	mgr, err := server.NewManager(*dataDir, *proxy, secretEnv)
@@ -138,6 +138,11 @@ func run() int {
 		log.Fatalf("open stores: %v", err)
 	}
 	defer mgr.Close()
+	// 작업 공간을 작업·세션마다 그 uid에만 연다(#182). 작업을 이어 실행하기 전에 DB의 할당 표대로 ACL을 다시 건다.
+	if err := server.PrepareAgentWorkspaces(ctx, mgr, sandbox); err != nil {
+		log.Printf("[sandbox] 작업 공간 권한을 맞추지 못했다: %v", err)
+		return 1
+	}
 
 	// Surviving this long means a freshly swapped-in build actually works, so drop
 	// the upgrade marker and stop counting attempts. Until it fires, every boot

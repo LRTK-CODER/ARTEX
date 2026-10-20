@@ -38,12 +38,12 @@ func TestEnableAgentSandboxOffByDefault(t *testing.T) {
 	}
 	// 꺼져 있으면 서버가 띄우는 명령과 환경을 바꾸지 않는다.
 	name, args := sb.Command("npx", []string{"-y", "pkg"})
-	if name != "npx" || !reflect.DeepEqual(args, []string{"-y", "pkg"}) || sb.Env(nil) != nil || sb.SharedEnv() != nil || sb.SharesWorkspace() {
+	if name != "npx" || !reflect.DeepEqual(args, []string{"-y", "pkg"}) || sb.Env(nil) != nil || sb.SharedEnv() != nil {
 		t.Fatalf("nil sandbox changed the command: %s %v env=%v shared=%v", name, args, sb.Env(nil), sb.SharedEnv())
 	}
 	// 꺼져 있으면 실행에 uid를 붙이지 않고 오류도 없다(DB를 보지 않는다).
-	if env, err := sb.RunEnv(context.Background(), nil, agent.RunInfo{TaskID: 1}); env != nil || err != nil {
-		t.Fatalf("nil sandbox RunEnv = %v, %v, want nil, nil", env, err)
+	if uid, env, err := sb.RunIdentity(context.Background(), nil, agent.RunInfo{TaskID: 1}); uid != 0 || env != nil || err != nil {
+		t.Fatalf("nil sandbox RunIdentity = %d, %v, %v, want 0, nil, nil", uid, env, err)
 	}
 }
 
@@ -60,7 +60,6 @@ func TestEnableAgentSandboxFailsLoudly(t *testing.T) {
 		{name: "not a number", uid: "agent", gid: "20000", want: "must be a number"},
 		{name: "server uid", uid: strconv.Itoa(os.Getuid()), gid: "20000", want: "server's own uid"},
 		{name: "server group", uid: "20000", gid: strconv.Itoa(os.Getgid()), want: "server's own primary group"},
-		{name: "server not in group", uid: "20000", gid: "29999", want: "not a member of group"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -147,10 +146,10 @@ func TestAgentSandboxWrapsCommand(t *testing.T) {
 		want     map[string]string
 	}{
 		{
-			// 사용자가 MCP 설정에 같은 이름을 적어도 서버 값이 이긴다. 실행의 uid와 공용 gid가 들어간다(#177).
+			// 사용자가 MCP 설정에 같은 이름을 적어도 서버 값이 이긴다. 실행의 uid와 같은 값의 gid가 들어간다(#177, #182).
 			name:     "run uid",
-			identity: sb.identityEnv(20005),
-			want:     map[string]string{"TOKEN": "t", AgentUIDEnv: "20005", AgentGIDEnv: "20001", AgentPathEnv: "/usr/bin:/bin"},
+			identity: identityEnv(20005, 20005),
+			want:     map[string]string{"TOKEN": "t", AgentUIDEnv: "20005", AgentGIDEnv: "20005", AgentPathEnv: "/usr/bin:/bin"},
 		},
 		{
 			name:     "shared uid",

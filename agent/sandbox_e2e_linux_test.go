@@ -5,11 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
+	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -25,8 +26,10 @@ const (
 const e2eRaceDuration = 20 * time.Second
 
 // TestSharedWorkspaceEndToEnd 는 uid 분리를 켠 실제 컨테이너에서 작업 공간 배치(sharedRunDirs)가 서버 uid 코드를
-// 에이전트의 링크·바꿔치기에서 지키는지 본다. 결과 출력은 t.Log로 남겨 PR의 컨테이너 확인 증거로 쓴다.
+// 에이전트의 링크·바꿔치기에서 지키고, 작업·세션 uid끼리 작업 공간을 나누는지(#182) 본다. 결과 출력은 t.Log로 남겨
+// PR의 컨테이너 확인 증거로 쓴다. 에이전트 명령은 풀의 uid(작업 A 20001, 작업 B 20002)와 같은 값의 gid로 돈다.
 //
+//   - 작업 A의 에이전트는 작업 B·다른 세션의 작업 공간·큰 출력·첨부와 drafts를 읽거나 쓰지 못한다.
 //   - 에이전트는 tasks/<tid>와 큰 출력 디렉터리에 이름을 만들거나 서버가 만든 항목을 옮기지 못한다.
 //   - fs.protected_regular=2인 호스트에서도 서버 uid의 Write·Edit가 에이전트가 만든 작업 공간 파일을 고친다.
 //   - norma가 큰 출력을 쓸 때 에이전트가 미리 둔 링크를 따라가지 않는다.
@@ -39,27 +42,28 @@ func TestSharedWorkspaceEndToEnd(t *testing.T) {
 	if helper == "" {
 		helper = "/app/artex-sandbox"
 	}
-	uid, gid := os.Getenv("ARTEX_AGENT_UID"), os.Getenv("ARTEX_AGENT_GID")
-	gidNum, err := parseE2EID(gid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	syscall.Umask(0o002) // 서버가 켤 때 두는 umask(server의 setSharedUmask)와 같게 한다
+	const uidA, uidB = db.AgentUIDPoolFirst, db.AgentUIDPoolFirst + 1
+	uid := strconv.Itoa(uidA)
 
-	// 데이터 디렉터리와 그 아래 tasks·sessions는 server의 prepareSharedWorkspace가 맞추는 권한과 같게 둔다.
+	// 데이터 디렉터리와 그 아래 tasks·sessions·drafts는 server의 prepareWorkspaceRoots가 맞추는 권한과 같게 둔다.
 	// t.TempDir()은 0700 상위 디렉터리 아래에 만들어 에이전트가 들어가지 못하므로 /tmp 바로 아래에 둔다.
 	dataDir, err := os.MkdirTemp("", "artex-e2e-ws-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dataDir) }) // 정리 실패는 컨테이너가 사라지면 함께 없어진다
-	setE2EDir(t, dataDir, gidNum, 0o710)
-	for _, name := range []string{"tasks", "sessions"} {
-		p := filepath.Join(dataDir, name)
-		if err := os.Mkdir(p, 0o750); err != nil {
+	for _, dir := range []string{dataDir, filepath.Join(dataDir, "tasks"), filepath.Join(dataDir, "sessions")} {
+		if err := EnsureContainerDir(dir); err != nil {
 			t.Fatal(err)
 		}
-		setE2EDir(t, p, gidNum, 0o750|os.ModeSetgid)
+	}
+	drafts := filepath.Join(dataDir, "drafts")
+	if err := os.MkdirAll(filepath.Join(drafts, "d1", UploadsDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(drafts, "d1", UploadsDirName, "a.txt"), "DRAFT-ATTACHMENT")
+	if err := ShareDir(drafts, 0, WorkspaceServerOnly); err != nil {
+		t.Fatal(err)
 	}
 	// 키는 서버 홈(0700) 아래에 둔다. 임시 디렉터리는 모든 역할의 파일 도구 쓰기 허용 경로라 그 아래 키는 경쟁 없이도
 	// 닿는다(실제 키 디렉터리는 임시 디렉터리 밖이다).
@@ -88,18 +92,32 @@ func TestSharedWorkspaceEndToEnd(t *testing.T) {
 	}
 	writeKey()
 
-	agentSh := func(dir, cmd string) string {
+	agentShAs := func(agentUID int, dir, cmd string) string {
+		id := strconv.Itoa(agentUID)
 		c := exec.Command(helper, "exec", "--", "sh", "-c", cmd)
 		c.Dir = dir
-		c.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "ARTEX_AGENT_UID=" + uid, "ARTEX_AGENT_GID=" + gid}
+		c.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "ARTEX_AGENT_UID=" + id, "ARTEX_AGENT_GID=" + id}
 		out, err := c.CombinedOutput()
 		return fmt.Sprintf("%s(exit: %v)", out, err)
 	}
-	planner, err := ensureRunDir(dataDir, 7, 0, true)
+	agentSh := func(dir, cmd string) string { return agentShAs(uidA, dir, cmd) }
+	planner, err := ensureRunDir(dataDir, 7, 0, uidA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := ensureRunDir(dataDir, 7, 1, true)
+	worker, err := ensureRunDir(dataDir, 7, 1, uidA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherTask, err := ensureRunDir(dataDir, 8, 2, uidB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionA, err := ensureSessionDir(filepath.Join(dataDir, "sessions", "conv-1"), uidA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionB, err := ensureSessionDir(filepath.Join(dataDir, "sessions", "conv-2"), uidB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,6 +129,67 @@ func TestSharedWorkspaceEndToEnd(t *testing.T) {
 		t.Logf("fs.protected_regular = %s", strings.TrimSpace(string(data)))
 	}
 	t.Logf("agent search tools: %s", agentSh(planner.work, "id; for c in rg grep find ls; do command -v $c || echo \"$c: not found\"; done"))
+	if out, err := exec.Command("getfacl", "-n", "-p", filepath.Dir(planner.work), planner.work, planner.toolOutput, sessionA.work).CombinedOutput(); err == nil {
+		t.Logf("getfacl:\n%s", out)
+	} else {
+		t.Logf("getfacl is not available: %v: %s", err, out)
+	}
+
+	t.Run("tasks and sessions cannot reach each other", func(t *testing.T) {
+		for _, f := range []struct{ dir, name, content string }{
+			{otherTask.work, "secret.txt", "TASK-B-SECRET"},
+			{sessionB.work, "secret.txt", "SESSION-B-SECRET"},
+		} {
+			if out := agentShAs(uidB, f.dir, "echo "+f.content+" > "+f.name+" && echo written"); !strings.Contains(out, "written") {
+				t.Fatalf("owner could not write its own workspace: %q", out)
+			}
+		}
+		mustWrite(t, filepath.Join(otherTask.toolOutput, "output-1-1.txt"), "TASK-B-OUTPUT")
+		if err := os.MkdirAll(filepath.Join(filepath.Dir(otherTask.work), UploadsDirName), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustWrite(t, filepath.Join(filepath.Dir(otherTask.work), UploadsDirName, "b.txt"), "TASK-B-UPLOAD")
+		targets := []string{
+			otherTask.work, filepath.Join(otherTask.work, "secret.txt"), otherTask.toolOutput,
+			filepath.Join(otherTask.toolOutput, "output-1-1.txt"), filepath.Join(filepath.Dir(otherTask.work), UploadsDirName, "b.txt"),
+			sessionB.work, filepath.Join(sessionB.work, "secret.txt"), sessionB.toolOutput,
+			filepath.Join(dataDir, "tasks"), filepath.Join(dataDir, "sessions"), drafts, filepath.Join(drafts, "d1", UploadsDirName, "a.txt"),
+		}
+		var cmd strings.Builder
+		for _, p := range targets {
+			fmt.Fprintf(&cmd, "echo '## %s'; ls %s 2>&1 | head -3; cat %s 2>&1 | head -1; touch %s/x 2>&1; ", p, p, p, p)
+		}
+		for _, run := range []struct {
+			name string
+			dir  string
+		}{{"task A", planner.work}, {"session A", sessionA.work}} {
+			out := agentSh(run.dir, cmd.String())
+			t.Logf("%s (uid %d) reaches for task B (uid %d), session B and drafts:\n%s", run.name, uidA, uidB, out)
+			// 대상마다 ls·cat·touch가 모두 권한 오류여야 하고, B의 내용이 하나도 보이면 안 된다.
+			for _, part := range strings.Split(out, "## ")[1:] {
+				if strings.Count(part, "Permission denied") < 3 {
+					t.Fatalf("%s was not denied every access: %q", run.name, part)
+				}
+			}
+			for _, secret := range []string{"TASK-B-SECRET", "SESSION-B-SECRET", "TASK-B-OUTPUT", "TASK-B-UPLOAD", "DRAFT-ATTACHMENT"} {
+				if strings.Contains(out, secret) {
+					t.Fatalf("%s read %q from another task, session or drafts", run.name, secret)
+				}
+			}
+			for _, p := range targets {
+				if _, err := os.Stat(filepath.Join(p, "x")); err == nil {
+					t.Fatalf("%s created a file in %s", run.name, p)
+				}
+			}
+		}
+		// 서버 uid의 파일 도구 Read는 drafts의 첨부를 읽는다(작업 생성 전 첨부는 이 길로만 읽는다).
+		tools := e2eFileTools(fileScopeFor(fileRoleTask, fileScopeInput{DataDir: dataDir, TaskID: 7}).forSharing(true))
+		res := callTool(t, tools["Read"], &actool.ToolContext{WorkingDir: planner.work}, map[string]any{"file_path": filepath.Join(drafts, "d1", UploadsDirName, "a.txt")})
+		t.Logf("server Read of the draft attachment: isError=%v %q", res.IsError, res.Flatten())
+		if res.IsError || !strings.Contains(res.Flatten(), "DRAFT-ATTACHMENT") {
+			t.Fatalf("file tool Read could not read the draft attachment: %q", res.Flatten())
+		}
+	})
 
 	t.Run("agent cannot replace server entries", func(t *testing.T) {
 		cmd := strings.Join([]string{
@@ -210,7 +289,7 @@ func TestSharedWorkspaceEndToEnd(t *testing.T) {
 			int((e2eRaceDuration + 2*time.Second).Seconds()), key)
 		c := exec.Command(helper, "exec", "--", "sh", "-c", loop)
 		c.Dir = worker.work
-		c.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "ARTEX_AGENT_UID=" + uid, "ARTEX_AGENT_GID=" + gid}
+		c.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "ARTEX_AGENT_UID=" + uid, "ARTEX_AGENT_GID=" + uid}
 		if err := c.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -254,22 +333,4 @@ func e2eFileTools(scope FileScope) map[string]actool.CoreTool {
 		tools[tool.Name()] = tool
 	}
 	return tools
-}
-
-func setE2EDir(t *testing.T, dir string, gid int, mode os.FileMode) {
-	t.Helper()
-	if err := os.Chown(dir, -1, gid); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, mode); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func parseE2EID(s string) (int, error) {
-	var n int
-	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
-		return 0, fmt.Errorf("ARTEX_AGENT_GID %q: %w", s, err)
-	}
-	return n, nil
 }

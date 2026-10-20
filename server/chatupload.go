@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Autumn-27/artex/agent"
 	"github.com/Autumn-27/artex/db"
 )
 
@@ -91,7 +92,7 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer root.Close()
-	const rel = "uploads"
+	const rel = agent.UploadsDirName
 	if info, err := root.Lstat(rel); err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		// 같은 단위 안을 가리키는 링크라도 따라가지 않는다. 첨부는 늘 uploads/ 자체에 둔다.
 		writeErr(w, http.StatusConflict, "업로드 디렉터리가 심볼릭 링크라서 저장하지 않습니다")
@@ -123,7 +124,7 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, "첨부 파일을 저장하지 못했습니다: "+err.Error())
 			return
 		}
-		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: filepath.Join(dir, base)})
+		out = append(out, chatAttachment{Name: base, Path: rel + "/" + base, Size: hdr.Size, Abs: filepath.Join(dir, base)})
 	}
 	writeJSON(w, 200, map[string]any{"attachments": out})
 }

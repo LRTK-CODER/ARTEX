@@ -137,7 +137,13 @@ func (s *Server) wsOpenRoot(unit string, create bool) (*os.Root, error) {
 	}
 	defer data.Close()
 	if create {
-		if err := data.MkdirAll(unit, 0o755); err != nil {
+		// uid 분리를 켜면(#182) 작업 단위는 서버 전용으로 만든다. 첨부 업로드가 작업·세션의 첫 실행보다 먼저 만들 수
+		// 있는데, 0755면 그 uid를 받기 전까지 다른 에이전트 uid가 이름으로 들어와 첨부를 읽는다. 첫 실행이 그 uid에만 연다.
+		perm := fs.FileMode(0o755)
+		if s.sandbox != nil {
+			perm = 0o700
+		}
+		if err := data.MkdirAll(unit, perm); err != nil {
 			return nil, err
 		}
 	}
@@ -547,8 +553,9 @@ func saveUploadInRoot(root *os.Root, hdr *multipart.FileHeader, name string) err
 		return err
 	}
 	defer src.Close()
-	// 권한은 umask에 맡긴다. 에이전트 uid 분리(#165)를 켜면 서버 umask가 002라 0664가 되어, 사용자가 올린 파일을
-	// 에이전트가 그 자리에서 고칠 수 있다. 같은 작업 디렉터리에 에이전트·서버가 만드는 다른 파일과 같다.
+	// 권한은 0666으로 주고 umask에 맡긴다. 에이전트 uid 분리(#165)를 켜면 작업 공간의 기본 ACL이 umask 대신 정해
+	// (#182) 그 작업 uid가 사용자가 올린 파일을 그 자리에서 고칠 수 있다. 같은 작업 디렉터리에 에이전트·서버가 만드는
+	// 다른 파일과 같다.
 	out, tmp, err := createUniqueUpload(root, filepath.Dir(name), "."+filepath.Base(name)+".upload", 0o666)
 	if err != nil {
 		return err

@@ -66,9 +66,10 @@ const (
 // tagOrder 는 커널(posix_acl_valid)이 요구하는 항목 순서다.
 var tagOrder = map[ACLTag]int{ACLUserOwner: 0, ACLNamedUser: 1, ACLGroupOwner: 2, ACLNamedGroup: 3, ACLMask: 4, ACLOther: 5}
 
-// canonical 은 a를 커널 순서(종류, 같은 종류 안에서는 id 오름차순)로 정렬한 사본을 돌려준다. 커널이 EINVAL로만
-// 거부하는 ACL을 쓰기 전에 원인이 보이는 오류로 거른다: 모르는 종류, rwx 밖의 권한, 소유자·소유 그룹·other가
-// 하나씩이 아님, mask가 둘 이상, 이름 있는 항목이 있는데 mask가 없음, 같은 id가 두 번.
+// canonical 은 a를 커널 순서(종류, 같은 종류 안에서는 id 오름차순)로 정렬한 사본을 돌려준다. 커널이 EINVAL로
+// 거부하거나 libacl(setfacl)이 거부하는 ACL을 쓰기 전에 원인이 보이는 오류로 거른다: 모르는 종류, rwx 밖의 권한,
+// 소유자·소유 그룹·other가 하나씩이 아님, mask가 둘 이상, 이름 있는 항목이 있는데 mask가 없음, 같은 id가 두 번
+// (같은 id 두 번은 libacl만 거부한다).
 func (a ACL) canonical() (ACL, error) {
 	counts := map[ACLTag]int{}
 	for _, e := range a {
@@ -138,8 +139,9 @@ func encodeACL(a ACL) ([]byte, error) {
 	return buf, nil
 }
 
-// decodeACL 은 커널 xattr 값을 ACL로 읽는다. 버전이 다르거나 길이가 항목 크기에 맞지 않으면 오류다. 이름 없는
-// 항목의 id는 0으로 둔다. 순서는 커널이 저장한 그대로(커널 순서)다.
+// decodeACL 은 커널 xattr 값을 ACL로 읽는다. 버전이 다르거나 길이가 항목 크기에 맞지 않거나, 내용이 쓸 때와 같은
+// 검사(canonical)를 통과하지 못하면 오류다. 커널이 검사해 저장한 값만 읽지만, 읽은 값으로 권한을 판단하는 쪽이
+// 뜻이 없는 ACL을 받지 않게 한다. 이름 없는 항목의 id는 0으로 둔다. 순서는 커널이 저장한 그대로(커널 순서)다.
 func decodeACL(raw []byte) (ACL, error) {
 	if len(raw) < aclHeaderSize || (len(raw)-aclHeaderSize)%aclEntrySize != 0 {
 		return nil, fmt.Errorf("POSIX ACL xattr has invalid length %d", len(raw))
@@ -155,6 +157,9 @@ func decodeACL(raw []byte) (ACL, error) {
 			e.ID = binary.LittleEndian.Uint32(b[4:])
 		}
 		out[i] = e
+	}
+	if _, err := out.canonical(); err != nil {
+		return nil, fmt.Errorf("POSIX ACL xattr: %w", err)
 	}
 	return out, nil
 }
