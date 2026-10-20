@@ -82,7 +82,7 @@ type RuleForm = {
   note: string;
 };
 
-const defaultForm = (): RuleForm => ({ enabled: true, kind: "fuzzy_domain", pattern: "", note: "" });
+const defaultForm = (): RuleForm => ({ enabled: true, kind: "suffix_domain", pattern: "", note: "" });
 
 // 프런트의 가벼운 검사(백엔드와 같게 exact_ip / cidr만 형식을 검사하고 나머지는 백엔드에 맡긴다).
 function frontValidate(form: RuleForm): string | null {

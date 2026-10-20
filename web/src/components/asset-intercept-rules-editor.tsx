@@ -42,7 +42,7 @@ export function AssetInterceptRulesEditor({
     onChange(value.filter((_, idx) => idx !== i));
   }
   function add() {
-    onChange([...value, { action: "block", kind: "fuzzy_domain", pattern: "", note: "", enabled: true }]);
+    onChange([...value, { action: "block", kind: "suffix_domain", pattern: "", note: "", enabled: true }]);
   }
   return (
     <div className="grid gap-2">
