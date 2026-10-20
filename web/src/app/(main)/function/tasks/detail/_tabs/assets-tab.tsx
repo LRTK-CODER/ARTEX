@@ -312,8 +312,8 @@ function AddTaskAssetsSheet({
         <SheetHeader>
           <SheetTitle>테스트 자산 추가</SheetTitle>
           <SheetDescription>
-            테스트 범위를 직접 입력하세요. 도메인과 IP는 전역 자산을 만들거나 기존 자산을 다시 씁니다. CIDR, ICP,
-            키워드는 에이전트의 범위 컨텍스트로 씁니다.
+            테스트 범위를 직접 입력하세요. 도메인과 IP는 전역 자산을 만들거나 기존 자산을 다시 씁니다. CIDR와 키워드는
+            에이전트의 범위 컨텍스트로 씁니다.
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
@@ -323,7 +323,7 @@ function AddTaskAssetsSheet({
             onValueChange={setScopeText}
             parsed={parsedScope}
             label="테스트 자산과 범위"
-            description="한 줄에 하나씩 입력합니다. 도메인, IP, CIDR, ICP 등록 번호, 키워드를 자동으로 구분합니다."
+            description="한 줄에 하나씩 입력합니다. 도메인, IP, CIDR, 키워드를 자동으로 구분합니다."
           />
         </div>
         <SheetFooter>
@@ -510,11 +510,10 @@ export function AssetsTab({ taskId }: { taskId: string }) {
         {searchBox}
 
         <TabsContent value="root_domain" className="mt-0 flex min-h-0 flex-1 flex-col">
-          <AssetCard cols={["도메인", "ICP 등록 번호", "출처", "관리"]} {...commonCardProps}>
+          <AssetCard cols={["도메인", "출처", "관리"]} {...commonCardProps}>
             {rows.map((asset) => (
               <TableRow key={asset.id}>
                 <TableCell className="font-medium font-mono text-xs">{asset.domain}</TableCell>
-                <TableCell className="text-xs">{asset.icp || "—"}</TableCell>
                 <TableCell>
                   <SourceCell asset={asset} />
                 </TableCell>

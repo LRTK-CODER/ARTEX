@@ -121,9 +121,9 @@ func ParseScopeInput(input ScopeInput) (ParsedScope, error) {
 	}
 }
 
-// ParseAutoScopeLine classifies one untyped textarea line. Network-looking and
-// domain-looking values remain strict so malformed ranges do not silently become
-// Agent keywords; all other non-empty text is a keyword.
+// ParseAutoScopeLine 은 종류를 밝히지 않은 입력 한 줄을 분류한다. 네트워크·도메인처럼
+// 보이는 값은 엄격히 검사해 잘못된 범위가 조용히 에이전트 키워드가 되지 않게 하고,
+// 그 밖의 비어 있지 않은 글은 모두 키워드다. ICP로는 자동 분류하지 않는다.
 func ParseAutoScopeLine(line string) (ParsedScope, error) {
 	raw := strings.TrimSpace(line)
 	if raw == "" {
@@ -152,15 +152,8 @@ func ParseAutoScopeLine(line string) (ParsedScope, error) {
 	if looksLikeDomain {
 		return ParseScopeLine(raw)
 	}
-	// ICP 등록 번호에는 점이 없다(예: 京ICP备12345678号-1). 점이 있는 텍스트는 대개
-	// 도메인이나 버전 번호가 섞인 것이다. ICP로 저장하면 어떤 자산과도 영원히 일치하지 않는
-	// 죽은 규칙이 된다. ICP 소속 판정은 정확히 같은지 비교하므로(companies.go의 kind='icp'
-	// 소속 조회), 이런 텍스트는 키워드로 분류한다.
-	lower := strings.ToLower(raw)
-	if !strings.ContainsAny(raw, ".．。") &&
-		(strings.Contains(lower, "icp") || strings.Contains(raw, "备案")) {
-		return ParseScopeInput(ScopeInput{Kind: "icp", Value: raw})
-	}
+	// 한국 사용에서는 ICP 등록 번호(중국 웹사이트 등록 번호)를 쓰지 않으므로(#192)
+	// "icp"나 "备案"이 든 글도 키워드로 둔다. ICP 규칙은 kind를 "icp"로 밝혀 넣을 때만 만든다.
 	return ParseScopeInput(ScopeInput{Kind: "keyword", Value: raw})
 }
 

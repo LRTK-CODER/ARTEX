@@ -70,6 +70,7 @@ const SCOPE_KIND_LABELS: Record<TaskScopeRow["kind"], string> = {
   subdomain: "하위 도메인",
   ip: "IP",
   cidr: "네트워크 대역",
+  // 새 ICP 범위는 화면에서 만들 수 없지만(#192), 예전에 만든 범위 행은 이 이름으로 보인다.
   icp: "ICP",
   keyword: "키워드",
 };
@@ -833,7 +834,6 @@ export function OverviewTab({ taskId }: { taskId: string }) {
               <NativeSelectOption value="subdomain">하위 도메인</NativeSelectOption>
               <NativeSelectOption value="ip">IP</NativeSelectOption>
               <NativeSelectOption value="cidr">네트워크 대역</NativeSelectOption>
-              <NativeSelectOption value="icp">ICP</NativeSelectOption>
               <NativeSelectOption value="keyword">키워드</NativeSelectOption>
               <NativeSelectOption value="company">기업</NativeSelectOption>
             </NativeSelect>
@@ -844,11 +844,9 @@ export function OverviewTab({ taskId }: { taskId: string }) {
                   ? "기업 이름 또는 id"
                   : scopeKind === "ip" || scopeKind === "cidr"
                     ? "예: 10.0.0.1 또는 10.0.0.0/24"
-                    : scopeKind === "icp"
-                      ? "예: 京ICP备12345678号-1"
-                      : scopeKind === "keyword"
-                        ? "예: 기업 이름 키워드"
-                        : "예: example.com"
+                    : scopeKind === "keyword"
+                      ? "예: 기업 이름 키워드"
+                      : "예: example.com"
               }
               value={scopeValueInput}
               onChange={(e) => setScopeValueInput(e.target.value)}
