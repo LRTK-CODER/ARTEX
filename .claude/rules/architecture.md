@@ -74,7 +74,7 @@ ARTEX는 자율 보안 테스트 도구라서 **LLM이 도구를 골라 명령�
 
 - **되도록 라이브러리로 프로세스 안에서 돈다.** MITM 프록시는 `go-mitmproxy`를 라이브러리로(`traffic`), DNS는 `dnsx`를 라이브러리로(`enrich`) 쓴다. 하위 프로세스를 띄우지 않는다.
 - 에이전트가 외부 명령(nmap·curl·playwright 등)을 쓸 때는 **`norma`의 Bash 도구**를 지난다. 타임아웃·보안 기준선·프록시 환경 변수·출력 상한은 `norma`가 맡는다. ARTEX의 명령형 커스텀 도구도 이 Bash 바탕을 재사용한다.
-- ARTEX Go 코드가 직접 `os/exec`를 쓰는 곳은 드물다(커스텀 script 도구의 `execPython`, `python` 탐지, selfupdate 바이너리 점검). 직접 쓸 때 지킬 것(타임아웃을 `context`로, 인자는 리스트로, 환경 변수 허용 목록)은 `secure-coding.md` "외부 도구 실행"에 있다.
+- ARTEX Go 코드가 직접 `os/exec`를 쓰는 곳은 드물다: 커스텀 script 도구의 `execPython`(`server/customtool.go`), 에이전트 uid 분리의 도우미 점검·셸 uid 확인·소유 uid로 지우기·프로세스 종료·`LookPath`(`server/agentsandbox.go`), 도우미 자체(`cmd/artex-sandbox`), selfupdate 바이너리 점검(`selfupdate/bootstrap.go`). 직접 쓸 때 지킬 것(타임아웃을 `context`로, 인자는 리스트로, 환경 변수 허용 목록)은 `secure-coding.md` "외부 도구 실행"에 있다.
 
 ## 설정
 
