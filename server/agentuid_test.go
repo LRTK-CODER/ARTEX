@@ -108,7 +108,7 @@ func TestAgentUIDPoolExhaustedStopsEveryRunPath(t *testing.T) {
 
 	t.Run("agent run gets no command environment", func(t *testing.T) {
 		_, taskID := newAgentUIDTestTask(t, m, "agent uid exhausted run")
-		wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, &AgentSandbox{})
+		wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, &AgentSandbox{}, nil)
 		t.Cleanup(func() { agent.ToolAugment = nil })
 		_, def, _ := agent.ToolAugment(agent.WithRunInfo(ctx, agent.RunInfo{TaskID: taskID}), "planner")
 		if def.CommandEnv != nil || !errors.Is(def.CommandErr, db.ErrAgentUIDPoolExhausted) {
@@ -246,7 +246,7 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 
 	sb := &AgentSandbox{uid: 20000, gid: 20000}
 	dataDir := t.TempDir()
-	wireAgentAugment(pg, dataDir, t.TempDir(), nil, sb)
+	wireAgentAugment(pg, dataDir, t.TempDir(), nil, sb, nil)
 	t.Cleanup(func() { agent.ToolAugment = nil })
 	augment := func(ctx context.Context, ri agent.RunInfo) agent.DeferredInfo {
 		t.Helper()
@@ -324,7 +324,7 @@ func TestToolAugmentCarriesRunAgentUID(t *testing.T) {
 	}
 
 	// 꺼져 있으면 지금과 같다. uid를 싣지 않고 막지도 않는다.
-	wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, nil)
+	wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, nil, nil)
 	if def := augment(t.Context(), agent.RunInfo{}); def.CommandEnv != nil || def.CommandErr != nil || def.WorkspaceUID != 0 {
 		t.Fatalf("sandbox off: %+v", def)
 	}
@@ -597,5 +597,50 @@ func TestConversationTurnStopsWhenAgentUIDFailsWithOtherError(t *testing.T) {
 	}
 	if assigned != 0 {
 		t.Fatalf("agent uid rows for the conversation = %d, want 0", assigned)
+	}
+}
+
+// TestToolAugmentWarnsWhenProxyCATrustFails 는 HOME의 NSS 저장소에 기록 프록시 CA를 넣지 못해도 실행은 막지 않고, 그
+// 실행의 활동에 원인을 남기는지 본다(#204). 실패하면 그 실행의 Chromium만 인증서 오류로 닫히고, 에이전트가 자기 HOME을
+// 망쳐 자기 작업을 계속 막는 일을 피한다. sandbox의 도우미 경로가 비어 있어 TrustProxyCA는 늘 실패한다.
+func TestToolAugmentWarnsWhenProxyCATrustFails(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("HOME·TMPDIR 디렉터리의 POSIX ACL은 Linux에서만 쓸 수 있다")
+	}
+	m, err := NewManager(t.TempDir(), "", config.ReadSecretEnv())
+	if err != nil {
+		t.Skipf("postgres unavailable (%v) — skipping", err)
+	}
+	t.Cleanup(func() { m.Close() })
+	pg := m.PG()
+	c, err := pg.CreateConversation("agent-uid-proxy-ca", "agent uid proxy ca", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pg.DeleteConversation(c.ID) })
+	sessionKey := (&Server{}).convBusyKey(c.ID)
+
+	sb := &AgentSandbox{uid: 20000, gid: 20000}
+	wireAgentAugment(pg, t.TempDir(), t.TempDir(), nil, sb, func() string { return "/nonexistent/proxy-ca.pem" })
+	t.Cleanup(func() { agent.ToolAugment = nil })
+	_, def, cleanup := agent.ToolAugment(agent.WithRunInfo(t.Context(), agent.RunInfo{SessionID: sessionKey}), "planner")
+	if cleanup != nil {
+		cleanup()
+	}
+	if def.CommandErr != nil || def.WorkspaceUID == 0 {
+		t.Fatalf("CommandErr = %v, WorkspaceUID = %d, want the run to start", def.CommandErr, def.WorkspaceUID)
+	}
+	activities, _, err := pg.ConvActivityList(c.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var warnings int
+	for _, a := range activities {
+		if a.Worker == "system" && a.Summary == proxyCAWarningSummary {
+			warnings++
+		}
+	}
+	if warnings != 1 {
+		t.Fatalf("proxy CA warnings in the conversation activity = %d, want 1: %+v", warnings, activities)
 	}
 }

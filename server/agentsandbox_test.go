@@ -222,3 +222,52 @@ func TestClearAgentIdentityEnv(t *testing.T) {
 		}
 	}
 }
+
+// TestFindCertutil 은 uid 분리를 켤 때 에이전트 명령의 PATH에서 certutil을 찾고, 없으면 설치할 패키지 이름을 담아
+// 시작을 막는 오류를 올리는지 본다(#204).
+func TestFindCertutil(t *testing.T) {
+	bin := t.TempDir()
+	writeExecutable(t, filepath.Join(bin, certutilName), 0o755)
+	t.Setenv("PATH", bin) // 서버 PATH에 있어도 에이전트 명령의 PATH를 본다
+	missing := &AgentSandbox{agentPath: t.TempDir()}
+	_, err := missing.findCertutil()
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("findCertutil(no certutil) = %v, want exec.ErrNotFound", err)
+	}
+	for _, pkg := range []string{"libnss3-tools", "nss-tools"} {
+		if !strings.Contains(err.Error(), pkg) {
+			t.Fatalf("findCertutil error %q lacks the package name %q", err, pkg)
+		}
+	}
+	found := &AgentSandbox{agentPath: bin}
+	if got, err := found.findCertutil(); err != nil || got != filepath.Join(bin, certutilName) {
+		t.Fatalf("findCertutil = %q, %v, want %q", got, err, filepath.Join(bin, certutilName))
+	}
+}
+
+// TestTrustProxyCAOff 는 uid 분리를 껐거나 캡처를 꺼 CA가 없으면 TrustProxyCA가 아무것도 실행하지 않고 HOME에 아무것도
+// 만들지 않는지 본다(#204). 켠 쪽의 sandbox는 도우미 경로가 비어 있어 실행하면 실패한다.
+func TestTrustProxyCAOff(t *testing.T) {
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(ca, []byte("not used"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		sandbox *AgentSandbox
+		caCert  string
+	}{
+		{name: "uid separation off", sandbox: nil, caCert: ca},
+		{name: "capture off", sandbox: &AgentSandbox{uid: 20000, gid: 20000}, caCert: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			if err := tc.sandbox.TrustProxyCA(context.Background(), 20001, home, tc.caCert); err != nil {
+				t.Fatalf("TrustProxyCA = %v, want nil", err)
+			}
+			if entries, err := os.ReadDir(home); err != nil || len(entries) != 0 {
+				t.Fatalf("HOME entries = %v, %v, want none", entries, err)
+			}
+		})
+	}
+}

@@ -85,6 +85,7 @@ type AgentSandbox struct {
 	gid       int
 	shellDir  string
 	agentPath string // 기능을 켜기 전의 PATH. 에이전트 명령과 python 찾기에 쓴다
+	certutil  string // 에이전트 HOME의 NSS 저장소에 기록 프록시 CA를 넣는 certutil 경로(#204)
 }
 
 // EnableAgentSandbox 는 설정이 켜져 있으면 uid 분리를 준비하고, 꺼져 있으면 nil, nil을 돌려준다.
@@ -143,7 +144,25 @@ func EnableAgentSandbox(ctx context.Context, cfg AgentSandboxConfig) (*AgentSand
 	if err := clearAgentIdentityEnv(); err != nil {
 		return nil, err
 	}
-	return &AgentSandbox{helper: helper, uid: uid, gid: gid, shellDir: shellDir, agentPath: agentPath}, nil
+	sb := &AgentSandbox{helper: helper, uid: uid, gid: gid, shellDir: shellDir, agentPath: agentPath}
+	if sb.certutil, err = sb.findCertutil(); err != nil {
+		return nil, err
+	}
+	return sb, nil
+}
+
+// certutilName 은 NSS 저장소를 다루는 명령 이름이다. 에이전트 명령의 PATH에서 찾는다.
+const certutilName = "certutil"
+
+// findCertutil 은 에이전트 명령의 PATH에서 certutil을 찾는다(#204). uid 분리를 켜면 에이전트 HOME이 작업·세션마다
+// 새로 생겨 Chromium의 인증서 저장소가 비어 있다. certutil이 없으면 에이전트가 띄운 Chromium이 기록 프록시를 지나는
+// HTTPS를 열지 못하므로 시작하지 않는다(준비하지 못하면 시작하지 않는다는 uid 분리의 원칙과 같다).
+func (s *AgentSandbox) findCertutil() (string, error) {
+	path, err := s.LookPath(certutilName)
+	if err != nil {
+		return "", fmt.Errorf("agent uid separation needs %s to make agent Chromium trust the recording proxy CA; install it (Debian/Ubuntu: libnss3-tools, RHEL family: nss-tools): %w", certutilName, err)
+	}
+	return path, nil
 }
 
 // parseAgentIDs 는 두 값이 함께 있는지와 숫자인지만 본다. 허용 범위는 도우미가 판단한다(한곳에 둔다).
@@ -496,6 +515,46 @@ func (s *AgentSandbox) removeAsOwner(ctx context.Context, uid int, dirs []*os.Fi
 	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("clear %q as agent uid %d: %v: %s", names, uid, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// agentTrustCATimeout 은 TrustProxyCA의 도우미 실행 하나에 주는 시간이다. 실험에서 처음 만들 때 0.15초, 다시 넣을 때
+// 0.03초였다.
+const agentTrustCATimeout = 30 * time.Second
+
+// proxyCANickname 은 에이전트 NSS 저장소에서 기록 프록시 CA를 가리키는 별명이다. 같은 별명으로 다시 넣으면 하나만 남는다.
+const proxyCANickname = "ARTEX recording proxy CA"
+
+// agentTrustCAScript 는 에이전트 uid로 돌아 $1(HOME)/.pki/nssdb를 만들고(없으면) $2(CA 인증서)를 $4(별명)로 믿게
+// 넣는다. $3은 certutil 경로다. 인자는 모두 서버가 정한 값이고 스크립트는 고정이다(보간하지 않는다).
+//
+// 서버 uid로 돌리지 않는 이유: HOME은 에이전트가 쓸 수 있어 .pki를 링크로 바꿔 둘 수 있고, certutil(NSS·sqlite)은
+// 경로를 따라가며 저장소의 pkcs11.txt가 가리키는 모듈을 불러온다. 에이전트 uid로 돌면 링크를 따라가도 그 uid가 원래
+// 쓸 수 있는 곳뿐이다. -d를 빼면 certutil은 ~/.netscape를 쓰므로 늘 준다. Chromium은 $HOME/.pki/nssdb가 있으면 그것을
+// 쓴다(없으면 XDG 경로를 만든다, 옛 Chromium은 .pki만 본다).
+const agentTrustCAScript = `d="$1/.pki/nssdb"
+mkdir -p -- "$d" &&
+{ [ -f "$d/cert9.db" ] || "$3" -d "sql:$d" -N --empty-password; } &&
+"$3" -d "sql:$d" -A -t C,, -n "$4" -i "$2"`
+
+// TrustProxyCA 는 uid 분리를 켰을 때 실행의 HOME home에 Chromium이 보는 NSS 저장소($HOME/.pki/nssdb)를 만들고 기록
+// 프록시 CA 인증서 caCert를 믿게 넣는다(#204). Linux의 Chromium은 SSL_CERT_FILE을 보지 않고 NSS만 본다. 명령은
+// 도우미로 그 실행의 uid가 되어 돈다(agentTrustCAScript). 다시 불러도 같은 결과다. 꺼져 있거나 캡처가 꺼져 caCert가
+// 비면 아무것도 하지 않는다. certutil이 실패하면 출력을 담은 오류다.
+func (s *AgentSandbox) TrustProxyCA(ctx context.Context, uid int, home, caCert string) error {
+	if s == nil || caCert == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, agentTrustCATimeout)
+	defer cancel()
+	// "sh -c 스크립트 이름 인자..."에서 "artex-trust-ca"는 $0이다.
+	name, args := s.Command("sh", []string{"-c", agentTrustCAScript, "artex-trust-ca", home, caCert, s.certutil, proxyCANickname})
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = "/"
+	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath, agent.AgentHomeEnv+"="+home)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("add the recording proxy CA to %s/.pki/nssdb as agent uid %d: %v: %s", home, uid, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
