@@ -434,6 +434,24 @@ func (o workspaceOwners) sessionUID(name string) int {
 	return o.conversations[id]
 }
 
+// agentOutputLimitBytes 는 에이전트 uid로 돈 명령의 출력을 오류에 담는 상한이다. 원인을 알기에는 충분하다.
+const agentOutputLimitBytes = 4096
+
+// agentOutputTruncated 는 agentOutput이 출력을 잘랐을 때 끝에 붙이는 표시다.
+const agentOutputTruncated = "…(잘림)"
+
+// agentOutput 은 에이전트 uid로 돈 도우미 명령(removeAsOwner, TrustProxyCA)의 출력을 오류에 담을 크기로 줄인다. 그 명령은
+// 에이전트가 쓸 수 있는 파일을 다룬다(certutil은 저장소의 pkcs11.txt가 가리키는 모듈을 불러온다). 그래서 출력은
+// 에이전트가 정할 수 있고, 이 오류는 서버 로그와 활동 Detail(DB)에 남는다. 앞 agentOutputLimitBytes만 남기고 잘렸다고
+// 표시한다. 호출자는 줄바꿈으로 가짜 로그 줄을 끼우지 못하게 %q로 넣는다.
+func agentOutput(out []byte) string {
+	text := strings.TrimSpace(string(out))
+	if len(text) <= agentOutputLimitBytes {
+		return text
+	}
+	return strings.ToValidUTF8(text[:agentOutputLimitBytes], "") + agentOutputTruncated
+}
+
 // agentRemoveTimeout 은 RemoveAll이 에이전트 uid로 지우는 도우미 실행 하나에 주는 시간이다. 큰 작업 공간도 수 초면 끝난다.
 const agentRemoveTimeout = 5 * time.Minute
 
@@ -514,7 +532,7 @@ func (s *AgentSandbox) removeAsOwner(ctx context.Context, uid int, dirs []*os.Fi
 	cmd.ExtraFiles = dirs
 	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("clear %q as agent uid %d: %v: %s", names, uid, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("clear %q as agent uid %d: %v: %q", names, uid, err, agentOutput(out))
 	}
 	return nil
 }
@@ -554,7 +572,7 @@ func (s *AgentSandbox) TrustProxyCA(ctx context.Context, uid int, home, caCert s
 	cmd.Dir = "/"
 	cmd.Env = append(identityEnv(uid, uid), AgentPathEnv+"="+s.agentPath, agent.AgentHomeEnv+"="+home)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("add the recording proxy CA to %s/.pki/nssdb as agent uid %d: %v: %s", home, uid, err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("add the recording proxy CA to %s/.pki/nssdb as agent uid %d: %v: %q", home, uid, err, agentOutput(out))
 	}
 	return nil
 }

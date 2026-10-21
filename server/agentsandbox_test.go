@@ -271,3 +271,26 @@ func TestTrustProxyCAOff(t *testing.T) {
 		})
 	}
 }
+
+// TestAgentOutput 은 에이전트 uid로 돈 명령의 출력을 오류에 넣기 전에 앞 4KB로 자르고 잘렸다고 표시하는지 본다. 그 출력은
+// 에이전트가 정할 수 있고 서버 로그와 활동 Detail에 남는다. 자른 자리가 여러 바이트 문자 가운데여도 깨진 UTF-8을 남기지 않는다.
+func TestAgentOutput(t *testing.T) {
+	long := strings.Repeat("a", agentOutputLimitBytes+100)
+	cut := strings.Repeat("a", agentOutputLimitBytes-1) + "가나"
+	for _, tc := range []struct {
+		name string
+		out  string
+		want string
+	}{
+		{name: "short output kept", out: "  mkdir: denied\n", want: "mkdir: denied"},
+		{name: "limit kept", out: strings.Repeat("a", agentOutputLimitBytes), want: strings.Repeat("a", agentOutputLimitBytes)},
+		{name: "long output truncated", out: long, want: strings.Repeat("a", agentOutputLimitBytes) + agentOutputTruncated},
+		{name: "cut inside a multibyte rune", out: cut, want: strings.Repeat("a", agentOutputLimitBytes-1) + agentOutputTruncated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := agentOutput([]byte(tc.out)); got != tc.want {
+				t.Fatalf("agentOutput = %q (%d bytes), want %q", got, len(got), tc.want)
+			}
+		})
+	}
+}
