@@ -25,9 +25,11 @@ ARG TARGETARCH
 # cap_net_raw를 준다. cap_net_admin은 주지 않는다. Docker 기본 capability 집합에 NET_ADMIN이 없어서 파일 cap에
 # 들어 있으면 exec 자체가 실패한다. setcap을 담은 libcap2-bin(Debian 공식 저장소)은 빌드에서만 쓰고
 # 서버 실행 파일·도우미에 cap을 준 뒤(아래) 지운다.
+# libnss3-tools(certutil): 에이전트 uid 분리를 켜면 서버가 작업·세션 HOME의 NSS 저장소에 기록 프록시 CA를 넣는다(#204).
+# Linux Chromium은 SSL_CERT_FILE을 보지 않고 NSS만 본다.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip \
-      dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap libcap2-bin \
+      dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap libcap2-bin libnss3-tools \
     && setcap cap_net_raw+eip /usr/bin/nmap \
     && rm -rf /var/lib/apt/lists/*
 # nmap은 uid가 0이 아니면 raw 소켓 권한이 없다고 보고 SYN 스캔을 거부한다. 파일 cap이 있음을 알려 준다.

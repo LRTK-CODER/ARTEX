@@ -247,7 +247,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
-		wireAgentAugment(m.pg, m.dir, s.skillDir, s.hostTools, s.sandbox) // 공개된 스킬·MCP와 트래픽·오케스트레이션 host 도구를 에이전트 도구 모음에 넣는다
+		wireAgentAugment(m.pg, m.dir, s.skillDir, s.hostTools, s.sandbox, m.ProxyCACert) // 공개된 스킬·MCP와 트래픽·오케스트레이션 host 도구를 에이전트 도구 모음에 넣는다
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg) // 내장 도구 표: 에이전트별 필터 + 설명·schema 덮어쓰기 + 기본값 넣기
 		seedPrompts(m.pg)          // 내장 에이전트 기본 프롬프트 본문을 agent_prompts에 시드한다(비어 있을 때만)

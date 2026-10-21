@@ -27,7 +27,9 @@ import (
 // stdio MCP를 그 uid로 띄우며, 작업 공간을 그 uid에만 열게 한다(WorkspaceUID). 데이터 디렉터리 dataDir 아래에 그
 // 작업·세션의 HOME·TMPDIR를 만들어 명령 환경에 더한다(#178). uid나 HOME·TMPDIR를 받지 못하면 도구를 붙이지 않고
 // CommandErr로 알린다. 에이전트는 그 실행을 시작하지 않는다(#177).
-func wireAgentAugment(pg *db.DB, dataDir, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), sandbox *AgentSandbox) {
+// proxyCACert는 지금 믿어야 할 기록 프록시 CA 경로를 돌려준다(캡처를 끄면 빈 값, Manager.ProxyCACert). nil이면 없다.
+// 켜져 있으면 그 HOME의 NSS 저장소에 CA를 넣는다(#204). 넣지 못하면 경고만 남기고 실행은 계속한다(trustProxyCA).
+func wireAgentAugment(pg *db.DB, dataDir, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), sandbox *AgentSandbox, proxyCACert func() string) {
 	agent.ToolAugment = func(ctx context.Context, agentKey string) ([]actool.CoreTool, agent.DeferredInfo, func()) {
 		ri := agent.RunInfoFrom(ctx)
 		workspaceUID, commandEnv, err := sandbox.RunIdentity(ctx, pg, ri)
@@ -40,6 +42,9 @@ func wireAgentAugment(pg *db.DB, dataDir, skillDir string, hostTools func() ([]a
 				return nil, agent.DeferredInfo{CommandErr: fmt.Errorf("에이전트 명령의 HOME·TMPDIR를 준비하지 못해 실행하지 않습니다: %w", err)}, nil
 			}
 			commandEnv = append(commandEnv, dirsEnv...)
+			if proxyCACert != nil {
+				trustProxyCA(ctx, pg, sandbox, ri, workspaceUID, commandHome(dirsEnv), proxyCACert())
+			}
 		}
 		a, err := pg.GetAgentByKey(agentKey)
 		if err != nil || a == nil {
@@ -395,4 +400,42 @@ func jsonStrMap(raw json.RawMessage) map[string]string {
 		_ = json.Unmarshal(raw, &out)
 	}
 	return out
+}
+
+// commandHome 은 agent.EnsureCommandDirs가 돌려준 환경 변수에서 에이전트 명령의 HOME을 찾는다. 없으면 빈 문자열이다.
+func commandHome(dirsEnv []string) string {
+	for _, kv := range dirsEnv {
+		if home, ok := strings.CutPrefix(kv, agent.AgentHomeEnv+"="); ok {
+			return home
+		}
+	}
+	return ""
+}
+
+// proxyCAWarningSummary 는 NSS 저장소에 기록 프록시 CA를 넣지 못했을 때 그 실행의 활동에 남기는 요약이다.
+const proxyCAWarningSummary = "에이전트 HOME의 인증서 저장소에 기록 프록시 CA를 넣지 못했습니다. 이 실행에서 띄운 Chromium은 HTTPS 인증서 오류가 날 수 있습니다"
+
+// trustProxyCA 는 실행 ri의 HOME home에 기록 프록시 CA caCert를 넣는다(AgentSandbox.TrustProxyCA, #204). 실패해도
+// 실행은 막지 않는다. 그 실행의 Chromium만 인증서 오류로 닫히는 쪽이라 보안 영향이 없고, 에이전트가 자기 HOME을
+// 망쳐(.pki를 링크로 바꾸는 등) 자기 작업을 계속 막게 되는 일을 피한다. 대신 서버 로그와 그 실행의 활동(작업 탐색 또는
+// 대화)에 원인을 남긴다. 실행마다 한 번 불린다.
+func trustProxyCA(ctx context.Context, pg *db.DB, sandbox *AgentSandbox, ri agent.RunInfo, uid int, home, caCert string) {
+	err := sandbox.TrustProxyCA(ctx, uid, home, caCert)
+	if err == nil {
+		return
+	}
+	log.Printf("[sandbox] %s(작업 %d, 세션 %q): %v", proxyCAWarningSummary, ri.TaskID, ri.SessionID, err)
+	activity := db.Activity{Worker: "system", Kind: "system", Summary: proxyCAWarningSummary, Detail: err.Error()}
+	var appendErr error
+	switch {
+	case ri.ExplorationID > 0:
+		_, appendErr = pg.Exploration(ri.ExplorationID).AppendActivity(activity)
+	case ri.SessionID != "":
+		if conversationID, ok := conversationIDFromSessionKey(ri.SessionID); ok {
+			_, appendErr = pg.AppendConvActivity(conversationID, activity)
+		}
+	}
+	if appendErr != nil {
+		log.Printf("[sandbox] 인증서 저장소 경고를 활동에 남기지 못했다(작업 %d, 세션 %q): %v", ri.TaskID, ri.SessionID, appendErr)
+	}
 }
