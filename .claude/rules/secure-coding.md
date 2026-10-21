@@ -54,6 +54,8 @@ ARTEX는 트래픽을 일부러 가리지 않고 통째로 저장하고(`traffic
 | `os/exec`는 `exec.CommandContext`로 만들고 타임아웃을 `context`로 둔다. 무기한 실행을 두지 않는다. | 규칙 | 테스트: 시간 초과 시 context가 프로세스를 끊는다 |
 | 인자는 리스트로 넘긴다. `sh -c "<보간한 문자열>"`처럼 셸을 거쳐 신뢰하지 않는 값을 넣지 않는다. | 규칙 | 리뷰, 어댑터 인자 테스트 |
 | 자식 프로세스 환경 변수는 허용 목록으로 넘기고 ARTEX의 비밀값 변수(API 키, DB 자격 증명)는 넘기지 않는다. 이 방어는 도구가 대상 코드를 실행하지 않을 때만 유효하다. | 규칙 | 테스트: 가짜 비밀값이 자식 환경에 없고 필요한 변수는 있다 |
+| 비밀 환경 변수(`ARTEX_PG_DSN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ARTEX_LLM_*`)는 `main` 맨 앞에서 `config.TakeSecretEnv`로 읽고 서버 환경에서 지운다. 자식 프로세스(norma Bash 포함)는 이 변수를 물려받지 않는다. 이후 코드는 `os.Getenv`가 아니라 돌려받은 `config.SecretEnv`를 쓴다. | 규칙 | 테스트: `config/secretenv_test.go` |
+| 에이전트 uid 분리(`ARTEX_AGENT_UID`·`ARTEX_AGENT_GID`, `server/agentsandbox.go`)를 켜면 에이전트 명령이 작업·세션 uid로 돌아 같은 uid라서 닿던 서버 키, `/proc/<서버 pid>/environ`의 초기 환경, 다른 작업 공간에 닿지 않는다. 서버가 직접 띄우는 명령(stdio MCP, python 도구)도 도우미(`cmd/artex-sandbox`)로 감싼다. 파일 도구는 서버 uid로 돌아 경로 제한(`agent/filescope.go`)이 맡는다. | 규칙 | 리뷰 |
 | 대상에서 온 파일 이름·인자는 `--` 뒤에 두거나 절대 경로로 바꿔 넘긴다. `-`로 시작하는 이름이 옵션으로 읽히지 않게 한다. | 규칙 | 테스트: `-`로 시작하는 파일 이름 |
 | 종료 코드 오류·타임아웃·파싱 실패를 빈 결과로 바꾸지 않는다. "계산하지 못함"이나 오류로 올린다. | 규칙 | 실패 경로 테스트 |
 
